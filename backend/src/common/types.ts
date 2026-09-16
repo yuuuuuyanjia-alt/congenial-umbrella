@@ -4,6 +4,8 @@ export interface PartySnap {
   name: string;
   nameEn?: string | null;
   country?: string | null;
+  address?: string | null;
+  registrationNo?: string | null;
   isSameAsBuyer?: boolean;
 }
 
@@ -15,6 +17,8 @@ export interface HitSnap {
   riskLevel: string;
   disposition: string;
   score: number;
+  partyRole?: string | null;
+  nodeCode?: string | null;
 }
 
 export interface ContractSnap {
@@ -133,9 +137,12 @@ export interface SinosurePolicySnap {
   confirmedExisting?: boolean;
 }
 
-export interface ProductionPlanSnap {
-  plannedDelivery?: string | Date | null;
+export interface ProcurementPlanSnap {
+  poNo?: string | null;
+  plannedArrival?: string | Date | null;
   contractDelivery?: string | Date | null;
+  poEvidenceStub?: string | null;
+  poEvidenceId?: string | null;
   delayRegistered: boolean;
   delayTriggerCode?: string | null;
   delayTriggerRef?: string | null;
@@ -177,7 +184,8 @@ export interface CaseSnapshot {
   nodes: NodeSnap[];
   quotes: QuoteSnap[];
   changeOrders: ChangeOrderSnap[];
-  productionPlan?: ProductionPlanSnap | null;
+  procurementPlan?: ProcurementPlanSnap | null;
+  supplierScreened?: boolean;
   customs?: CustomsSnap | null;
   hsTemplate?: HsTemplateSnap | null;
   costFloorFen?: number | null;

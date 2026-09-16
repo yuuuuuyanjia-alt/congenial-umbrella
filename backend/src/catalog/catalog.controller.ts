@@ -54,6 +54,10 @@ export class CatalogController {
         n3: '合同确认须上传保单并登记投保限额，合同金额不得超过限额',
         n4: '进入变更管理须再次确认或重新上传，并按变更后金额核对限额',
       },
+      procurement: {
+        label: '国内采购/备货',
+        n5: '登记国内供应商、采购合同/PO 与计划到货；供应商须过制裁/不可靠实体筛查；计划到货不得晚于客户合同交期，否则须结构化延期并保留客户同意证据',
+      },
       hsTemplates: hsTemplates.map((h) => ({
         ...h,
         requiredElements: JSON.parse(h.requiredElementsJson),

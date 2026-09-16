@@ -131,6 +131,11 @@ export class CasesController {
     return this.cases.savePlan(id, dto, actorId);
   }
 
+  @Post(':id/nodes/N5/screen')
+  screenSupplier(@Param('id') id: string, @Headers('x-actor-id') actorId?: string) {
+    return this.cases.screenSupplier(id, actorId);
+  }
+
   @Post(':id/nodes/N6/shipment')
   shipment(
     @Param('id') id: string,

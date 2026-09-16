@@ -89,7 +89,7 @@ async function main() {
   await prisma.changeOrder.deleteMany();
   await prisma.contractVersion.deleteMany();
   await prisma.quote.deleteMany();
-  await prisma.productionPlan.deleteMany();
+  await prisma.procurementPlan.deleteMany();
   await prisma.customsDeclaration.deleteMany();
   await prisma.evidence.deleteMany();
   await prisma.gateCheck.deleteMany();
@@ -145,6 +145,7 @@ async function main() {
   const gate = await seedGateDemoCase(sales.id);
   const fob = await seedFobNoBlCase(sales.id, approver.id);
   const limit = await seedSinosureOverLimitCase(sales.id);
+  const supplierBlock = await seedSupplierBlockCase(sales.id);
 
   console.log('种子数据已写入：');
   console.log('  PASS      ', pass.caseNo, pass.id);
@@ -153,6 +154,7 @@ async function main() {
   console.log('  GATE_DEMO ', gate.caseNo, gate.id, '（N6 缺证据，用于闸门拒绝演示）');
   console.log('  FOB_NO_BL ', fob.caseNo, fob.id, '（FOB 无提单路径已过 N6）');
   console.log('  SINOSURE  ', limit.caseNo, limit.id, '（合同金额超过中信保限额，N3 拒绝）');
+  console.log('  SUPPLIER  ', supplierBlock.caseNo, supplierBlock.id, '（国内供应商命中不可靠实体，N5 硬拦截）');
 }
 
 function nodeCreates(overrides: Record<string, Partial<{ status: string; decision: string | null; summary: string }>>) {
@@ -166,6 +168,24 @@ function nodeCreates(overrides: Record<string, Partial<{ status: string; decisio
     summary: overrides[n.code]?.summary ?? n.summary,
     completedAt: overrides[n.code]?.status === 'PASSED' ? new Date() : null,
   }));
+}
+
+async function attachClearSupplierScreen(caseId: string, supplierName: string) {
+  await prisma.kycReport.create({
+    data: {
+      caseId,
+      nodeCode: 'N5',
+      score: 0,
+      riskLevel: 'LOW',
+      summary: '国内供应商未命中 OFAC/UN/EU/UK 及中国不可靠实体清单（模拟库）。',
+      payload: JSON.stringify({
+        parties: [{ role: 'SUPPLIER', name: supplierName }],
+        hits: [],
+        lists: ['OFAC', 'UN', 'EU', 'UK', 'CN_UNRELIABLE'],
+        disclaimer: 'mock',
+      }),
+    },
+  });
 }
 
 async function seedPassCase(salesId: string, approverId: string, complianceId: string) {
@@ -206,6 +226,14 @@ async function seedPassCase(salesId: string, approverId: string, complianceId: s
           { role: 'BUYER', name: 'Nordlicht GmbH', country: 'DE', isSameAsBuyer: true },
           { role: 'PAYER', name: 'Nordlicht GmbH', country: 'DE', isSameAsBuyer: true },
           { role: 'CONSIGNEE', name: 'Nordlicht GmbH', country: 'DE', isSameAsBuyer: true },
+          {
+            role: 'SUPPLIER',
+            name: '苏州精工机械有限公司',
+            country: 'CN',
+            registrationNo: '91320500MA1BHTEST',
+            address: '江苏省苏州市工业园区',
+            isSameAsBuyer: false,
+          },
         ],
       },
       nodes: { create: nodeCreates(passNodes()) },
@@ -257,6 +285,7 @@ async function seedPassCase(salesId: string, approverId: string, complianceId: s
       },
       kycReports: {
         create: {
+          nodeCode: 'N1',
           score: 0,
           riskLevel: 'LOW',
           summary: '未命中 OFAC/UN/EU/UK 及中国不可靠实体清单（模拟库）。',
@@ -295,10 +324,12 @@ async function seedPassCase(salesId: string, approverId: string, complianceId: s
           },
         ],
       },
-      productionPlan: {
+      procurementPlan: {
         create: {
-          plannedDelivery: new Date('2026-11-28'),
+          poNo: 'PO-BH-2026-011',
+          plannedArrival: new Date('2026-11-28'),
           contractDelivery: new Date('2026-11-30'),
+          poEvidenceStub: 'PO-BH-2026-011.pdf',
           delayRegistered: false,
         },
       },
@@ -349,13 +380,14 @@ async function seedPassCase(salesId: string, approverId: string, complianceId: s
   await prisma.evidence.create({
     data: {
       caseId: c.id,
-      nodeCode: 'N2',
-      kind: 'QUOTE_SNAPSHOT',
-      ref: 'Q-v2',
-      note: '报价版本字段快照',
-      payload: JSON.stringify(quoteSnap),
+      nodeCode: 'N5',
+      kind: 'PROCUREMENT_PO',
+      ref: 'PO-BH-2026-011',
+      note: 'PO-BH-2026-011.pdf',
+      payload: JSON.stringify({ poNo: 'PO-BH-2026-011', fileName: 'PO-BH-2026-011.pdf' }),
     },
   });
+  await attachClearSupplierScreen(c.id, '苏州精工机械有限公司');
   await prisma.evidence.create({
     data: {
       caseId: c.id,
@@ -468,7 +500,7 @@ function passNodes() {
     N2: { status: 'PASSED', decision: 'PASS', summary: '报价 v2 价格基础/有效期/承担方齐全' },
     N3: { status: 'PASSED', decision: 'PASS', summary: '条款齐全，中信保限额覆盖合同金额' },
     N4: { status: 'PASSED', decision: 'PASS', summary: 'CO-001 数量 8→10，客户与内部确认后生效；变更后再次核对中信保限额' },
-    N5: { status: 'PASSED', decision: 'PASS', summary: '计划交期 2026-11-28 不晚于合同交期' },
+    N5: { status: 'PASSED', decision: 'PASS', summary: '苏州精工机械计划到货 2026-11-28，不晚于合同交期；供应商筛查未命中' },
     N6: { status: 'PASSED', decision: 'PASS', summary: '书面指示、内部审批、正本提单（与电放二选一）齐全' },
     N7: { status: 'PASSED', decision: 'PASS', summary: '终稿合同与单证字段一致' },
     N8: { status: 'PASSED', decision: 'PASS', summary: 'HS 8458.11.00 申报要素与原产地证齐全，电子口岸已放行' },
@@ -652,6 +684,13 @@ async function seedGateDemoCase(salesId: string) {
           { role: 'BUYER', name: 'Harbor View Ltd', country: 'SG', isSameAsBuyer: true },
           { role: 'PAYER', name: 'Harbor View Ltd', country: 'SG', isSameAsBuyer: true },
           { role: 'CONSIGNEE', name: 'Harbor View Ltd', country: 'SG', isSameAsBuyer: true },
+          {
+            role: 'SUPPLIER',
+            name: '温州泵阀制造有限公司',
+            country: 'CN',
+            registrationNo: '91330300MA2GATE01',
+            isSameAsBuyer: false,
+          },
         ],
       },
       nodes: {
@@ -660,7 +699,7 @@ async function seedGateDemoCase(salesId: string) {
           N2: { status: 'PASSED', decision: 'PASS', summary: '报价要素齐全' },
           N3: { status: 'PASSED', decision: 'PASS', summary: '合同条款齐全，中信保限额覆盖合同金额' },
           N4: { status: 'PASSED', decision: 'PASS', summary: '无待确认变更，已跳过变更管理' },
-          N5: { status: 'PASSED', decision: 'PASS', summary: '计划交期不晚于合同交期' },
+          N5: { status: 'PASSED', decision: 'PASS', summary: '采购计划到货不晚于合同交期；供应商筛查未命中' },
           N6: { status: 'IN_PROGRESS', decision: null, summary: '待补客户书面指示、内部审批；FOB 须走无提单路径或仍选正本/电放' },
         }),
       },
@@ -693,10 +732,12 @@ async function seedGateDemoCase(salesId: string) {
           snapshotJson: JSON.stringify({ version: 1, priceBasis: 'EXCLUSIVE' }),
         },
       },
-      productionPlan: {
+      procurementPlan: {
         create: {
-          plannedDelivery: new Date('2026-12-10'),
+          poNo: 'PO-HV-2026-088',
+          plannedArrival: new Date('2026-12-10'),
           contractDelivery: new Date('2026-12-15'),
+          poEvidenceStub: 'PO-HV-2026-088.pdf',
           delayRegistered: false,
         },
       },
@@ -705,12 +746,14 @@ async function seedGateDemoCase(salesId: string) {
   await prisma.kycReport.create({
     data: {
       caseId: c.id,
+      nodeCode: 'N1',
       score: 0,
       riskLevel: 'LOW',
       summary: '未命中模拟清单。',
       payload: JSON.stringify({ hits: [] }),
     },
   });
+  await attachClearSupplierScreen(c.id, '温州泵阀制造有限公司');
   const evSin = await prisma.evidence.create({
     data: {
       caseId: c.id,
@@ -770,6 +813,13 @@ async function seedFobNoBlCase(salesId: string, approverId: string) {
           { role: 'BUYER', name: 'Pacific Tools Pte Ltd', country: 'SG', isSameAsBuyer: true },
           { role: 'PAYER', name: 'Pacific Tools Pte Ltd', country: 'SG', isSameAsBuyer: true },
           { role: 'CONSIGNEE', name: 'Pacific Tools Pte Ltd', country: 'SG', isSameAsBuyer: true },
+          {
+            role: 'SUPPLIER',
+            name: '宁波五金制品有限公司',
+            country: 'CN',
+            registrationNo: '91330200MA2FOB001',
+            isSameAsBuyer: false,
+          },
         ],
       },
       nodes: {
@@ -778,7 +828,7 @@ async function seedFobNoBlCase(salesId: string, approverId: string) {
           N2: { status: 'PASSED', decision: 'PASS', summary: '报价要素齐全，运费由买方承担' },
           N3: { status: 'PASSED', decision: 'PASS', summary: 'FOB，条款与中信保限额齐全' },
           N4: { status: 'PASSED', decision: 'PASS', summary: '无待确认变更' },
-          N5: { status: 'PASSED', decision: 'PASS', summary: '计划交期不晚于合同交期' },
+          N5: { status: 'PASSED', decision: 'PASS', summary: '采购计划到货不晚于合同交期；供应商筛查未命中' },
           N6: {
             status: 'PASSED',
             decision: 'PASS',
@@ -828,10 +878,12 @@ async function seedFobNoBlCase(salesId: string, approverId: string) {
           snapshotJson: JSON.stringify({ version: 1, priceBasis: 'EXCLUSIVE', incoterms: 'FOB' }),
         },
       },
-      productionPlan: {
+      procurementPlan: {
         create: {
-          plannedDelivery: new Date('2026-12-15'),
+          poNo: 'PO-PT-FOB-004',
+          plannedArrival: new Date('2026-12-15'),
           contractDelivery: new Date('2026-12-20'),
+          poEvidenceStub: 'PO-PT-FOB-004.pdf',
           delayRegistered: false,
         },
       },
@@ -840,12 +892,14 @@ async function seedFobNoBlCase(salesId: string, approverId: string) {
   await prisma.kycReport.create({
     data: {
       caseId: c.id,
+      nodeCode: 'N1',
       score: 0,
       riskLevel: 'LOW',
       summary: '未命中模拟清单。',
       payload: JSON.stringify({ hits: [] }),
     },
   });
+  await attachClearSupplierScreen(c.id, '宁波五金制品有限公司');
   const evSin = await prisma.evidence.create({
     data: {
       caseId: c.id,
@@ -993,6 +1047,167 @@ async function seedSinosureOverLimitCase(salesId: string) {
         nodeCode: 'N3',
         detail: JSON.stringify({ evidenceRef: 'SIN-PG-LOW', insuredLimitFen: 3000000, contractAmountFen: 8000000 }),
       },
+    ],
+  });
+  return c;
+}
+
+async function seedSupplierBlockCase(salesId: string) {
+  const supplierName = '某不可靠实体贸易有限公司';
+  const fields = {
+    buyerName: 'Rhein Parts GmbH',
+    consigneeName: 'Rhein Parts GmbH',
+    goodsDesc: '数控机床配件',
+    amountFen: 9600000,
+    currency: 'USD',
+    incoterms: 'CIF',
+  };
+  const c = await prisma.tradeCase.create({
+    data: {
+      caseNo: 'DEMO-SUPPLIER',
+      title: '北海机电国内采购命中不可靠实体（N5 硬拦截）',
+      scenario: 'SUPPLIER_HARD_BLOCK',
+      status: 'BLOCKED',
+      currentNode: 'N5',
+      overallRisk: 'HIGH',
+      goodsDesc: '数控机床配件',
+      destination: 'Hamburg, DE',
+      amountFen: 9600000,
+      currency: 'USD',
+      parties: {
+        create: [
+          { role: 'BUYER', name: 'Rhein Parts GmbH', country: 'DE', isSameAsBuyer: true },
+          { role: 'PAYER', name: 'Rhein Parts GmbH', country: 'DE', isSameAsBuyer: true },
+          { role: 'CONSIGNEE', name: 'Rhein Parts GmbH', country: 'DE', isSameAsBuyer: true },
+          {
+            role: 'SUPPLIER',
+            name: supplierName,
+            country: 'CN',
+            registrationNo: '91310000MA9BLOCK1',
+            isSameAsBuyer: false,
+          },
+        ],
+      },
+      nodes: {
+        create: nodeCreates({
+          N1: { status: 'PASSED', decision: 'PASS', summary: '国外买方筛查未命中' },
+          N2: { status: 'PASSED', decision: 'PASS', summary: '报价要素齐全' },
+          N3: { status: 'PASSED', decision: 'PASS', summary: '合同条款与中信保限额齐全' },
+          N4: { status: 'PASSED', decision: 'PASS', summary: '无待确认变更，已跳过变更管理' },
+          N5: {
+            status: 'BLOCKED',
+            decision: 'HARD_BLOCK',
+            summary: '国内供应商高置信命中中国不可靠实体清单，硬拦截',
+          },
+        }),
+      },
+      contract: {
+        create: {
+          counterparty: 'Rhein Parts GmbH',
+          paymentTerms: 'T/T 30 days',
+          hasRetentionOfTitle: true,
+          hasDisputeClause: true,
+          isFinal: true,
+          deliveryDate: new Date('2026-12-10'),
+          quantity: 8,
+          unit: '套',
+          ...fields,
+          destination: 'Hamburg',
+        },
+      },
+      quotes: {
+        create: {
+          version: 1,
+          status: 'ACTIVE',
+          priceBasis: 'EXCLUSIVE',
+          excludedItems: '目的港关税',
+          validityUntil: new Date('2026-12-31'),
+          freightBearer: 'SELLER',
+          taxBearer: 'BUYER',
+          unitPriceFen: 1200000,
+          quantity: 8,
+          amountFen: 9600000,
+          snapshotJson: JSON.stringify({ version: 1, priceBasis: 'EXCLUSIVE' }),
+        },
+      },
+      procurementPlan: {
+        create: {
+          poNo: 'PO-UNREL-2026-001',
+          plannedArrival: new Date('2026-12-05'),
+          contractDelivery: new Date('2026-12-10'),
+          poEvidenceStub: 'PO-UNREL-2026-001.pdf',
+          delayRegistered: false,
+        },
+      },
+    },
+  });
+  await prisma.kycReport.create({
+    data: {
+      caseId: c.id,
+      nodeCode: 'N1',
+      score: 0,
+      riskLevel: 'LOW',
+      summary: '未命中模拟清单。',
+      payload: JSON.stringify({ hits: [] }),
+    },
+  });
+  const supplier = await prisma.party.findFirstOrThrow({ where: { caseId: c.id, role: 'SUPPLIER' } });
+  const hit = await prisma.screeningHit.create({
+    data: {
+      caseId: c.id,
+      partyId: supplier.id,
+      nodeCode: 'N5',
+      listCode: 'CN_UNRELIABLE',
+      listedName: supplierName,
+      matchedName: supplierName,
+      confidence: 'HIGH',
+      riskLevel: 'HIGH',
+      disposition: 'OPEN',
+      score: 96,
+      rawJson: JSON.stringify({ source: 'mock-blacklist', partyRole: 'SUPPLIER', nodeCode: 'N5' }),
+    },
+  });
+  await prisma.kycReport.create({
+    data: {
+      caseId: c.id,
+      nodeCode: 'N5',
+      score: 96,
+      riskLevel: 'HIGH',
+      summary: '国内供应商共 1 条命中，最高分 96，综合风险 HIGH。',
+      payload: JSON.stringify({
+        parties: [{ role: 'SUPPLIER', name: supplierName, country: 'CN' }],
+        hits: [{ ...hit, partyRole: 'SUPPLIER' }],
+        lists: ['OFAC', 'UN', 'EU', 'UK', 'CN_UNRELIABLE'],
+        disclaimer: 'mock',
+      }),
+    },
+  });
+  const evSin = await prisma.evidence.create({
+    data: {
+      caseId: c.id,
+      nodeCode: 'N3',
+      kind: 'SINOSURE_POLICY',
+      ref: 'SIN-RP-2026',
+      note: '中信保保单/限额批注',
+      payload: JSON.stringify({ insuredLimitFen: 12000000, currency: 'USD' }),
+    },
+  });
+  await prisma.sinosurePolicy.create({
+    data: {
+      caseId: c.id,
+      nodeCode: 'N3',
+      evidenceId: evSin.id,
+      evidenceRef: 'SIN-RP-2026',
+      fileName: '中信保限额批注-RheinParts.pdf',
+      insuredLimitFen: 12000000,
+      currency: 'USD',
+    },
+  });
+  await prisma.auditLog.createMany({
+    data: [
+      { caseId: c.id, actorId: salesId, action: 'CASE_CREATED', nodeCode: 'N1', detail: JSON.stringify({ scenario: 'SUPPLIER_HARD_BLOCK' }) },
+      { caseId: c.id, actorId: salesId, action: 'SUPPLIER_SCREENED', nodeCode: 'N5', detail: JSON.stringify({ score: 96, riskLevel: 'HIGH', hitCount: 1 }) },
+      { caseId: c.id, actorId: salesId, action: 'GATE_REFUSED', nodeCode: 'N5', detail: JSON.stringify({ missing: ['N5_HIGH_CONFIDENCE_HIT'] }) },
     ],
   });
   return c;

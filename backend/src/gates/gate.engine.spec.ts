@@ -19,6 +19,12 @@ function baseSnap(over: Partial<CaseSnapshot> = {}): CaseSnapshot {
       { role: 'BUYER', name: 'Nordlicht GmbH' },
       { role: 'PAYER', name: 'Nordlicht GmbH' },
       { role: 'CONSIGNEE', name: 'Nordlicht GmbH' },
+      {
+        role: 'SUPPLIER',
+        name: '苏州精工机械有限公司',
+        country: 'CN',
+        registrationNo: '91320500MA1BHTEST',
+      },
     ],
     hits: [],
     kycRan: true,
@@ -122,12 +128,15 @@ function baseSnap(over: Partial<CaseSnapshot> = {}): CaseSnapshot {
       },
     ],
     changeOrders: [],
-    productionPlan: {
-      plannedDelivery: '2026-11-28',
+    procurementPlan: {
+      poNo: 'PO-BH-2026-011',
+      plannedArrival: '2026-11-28',
       contractDelivery: '2026-11-30',
+      poEvidenceStub: 'PO-BH-2026-011.pdf',
       delayRegistered: false,
       customerConsent: false,
     },
+    supplierScreened: true,
     customs: {
       hsCode: '8458.11.00',
       productName: '数控机床配件',
@@ -194,6 +203,28 @@ describe('闸门引擎 MVP 节点', () => {
     expect(r.decision).toBe(Decision.HARD_BLOCK);
     expect(r.canProceed).toBe(false);
     expect(r.missing).toContain('N1_HIGH_CONFIDENCE_HIT');
+  });
+
+  it('N1 不把国内供应商命中当作客户 KYC 拦截', () => {
+    const r = evaluateN1(
+      baseSnap({
+        hits: [
+          {
+            listCode: 'CN_UNRELIABLE',
+            listedName: '某不可靠实体贸易有限公司',
+            matchedName: '某不可靠实体贸易有限公司',
+            confidence: 'HIGH',
+            riskLevel: 'HIGH',
+            disposition: 'OPEN',
+            score: 96,
+            partyRole: 'SUPPLIER',
+            nodeCode: 'N5',
+          },
+        ],
+      }),
+    );
+    expect(r.canProceed).toBe(true);
+    expect(r.decision).toBe(Decision.PASS);
   });
 
   it('N1 低置信软提示不阻断', () => {
@@ -894,20 +925,139 @@ describe('闸门引擎 N4 变更管理', () => {
   });
 });
 
-describe('闸门引擎 N5 生产/备货排期', () => {
-  it('计划交期不晚于合同交期可通过', () => {
+describe('闸门引擎 N5 国内采购/备货', () => {
+  const plan = (over: Record<string, unknown> = {}) => ({
+    poNo: 'PO-BH-2026-011',
+    plannedArrival: '2026-11-28',
+    contractDelivery: '2026-11-30',
+    poEvidenceStub: 'PO-BH-2026-011.pdf',
+    delayRegistered: false,
+    customerConsent: false,
+    ...over,
+  });
+
+  it('采购计划到货不晚于客户合同交期可通过', () => {
     expect(evaluateN5(baseSnap()).canProceed).toBe(true);
+  });
+
+  it('缺少国内供应商拒绝', () => {
+    const r = evaluateN5(
+      baseSnap({
+        parties: baseSnap().parties.filter((p) => p.role !== 'SUPPLIER'),
+      }),
+    );
+    expect(r.canProceed).toBe(false);
+    expect(r.missing).toContain('N5_SUPPLIER');
+  });
+
+  it('缺少采购订单编号拒绝', () => {
+    const r = evaluateN5(baseSnap({ procurementPlan: plan({ poNo: '' }) }));
+    expect(r.canProceed).toBe(false);
+    expect(r.missing).toContain('N5_PO_NO');
+  });
+
+  it('尚未筛查国内供应商拒绝', () => {
+    const r = evaluateN5(baseSnap({ supplierScreened: false }));
+    expect(r.canProceed).toBe(false);
+    expect(r.missing).toContain('N5_SCREENING_NOT_RUN');
+  });
+
+  it('供应商高置信命中硬拦截', () => {
+    const r = evaluateN5(
+      baseSnap({
+        hits: [
+          {
+            listCode: 'CN_UNRELIABLE',
+            listedName: '某不可靠实体贸易有限公司',
+            matchedName: '某不可靠实体贸易有限公司',
+            confidence: 'HIGH',
+            riskLevel: 'HIGH',
+            disposition: 'OPEN',
+            score: 96,
+            partyRole: 'SUPPLIER',
+            nodeCode: 'N5',
+          },
+        ],
+      }),
+    );
+    expect(r.decision).toBe(Decision.HARD_BLOCK);
+    expect(r.canProceed).toBe(false);
+    expect(r.missing).toContain('N5_HIGH_CONFIDENCE_HIT');
+  });
+
+  it('供应商中置信命中进入审核队列', () => {
+    const r = evaluateN5(
+      baseSnap({
+        hits: [
+          {
+            listCode: 'EU',
+            listedName: 'FROZEN ASSETS HOLDINGS',
+            matchedName: 'Frozen Asset Holding',
+            confidence: 'MEDIUM',
+            riskLevel: 'MEDIUM',
+            disposition: 'OPEN',
+            score: 64,
+            partyRole: 'SUPPLIER',
+            nodeCode: 'N5',
+          },
+        ],
+      }),
+    );
+    expect(r.decision).toBe(Decision.REVIEW);
+    expect(r.canProceed).toBe(false);
+    expect(r.missing).toContain('N5_REVIEW_PENDING');
+  });
+
+  it('供应商低置信软提示不阻断', () => {
+    const r = evaluateN5(
+      baseSnap({
+        hits: [
+          {
+            listCode: 'OFAC',
+            listedName: 'ACME INDUSTRIES LIMITED',
+            matchedName: 'Acme Industrial Co',
+            confidence: 'LOW',
+            riskLevel: 'LOW',
+            disposition: 'OPEN',
+            score: 28,
+            partyRole: 'SUPPLIER',
+            nodeCode: 'N5',
+          },
+        ],
+      }),
+    );
+    expect(r.decision).toBe(Decision.SOFT_ALERT);
+    expect(r.canProceed).toBe(true);
+  });
+
+  it('客户 KYC 命中不影响 N5 供应商闸门', () => {
+    const r = evaluateN5(
+      baseSnap({
+        hits: [
+          {
+            listCode: 'OFAC',
+            listedName: 'BANNED TRADING LLC',
+            matchedName: 'BANNED TRADING LLC',
+            confidence: 'HIGH',
+            riskLevel: 'HIGH',
+            disposition: 'OPEN',
+            score: 98,
+            partyRole: 'BUYER',
+            nodeCode: 'N1',
+          },
+        ],
+      }),
+    );
+    expect(r.canProceed).toBe(true);
   });
 
   it('晚于合同交期且未登记延期拒绝', () => {
     const r = evaluateN5(
       baseSnap({
-        productionPlan: {
-          plannedDelivery: '2026-12-20',
-          contractDelivery: '2026-11-30',
+        procurementPlan: plan({
+          plannedArrival: '2026-12-20',
           delayRegistered: false,
-          customerConsent: false,
-        },
+        }),
       }),
     );
     expect(r.canProceed).toBe(false);
@@ -917,14 +1067,12 @@ describe('闸门引擎 N5 生产/备货排期', () => {
   it('延期缺少结构化触发条件拒绝', () => {
     const r = evaluateN5(
       baseSnap({
-        productionPlan: {
-          plannedDelivery: '2026-12-20',
-          contractDelivery: '2026-11-30',
+        procurementPlan: plan({
+          plannedArrival: '2026-12-20',
           delayRegistered: true,
           delayTriggerCode: null,
           delayTriggerRef: null,
-          customerConsent: false,
-        },
+        }),
       }),
     );
     expect(r.canProceed).toBe(false);
@@ -934,13 +1082,12 @@ describe('闸门引擎 N5 生产/备货排期', () => {
   it('延期未经客户同意 → 中风险不可推进', () => {
     const r = evaluateN5(
       baseSnap({
-        productionPlan: {
-          plannedDelivery: '2026-12-20',
-          contractDelivery: '2026-11-30',
+        procurementPlan: plan({
+          plannedArrival: '2026-12-20',
           delayRegistered: true,
           delayTriggerCode: 'PORT_CONGESTION',
           customerConsent: false,
-        },
+        }),
       }),
     );
     expect(r.decision).toBe(Decision.REVIEW);
@@ -951,21 +1098,20 @@ describe('闸门引擎 N5 生产/备货排期', () => {
   it('延期已登记且客户同意证据可追溯可通过', () => {
     const r = evaluateN5(
       baseSnap({
-        productionPlan: {
-          plannedDelivery: '2026-12-20',
-          contractDelivery: '2026-11-30',
+        procurementPlan: plan({
+          plannedArrival: '2026-12-20',
           delayRegistered: true,
           delayTriggerCode: 'PORT_CONGESTION',
           delayTriggerRef: 'PORT-SG-09',
           customerConsent: true,
           customerConsentEvidenceId: 'ev-delay-1',
-        },
+        }),
       }),
     );
     expect(r.canProceed).toBe(true);
   });
 
-  it('存在未生效变更单时不得进入排期', () => {
+  it('存在未生效变更单时不得进入国内采购/备货', () => {
     const r = evaluateN5(
       baseSnap({
         changeOrders: [

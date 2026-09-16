@@ -52,7 +52,7 @@ model TradeCase {
   quotes            Quote[]
   changeOrders      ChangeOrder[]
   contractVersions  ContractVersion[]
-  productionPlan    ProductionPlan?
+  procurementPlan   ProcurementPlan?
   customs           CustomsDeclaration?
   evidences         Evidence[]
   sinosurePolicies  SinosurePolicy[]
@@ -105,6 +105,7 @@ model ScreeningHit {
   id          String            @id @default(cuid())
   caseId      String
   partyId     String
+  nodeCode    String            @default("N1")
   listCode    String
   listedName  String
   matchedName String
@@ -119,17 +120,21 @@ model ScreeningHit {
   actions     WorkbenchAction[]
 
   @@index([caseId, disposition])
+  @@index([caseId, nodeCode])
 }
 
 model KycReport {
   id        String    @id @default(cuid())
   caseId    String
+  nodeCode  String    @default("N1")
   score     Int
   riskLevel String
   summary   String
   payload   String
   createdAt DateTime  @default(now())
   case      TradeCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+
+  @@index([caseId, nodeCode])
 }
 
 model Contract {
@@ -353,20 +358,23 @@ model ContractVersion {
   @@unique([caseId, version])
 }
 
-/// N5 生产/备货排期
-model ProductionPlan {
-  id                       String    @id @default(cuid())
-  caseId                   String    @unique
-  plannedDelivery          DateTime?
-  contractDelivery         DateTime?
-  delayRegistered          Boolean   @default(false)
-  delayTriggerCode         String?
-  delayTriggerRef          String?
-  delayReason              String?
-  customerConsent          Boolean   @default(false)
+/// N5 国内采购/备货（无自有产线，向国内供应商采购）
+model ProcurementPlan {
+  id                        String    @id @default(cuid())
+  caseId                    String    @unique
+  poNo                      String?
+  plannedArrival            DateTime?
+  contractDelivery          DateTime?
+  poEvidenceStub            String?
+  poEvidenceId              String?
+  delayRegistered           Boolean   @default(false)
+  delayTriggerCode          String?
+  delayTriggerRef           String?
+  delayReason               String?
+  customerConsent           Boolean   @default(false)
   customerConsentEvidenceId String?
-  updatedAt                DateTime  @updatedAt
-  case                     TradeCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  updatedAt                 DateTime  @updatedAt
+  case                      TradeCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
 }
 
 /// HS 申报要素模板（演示用）

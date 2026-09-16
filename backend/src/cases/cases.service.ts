@@ -4,6 +4,7 @@ import { AuditService } from '../audit/audit.service';
 import { ScreeningService } from '../screening/screening.service';
 import { GateService } from '../gates/gate.service';
 import {
+  CUSTOMER_PARTY_ROLES,
   CaseStatus,
   ChangeFieldLabel,
   ChangeStatus,
@@ -64,7 +65,7 @@ export class CasesService {
         parties: true,
         nodes: { orderBy: { code: 'asc' } },
         hits: { include: { party: true } },
-        kycReports: { orderBy: { createdAt: 'desc' }, take: 1 },
+        kycReports: { orderBy: { createdAt: 'desc' }, take: 12 },
         contract: true,
         shipment: { include: { approver: true } },
         documents: true,
@@ -74,7 +75,7 @@ export class CasesService {
         quotes: { orderBy: { version: 'desc' } },
         changeOrders: { include: { diffs: true }, orderBy: { createdAt: 'asc' } },
         contractVersions: { orderBy: { version: 'desc' } },
-        productionPlan: true,
+        procurementPlan: true,
         customs: true,
         evidences: { orderBy: { createdAt: 'asc' } },
         sinosurePolicies: { orderBy: { createdAt: 'asc' } },
@@ -145,81 +146,24 @@ export class CasesService {
     const party = existing
       ? await this.prisma.party.update({ where: { id: existing.id }, data: dto })
       : await this.prisma.party.create({ data: { caseId, ...dto } });
-    await this.touchNode(caseId, 'N1', NodeStatus.IN_PROGRESS);
+    const nodeCode = dto.role === PartyRole.SUPPLIER ? 'N5' : 'N1';
+    await this.touchNode(caseId, nodeCode, NodeStatus.IN_PROGRESS);
     await this.audit.append({
       caseId,
       actorId,
       action: 'PARTY_UPSERT',
-      nodeCode: 'N1',
+      nodeCode,
       detail: { role: dto.role, name: dto.name },
     });
     return party;
   }
 
   async screenKyc(caseId: string, actorId?: string) {
-    const c = await this.ensureCase(caseId);
-    const parties = await this.prisma.party.findMany({ where: { caseId } });
-    await this.prisma.screeningHit.deleteMany({ where: { caseId } });
-    const allHits: Array<Record<string, unknown> & { score: number }> = [];
-    for (const p of parties) {
-      const matches = await this.screening.screenName(p.nameEn || p.name);
-      for (const m of matches) {
-        const hit = await this.prisma.screeningHit.create({
-          data: {
-            caseId,
-            partyId: p.id,
-            listCode: m.listCode,
-            listedName: m.listedName,
-            matchedName: m.matchedName,
-            confidence: m.confidence,
-            riskLevel: m.riskLevel,
-            disposition: Disposition.OPEN,
-            score: m.score,
-            rawJson: JSON.stringify({ source: 'mock-blacklist', partyRole: p.role, ...m }),
-          },
-        });
-        allHits.push({ ...hit, partyRole: p.role, partyName: p.name });
-      }
-    }
-    const maxScore = allHits.reduce((s, h) => Math.max(s, h.score), 0);
-    const riskLevel =
-      maxScore >= 80 ? RiskLevel.HIGH : maxScore >= 50 ? RiskLevel.MEDIUM : maxScore > 0 ? RiskLevel.LOW : RiskLevel.LOW;
-    const summary =
-      allHits.length === 0
-        ? '未命中 OFAC/UN/EU/UK 及中国不可靠实体清单（模拟库）。'
-        : `共 ${allHits.length} 条命中，最高分 ${maxScore}，综合风险 ${riskLevel}。`;
-    const report = await this.prisma.kycReport.create({
-      data: {
-        caseId,
-        score: maxScore,
-        riskLevel,
-        summary,
-        payload: JSON.stringify({
-          parties: parties.map((p) => ({
-            role: p.role,
-            roleLabel: PartyRoleLabel[p.role],
-            name: p.name,
-            country: p.country,
-          })),
-          hits: allHits,
-          lists: ['OFAC', 'UN', 'EU', 'UK', 'CN_UNRELIABLE'],
-          disclaimer: '本筛查为本地模拟黑名单，未连接任何真实制裁数据供应商。',
-        }),
-      },
-    });
-    await this.prisma.tradeCase.update({
-      where: { id: caseId },
-      data: { overallRisk: riskLevel, status: CaseStatus.IN_PROGRESS },
-    });
-    await this.touchNode(caseId, 'N1', NodeStatus.IN_PROGRESS);
-    await this.audit.append({
-      caseId,
-      actorId,
-      action: 'KYC_SCREENED',
-      nodeCode: 'N1',
-      detail: { score: maxScore, riskLevel, hitCount: allHits.length },
-    });
-    return { caseNo: c.caseNo, report: { ...report, payload: JSON.parse(report.payload) }, hits: allHits };
+    return this.screenParties(caseId, 'N1', [...CUSTOMER_PARTY_ROLES], actorId);
+  }
+
+  async screenSupplier(caseId: string, actorId?: string) {
+    return this.screenParties(caseId, 'N5', [PartyRole.SUPPLIER], actorId);
   }
 
   async saveContract(caseId: string, dto: SaveContractDto, actorId?: string) {
@@ -630,18 +574,48 @@ export class CasesService {
   async savePlan(caseId: string, dto: SavePlanDto, actorId?: string) {
     await this.ensureCase(caseId);
     const contract = await this.prisma.contract.findUnique({ where: { caseId } });
+    if (dto.supplierName?.trim()) {
+      await this.upsertParty(
+        caseId,
+        {
+          role: PartyRole.SUPPLIER,
+          name: dto.supplierName.trim(),
+          nameEn: dto.supplierNameEn,
+          country: dto.supplierCountry,
+          address: dto.supplierAddress,
+          registrationNo: dto.supplierRegistrationNo,
+          isSameAsBuyer: false,
+        },
+        actorId,
+      );
+    }
     let consentId = undefined as string | undefined;
     if (dto.customerConsent && dto.customerConsentRef) {
       const ev = await this.addEvidence(caseId, 'N5', EvidenceKind.DELAY_CONSENT, {
         ref: dto.customerConsentRef,
-        note: dto.delayReason || '客户同意延期',
+        note: dto.delayReason || '客户同意采购到货延期',
         payload: { trigger: dto.delayTriggerCode, triggerRef: dto.delayTriggerRef },
       });
       consentId = ev.id;
     }
+    let poEvidenceId = undefined as string | undefined;
+    const poStub = dto.poEvidenceStub?.trim() || dto.poFileName?.trim();
+    if (poStub || dto.poNo?.trim()) {
+      if (poStub) {
+        const ev = await this.addEvidence(caseId, 'N5', EvidenceKind.PROCUREMENT_PO, {
+          ref: dto.poNo || poStub,
+          note: poStub,
+          payload: { poNo: dto.poNo, fileName: poStub },
+        });
+        poEvidenceId = ev.id;
+      }
+    }
     const data = {
-      plannedDelivery: parseDate(dto.plannedDelivery),
+      poNo: dto.poNo || null,
+      plannedArrival: parseDate(dto.plannedArrival || dto.plannedDelivery),
       contractDelivery: parseDate(dto.contractDelivery) || contract?.deliveryDate || null,
+      poEvidenceStub: poStub || null,
+      poEvidenceId: poEvidenceId || null,
       delayRegistered: dto.delayRegistered ?? false,
       delayTriggerCode: dto.delayTriggerCode,
       delayTriggerRef: dto.delayTriggerRef,
@@ -649,7 +623,7 @@ export class CasesService {
       customerConsent: dto.customerConsent ?? false,
       customerConsentEvidenceId: consentId,
     };
-    const row = await this.prisma.productionPlan.upsert({
+    const row = await this.prisma.procurementPlan.upsert({
       where: { caseId },
       create: { caseId, ...data },
       update: data,
@@ -658,9 +632,9 @@ export class CasesService {
     await this.audit.append({
       caseId,
       actorId,
-      action: 'PRODUCTION_PLAN_SAVED',
+      action: 'PROCUREMENT_PLAN_SAVED',
       nodeCode: 'N5',
-      detail: { ...dto, customerConsentEvidenceId: consentId },
+      detail: { ...dto, customerConsentEvidenceId: consentId, poEvidenceId },
     });
     return row;
   }
@@ -899,7 +873,7 @@ export class CasesService {
 
   async applyWorkbench(caseId: string, input: { hitId?: string; action: string; comment?: string }, actorId?: string) {
     await this.ensureCase(caseId);
-    let hit: { id: string; disposition: string } | null = null;
+    let hit: { id: string; disposition: string; nodeCode?: string } | null = null;
     if (input.hitId) {
       hit = await this.prisma.screeningHit.findUnique({ where: { id: input.hitId } });
       if (!hit) throw new NotFoundException('筛查命中不存在');
@@ -916,6 +890,7 @@ export class CasesService {
         data: { disposition },
       });
     }
+    const nodeCode = hit?.nodeCode === 'N5' ? 'N5' : 'N1';
     const action = await this.prisma.workbenchAction.create({
       data: {
         caseId,
@@ -929,19 +904,19 @@ export class CasesService {
       caseId,
       actorId,
       action: `WORKBENCH_${input.action}`,
-      nodeCode: 'N1',
+      nodeCode,
       detail: input,
     });
-    const reeval: GateResult = await this.gates.evaluateAndPersist(caseId, 'N1');
-    const n1Status =
+    const reeval: GateResult = await this.gates.evaluateAndPersist(caseId, nodeCode);
+    const nodeStatus =
       reeval.decision === Decision.HARD_BLOCK
         ? NodeStatus.BLOCKED
         : reeval.decision === Decision.REVIEW
           ? NodeStatus.REVIEW
           : NodeStatus.IN_PROGRESS;
     await this.prisma.caseNode.updateMany({
-      where: { caseId, code: 'N1' },
-      data: { status: n1Status, decision: reeval.decision, summary: reeval.reasons.join('；') },
+      where: { caseId, code: nodeCode },
+      data: { status: nodeStatus, decision: reeval.decision, summary: reeval.reasons.join('；') },
     });
     await this.prisma.tradeCase.update({
       where: { id: caseId },
@@ -953,9 +928,87 @@ export class CasesService {
             : reeval.decision === Decision.REVIEW
               ? RiskLevel.MEDIUM
               : RiskLevel.LOW,
+        currentNode: nodeCode,
       },
     });
-    return { action, hit, n1: reeval };
+    return { action, hit, n1: nodeCode === 'N1' ? reeval : undefined, n5: nodeCode === 'N5' ? reeval : undefined, gate: reeval };
+  }
+
+  private async screenParties(caseId: string, nodeCode: 'N1' | 'N5', roles: string[], actorId?: string) {
+    const c = await this.ensureCase(caseId);
+    const parties = await this.prisma.party.findMany({ where: { caseId, role: { in: roles } } });
+    if (nodeCode === 'N5' && !parties.some((p) => p.name.trim())) {
+      throw new BadRequestException('请先保存国内供应商再执行筛查');
+    }
+    await this.prisma.screeningHit.deleteMany({ where: { caseId, nodeCode } });
+    const allHits: Array<Record<string, unknown> & { score: number }> = [];
+    for (const p of parties) {
+      const matches = await this.screening.screenName(p.nameEn || p.name);
+      for (const m of matches) {
+        const hit = await this.prisma.screeningHit.create({
+          data: {
+            caseId,
+            partyId: p.id,
+            nodeCode,
+            listCode: m.listCode,
+            listedName: m.listedName,
+            matchedName: m.matchedName,
+            confidence: m.confidence,
+            riskLevel: m.riskLevel,
+            disposition: Disposition.OPEN,
+            score: m.score,
+            rawJson: JSON.stringify({ source: 'mock-blacklist', partyRole: p.role, nodeCode, ...m }),
+          },
+        });
+        allHits.push({ ...hit, partyRole: p.role, partyName: p.name });
+      }
+    }
+    const maxScore = allHits.reduce((s, h) => Math.max(s, h.score), 0);
+    const riskLevel =
+      maxScore >= 80 ? RiskLevel.HIGH : maxScore >= 50 ? RiskLevel.MEDIUM : maxScore > 0 ? RiskLevel.LOW : RiskLevel.LOW;
+    const subject = nodeCode === 'N5' ? '国内供应商' : '当事方';
+    const summary =
+      allHits.length === 0
+        ? `${subject}未命中 OFAC/UN/EU/UK 及中国不可靠实体清单（模拟库）。`
+        : `${subject}共 ${allHits.length} 条命中，最高分 ${maxScore}，综合风险 ${riskLevel}。`;
+    const report = await this.prisma.kycReport.create({
+      data: {
+        caseId,
+        nodeCode,
+        score: maxScore,
+        riskLevel,
+        summary,
+        payload: JSON.stringify({
+          parties: parties.map((p) => ({
+            role: p.role,
+            roleLabel: PartyRoleLabel[p.role],
+            name: p.name,
+            country: p.country,
+            registrationNo: p.registrationNo,
+          })),
+          hits: allHits,
+          lists: ['OFAC', 'UN', 'EU', 'UK', 'CN_UNRELIABLE'],
+          disclaimer: '本筛查为本地模拟黑名单，未连接任何真实制裁数据供应商。',
+        }),
+      },
+    });
+    await this.prisma.tradeCase.update({
+      where: { id: caseId },
+      data: {
+        overallRisk: riskLevel,
+        status: CaseStatus.IN_PROGRESS,
+        ...(nodeCode === 'N5' ? { currentNode: 'N5' } : {}),
+      },
+    });
+    await this.touchNode(caseId, nodeCode, NodeStatus.IN_PROGRESS);
+    await this.audit.append({
+      caseId,
+      actorId,
+      action: nodeCode === 'N5' ? 'SUPPLIER_SCREENED' : 'KYC_SCREENED',
+      nodeCode,
+      detail: { score: maxScore, riskLevel, hitCount: allHits.length },
+    });
+    return { caseNo: c.caseNo, report: { ...report, payload: JSON.parse(report.payload) }, hits: allHits };
   }
 
   private async ensureCase(id: string) {

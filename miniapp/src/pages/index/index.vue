@@ -4,7 +4,7 @@
       <view class="eyebrow">国有企业 · 跨境出口</view>
       <view class="h1">贸易风险管控</view>
       <view class="muted" style="margin-top: 12rpx">
-        筛查嵌在询盘→报价→合同→变更→排期→装运→单证→报关→收汇业务流中，无需单独登录筛查系统。高风险硬拦截，中风险进审核队列，低风险软提示不阻断。全链路审计留痕。
+        筛查嵌在询盘→报价→合同→变更→国内采购/备货→装运→单证→报关→收汇业务流中，无需单独登录筛查系统。高风险硬拦截，中风险进审核队列，低风险软提示不阻断。全链路审计留痕。
       </view>
     </view>
 
@@ -64,6 +64,13 @@ const paths = [
     tag: 'GATE REFUSED',
     cls: 'badge-block',
     desc: '合同金额超过中信保投保限额，合同确认节点拒绝推进。',
+  },
+  {
+    caseNo: 'DEMO-SUPPLIER',
+    title: '供应商硬拦截',
+    tag: 'N5 BLOCK',
+    cls: 'badge-block',
+    desc: '国外买方筛查通过，国内供应商命中不可靠实体清单，采购/备货节点硬拦截。',
   },
 ];
 
