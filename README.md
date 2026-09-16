@@ -50,8 +50,10 @@
 ## 目录
 
 ```
-backend/     NestJS API、Prisma、闸门与种子数据
-miniapp/      uni-app 微信小程序 / H5
+backend/              NestJS API、Prisma、闸门与种子数据
+miniapp/              uni-app 微信小程序 / H5
+docker-compose.yml    一键演示（API :3000 + H5 :8080）
+scripts/demo-up.sh    封装 docker compose up --build -d
 ```
 
 ## 本地运行
@@ -80,6 +82,51 @@ npm run miniapp
 ```
 
 微信开发者工具：`npm --prefix miniapp run dev:mp-weixin`，导入 `miniapp/dist/dev/mp-weixin`。请把合法域名校验关闭（manifest 已设 `urlCheck: false`），并确保开发者工具能访问本机 `http://127.0.0.1:3000`。
+
+本地 `npm run backend` / `npm run miniapp` 流程不变。分享给他人时请用下面的 Docker 演示环境。
+
+## 演示环境部署
+
+克隆后一条命令拉起 **API + 已构建 H5**（同一主机、同源 `/api`），SQLite 写入 `DEMO-PASS` / `DEMO-SOFT` / `DEMO-BLOCK` / `DEMO-GATE`。制裁筛查仍为本地模拟名单，**不需要、也不读取真实 OFAC/UN 等 API Key**。
+
+需要本机已安装 Docker 与 Docker Compose v2。
+
+```bash
+docker compose up --build -d
+# 或：
+# bash scripts/demo-up.sh
+# npm run demo
+```
+
+| 入口 | 地址 |
+| --- | --- |
+| H5 演示 | http://127.0.0.1:8080 |
+| API 健康检查 | http://127.0.0.1:3000/api/health |
+| 同源反代健康检查 | http://127.0.0.1:8080/api/health |
+
+`web`（nginx :8080）托管 `npm run build:h5` 产物，并把 `/api` 反代到 `api`（Nest :3000）。H5 默认 `VITE_API_BASE=/api`，与开发态 Vite 代理一致。
+
+SQLite 文件挂在 named volume `sqlite-data`（容器内 `DATABASE_URL=file:/data/demo.db`）。首次启动会 `prisma migrate deploy`，空库则自动 seed；之后重启会保留案件数据。
+
+```bash
+# 健康检查
+curl -fsS http://127.0.0.1:3000/api/health
+curl -fsS http://127.0.0.1:8080/api/health
+
+# 查看种子案件
+curl -s http://127.0.0.1:8080/api/cases | python -c "import json,sys; [print(c['caseNo'], c['status']) for c in json.load(sys.stdin)]"
+
+# 停止
+docker compose down
+
+# 清库并重新写入种子
+docker compose down -v && docker compose up --build -d
+
+# 强制重种但保留卷（会清空业务表再写入四条演示路径）
+DEMO_FORCE_SEED=1 docker compose up -d --force-recreate api
+```
+
+镜像说明：`backend/Dockerfile` 为 Node 20 多阶段构建，入口 `docker-entrypoint.js` 负责 migrate + 按需 seed + `node dist/main`；`miniapp/Dockerfile` 构建 H5 后交给 nginx。
 
 ### 闸门单测（不依赖 HTTP）
 

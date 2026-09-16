@@ -9,6 +9,7 @@
     "miniapp": "npm --prefix miniapp run dev:h5",
     "seed": "npm --prefix backend run seed",
     "test": "npm --prefix backend test",
-    "migrate": "npm --prefix backend run prisma:migrate"
+    "migrate": "npm --prefix backend run prisma:migrate",
+    "demo": "bash scripts/demo-up.sh"
   }
 }

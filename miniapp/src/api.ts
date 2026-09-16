@@ -1,5 +1,5 @@
 // #ifdef H5
-const BASE = '/api';
+const BASE = import.meta.env.VITE_API_BASE || '/api';
 // #endif
 // #ifndef H5
 const BASE = 'http://127.0.0.1:3000/api';
