@@ -1,0 +1,14 @@
+{
+  "name": "export-risk-guard",
+  "private": true,
+  "description": "国企跨境出口贸易风控（询盘→收汇）微信小程序 + 后端 MVP",
+  "scripts": {
+    "bootstrap": "npm --prefix backend install && npm --prefix miniapp install",
+    "backend": "npm --prefix backend run start:dev",
+    "backend:once": "npm --prefix backend run start",
+    "miniapp": "npm --prefix miniapp run dev:h5",
+    "seed": "npm --prefix backend run seed",
+    "test": "npm --prefix backend test",
+    "migrate": "npm --prefix backend run prisma:migrate"
+  }
+}
