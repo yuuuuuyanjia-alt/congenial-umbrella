@@ -1,23 +1,35 @@
-import { HttpException, HttpStatus, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, HttpException, HttpStatus, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { ScreeningService } from '../screening/screening.service';
 import { GateService } from '../gates/gate.service';
 import {
   CaseStatus,
+  ChangeFieldLabel,
+  ChangeStatus,
   Decision,
   Disposition,
+  EportStatus,
+  EvidenceKind,
   NODE_CATALOG,
   NodeStatus,
+  PartyRole,
   PartyRoleLabel,
+  QuoteStatus,
   RiskLevel,
+  VersionStatus,
 } from '../common/constants';
-import { nextMvpNode } from '../gates/gate.engine';
+import { isChangeField, isSensitiveChange, nextNode } from '../gates/gate.engine';
 import {
+  AckChangeDto,
   CreateCaseDto,
+  CreateChangeDto,
   SaveContractDto,
+  SaveCustomsDto,
   SaveDocumentDto,
   SaveFixDto,
+  SavePlanDto,
+  SaveQuoteDto,
   SaveSettlementDto,
   SaveShipmentDto,
   UpsertPartyDto,
@@ -57,7 +69,13 @@ export class CasesService {
         documents: true,
         mismatchFixes: true,
         settlement: true,
-        gateChecks: { orderBy: { createdAt: 'desc' }, take: 8 },
+        gateChecks: { orderBy: { createdAt: 'desc' }, take: 12 },
+        quotes: { orderBy: { version: 'desc' } },
+        changeOrders: { include: { diffs: true }, orderBy: { createdAt: 'asc' } },
+        contractVersions: { orderBy: { version: 'desc' } },
+        productionPlan: true,
+        customs: true,
+        evidences: { orderBy: { createdAt: 'asc' } },
       },
     });
     if (!c) throw new NotFoundException('案件不存在');
@@ -71,6 +89,12 @@ export class CasesService {
         missing: safeJson(g.missingJson),
         reasons: safeJson(g.reasonsJson),
       })),
+      quotes: c.quotes.map((q) => ({ ...q, snapshot: safeJson(q.snapshotJson) })),
+      contractVersions: c.contractVersions.map((v) => ({ ...v, snapshot: safeJson(v.snapshotJson) })),
+      customs: c.customs
+        ? { ...c.customs, declareElements: safeJson(c.customs.declareElementsJson) }
+        : null,
+      evidences: c.evidences.map((e) => ({ ...e, payload: e.payload ? safeJson(e.payload) : null })),
     };
   }
 
@@ -93,8 +117,8 @@ export class CasesService {
           create: NODE_CATALOG.map((n) => ({
             code: n.code,
             name: n.name,
-            status: n.isStub ? NodeStatus.STUB_TODO : NodeStatus.NOT_STARTED,
-            isStub: n.isStub,
+            status: NodeStatus.NOT_STARTED,
+            isStub: false,
             isHardGate: n.isHardGate,
             summary: n.summary,
           })),
@@ -198,11 +222,17 @@ export class CasesService {
 
   async saveContract(caseId: string, dto: SaveContractDto, actorId?: string) {
     await this.ensureCase(caseId);
+    const { deliveryDate, ...rest } = dto;
+    const data = {
+      ...rest,
+      deliveryDate: parseDate(deliveryDate),
+    };
     const row = await this.prisma.contract.upsert({
       where: { caseId },
-      create: { caseId, ...dto },
-      update: dto,
+      create: { caseId, ...data },
+      update: data,
     });
+    await this.snapshotContract(caseId, null);
     await this.touchNode(caseId, 'N3', NodeStatus.IN_PROGRESS);
     await this.audit.append({
       caseId,
@@ -212,6 +242,378 @@ export class CasesService {
       detail: dto,
     });
     return row;
+  }
+
+  async saveQuote(caseId: string, dto: SaveQuoteDto, actorId?: string) {
+    await this.ensureCase(caseId);
+    const last = await this.prisma.quote.findFirst({
+      where: { caseId },
+      orderBy: { version: 'desc' },
+    });
+    const version = (last?.version ?? 0) + 1;
+    if (last?.status === QuoteStatus.ACTIVE) {
+      await this.prisma.quote.update({
+        where: { id: last.id },
+        data: { status: QuoteStatus.SUPERSEDED },
+      });
+    }
+    const amountFen =
+      dto.amountFen ??
+      (dto.unitPriceFen && dto.quantity ? dto.unitPriceFen * dto.quantity : dto.unitPriceFen ?? null);
+    const snapshot = {
+      version,
+      priceBasis: dto.priceBasis,
+      includedItems: dto.includedItems ?? null,
+      excludedItems: dto.excludedItems ?? null,
+      validityUntil: dto.validityUntil ?? null,
+      freightBearer: dto.freightBearer ?? null,
+      taxBearer: dto.taxBearer ?? null,
+      unitPriceFen: dto.unitPriceFen ?? null,
+      quantity: dto.quantity ?? null,
+      amountFen,
+      notes: dto.notes ?? null,
+      abnormalPriceNote: dto.abnormalPriceNote ?? null,
+    };
+    const row = await this.prisma.quote.create({
+      data: {
+        caseId,
+        version,
+        status: QuoteStatus.ACTIVE,
+        priceBasis: dto.priceBasis,
+        includedItems: dto.includedItems,
+        excludedItems: dto.excludedItems,
+        validityUntil: parseDate(dto.validityUntil),
+        freightBearer: dto.freightBearer,
+        taxBearer: dto.taxBearer,
+        unitPriceFen: dto.unitPriceFen,
+        quantity: dto.quantity,
+        amountFen,
+        currency: dto.currency ?? 'USD',
+        notes: dto.notes,
+        abnormalPriceNote: dto.abnormalPriceNote,
+        snapshotJson: JSON.stringify(snapshot),
+      },
+    });
+    const evidence = await this.addEvidence(caseId, 'N2', EvidenceKind.QUOTE_SNAPSHOT, {
+      ref: `Q-v${version}`,
+      note: '报价版本字段快照',
+      payload: snapshot,
+    });
+    await this.touchNode(caseId, 'N2', NodeStatus.IN_PROGRESS);
+    await this.audit.append({
+      caseId,
+      actorId,
+      action: 'QUOTE_VERSION_SAVED',
+      nodeCode: 'N2',
+      detail: { version, superseded: last?.version ?? null, snapshot, evidenceId: evidence.id },
+    });
+    return { ...row, snapshot, evidenceId: evidence.id };
+  }
+
+  async createChange(caseId: string, dto: CreateChangeDto, actorId?: string) {
+    await this.ensureCase(caseId);
+    if (!dto.diffs?.length) throw new BadRequestException('变更单须包含至少一个字段 diff');
+    for (const d of dto.diffs) {
+      if (!isChangeField(d.field)) {
+        throw new BadRequestException(`不支持的变更字段：${d.field}`);
+      }
+    }
+    const count = await this.prisma.changeOrder.count({ where: { caseId } });
+    const version = count + 1;
+    const changeNo = `CO-${String(version).padStart(3, '0')}`;
+    const current = await this.currentFieldMap(caseId);
+    const diffs = dto.diffs.map((d) => ({
+      field: d.field,
+      fieldLabel: ChangeFieldLabel[d.field] || d.field,
+      oldValue: d.oldValue ?? current[d.field] ?? '',
+      newValue: d.newValue,
+    }));
+    const isSensitive = isSensitiveChange(diffs.map((d) => d.field));
+    const row = await this.prisma.changeOrder.create({
+      data: {
+        caseId,
+        changeNo,
+        version,
+        status: ChangeStatus.PENDING_ACK,
+        reason: dto.reason,
+        isSensitive,
+        diffs: { create: diffs },
+      },
+      include: { diffs: true },
+    });
+    await this.touchNode(caseId, 'N4', NodeStatus.IN_PROGRESS);
+    await this.audit.append({
+      caseId,
+      actorId,
+      action: 'CHANGE_ORDER_CREATED',
+      nodeCode: 'N4',
+      detail: { changeId: row.id, changeNo, diffs, isSensitive },
+    });
+    return row;
+  }
+
+  async ackChange(caseId: string, changeId: string, dto: AckChangeDto, actorId?: string) {
+    await this.ensureCase(caseId);
+    const co = await this.prisma.changeOrder.findFirst({
+      where: { id: changeId, caseId },
+      include: { diffs: true },
+    });
+    if (!co) throw new NotFoundException('变更单不存在');
+    if (co.status === ChangeStatus.SUPERSEDED || co.status === ChangeStatus.APPLIED) {
+      throw new BadRequestException('已生效或已废止的变更单不可再确认');
+    }
+    const type = (dto.type || '').toUpperCase();
+    if (type === 'CUSTOMER') {
+      const ev = await this.addEvidence(caseId, 'N4', EvidenceKind.CUSTOMER_ACK, {
+        ref: dto.ref || co.changeNo,
+        note: dto.note || '客户确认变更',
+        payload: { changeId, changeNo: co.changeNo, diffs: co.diffs },
+      });
+      const row = await this.prisma.changeOrder.update({
+        where: { id: changeId },
+        data: {
+          customerAck: true,
+          customerAckRef: dto.ref || ev.id,
+          customerAckEvidenceId: ev.id,
+          customerAckedAt: new Date(),
+        },
+        include: { diffs: true },
+      });
+      await this.audit.append({
+        caseId,
+        actorId,
+        action: 'CHANGE_CUSTOMER_ACK',
+        nodeCode: 'N4',
+        detail: { changeId, changeNo: co.changeNo, evidenceId: ev.id },
+      });
+      return row;
+    }
+    if (type === 'INTERNAL') {
+      const ev = await this.addEvidence(caseId, 'N4', EvidenceKind.INTERNAL_ACK, {
+        ref: dto.ref || co.changeNo,
+        note: dto.note || '内部确认变更',
+        payload: { changeId, changeNo: co.changeNo },
+      });
+      const nextStatus =
+        co.isSensitive && !co.approved ? ChangeStatus.PENDING_APPROVAL : ChangeStatus.PENDING_ACK;
+      const row = await this.prisma.changeOrder.update({
+        where: { id: changeId },
+        data: {
+          internalAck: true,
+          internalAckEvidenceId: ev.id,
+          internalAckedAt: new Date(),
+          status: nextStatus,
+        },
+        include: { diffs: true },
+      });
+      await this.audit.append({
+        caseId,
+        actorId,
+        action: 'CHANGE_INTERNAL_ACK',
+        nodeCode: 'N4',
+        detail: { changeId, changeNo: co.changeNo, evidenceId: ev.id },
+      });
+      return row;
+    }
+    if (type === 'APPROVAL') {
+      if (!co.isSensitive) throw new BadRequestException('非敏感变更无需额外审批');
+      const ev = await this.addEvidence(caseId, 'N4', EvidenceKind.CHANGE_APPROVAL, {
+        ref: dto.ref || co.changeNo,
+        note: dto.note || '敏感变更审批',
+        payload: { changeId, changeNo: co.changeNo, diffs: co.diffs },
+      });
+      const row = await this.prisma.changeOrder.update({
+        where: { id: changeId },
+        data: {
+          approved: true,
+          approvalEvidenceId: ev.id,
+          approvedAt: new Date(),
+          status: ChangeStatus.PENDING_ACK,
+        },
+        include: { diffs: true },
+      });
+      await this.audit.append({
+        caseId,
+        actorId,
+        action: 'CHANGE_APPROVED',
+        nodeCode: 'N4',
+        detail: { changeId, changeNo: co.changeNo, evidenceId: ev.id },
+      });
+      return row;
+    }
+    throw new BadRequestException('确认类型须为 CUSTOMER / INTERNAL / APPROVAL');
+  }
+
+  async applyChange(caseId: string, changeId: string, actorId?: string) {
+    await this.ensureCase(caseId);
+    const co = await this.prisma.changeOrder.findFirst({
+      where: { id: changeId, caseId },
+      include: { diffs: true },
+    });
+    if (!co) throw new NotFoundException('变更单不存在');
+    if (!co.customerAck || !co.customerAckEvidenceId || !co.internalAck || !co.internalAckEvidenceId) {
+      throw new BadRequestException('须完成客户确认与内部确认后才能生效');
+    }
+    if (co.isSensitive && (!co.approved || !co.approvalEvidenceId)) {
+      throw new BadRequestException('敏感变更须审批后才能生效');
+    }
+    const contract = await this.prisma.contract.findUnique({ where: { caseId } });
+    const patch: Record<string, unknown> = {};
+    let partyChanged = false;
+    for (const d of co.diffs) {
+      if (d.field === 'deliveryDate') patch.deliveryDate = parseDate(d.newValue);
+      if (d.field === 'quantity') patch.quantity = Number(d.newValue);
+      if (d.field === 'paymentTerms') patch.paymentTerms = d.newValue;
+      if (d.field === 'consigneeName') {
+        patch.consigneeName = d.newValue;
+        await this.upsertParty(caseId, { role: PartyRole.CONSIGNEE, name: d.newValue, isSameAsBuyer: false }, actorId);
+        partyChanged = true;
+      }
+      if (d.field === 'buyerName') {
+        patch.buyerName = d.newValue;
+        await this.upsertParty(caseId, { role: PartyRole.BUYER, name: d.newValue }, actorId);
+        partyChanged = true;
+      }
+      if (d.field === 'payerName') {
+        await this.upsertParty(caseId, { role: PartyRole.PAYER, name: d.newValue, isSameAsBuyer: false }, actorId);
+        partyChanged = true;
+      }
+    }
+    if (contract && Object.keys(patch).length) {
+      await this.prisma.contract.update({ where: { caseId }, data: patch as any });
+    }
+    if (partyChanged) {
+      await this.screenKyc(caseId, actorId);
+    }
+    await this.snapshotContract(caseId, co.id);
+    const row = await this.prisma.changeOrder.update({
+      where: { id: changeId },
+      data: { status: ChangeStatus.APPLIED, appliedAt: new Date() },
+      include: { diffs: true },
+    });
+    await this.audit.append({
+      caseId,
+      actorId,
+      action: 'CHANGE_ORDER_APPLIED',
+      nodeCode: 'N4',
+      detail: {
+        changeId,
+        changeNo: co.changeNo,
+        diffs: co.diffs,
+        customerAckEvidenceId: co.customerAckEvidenceId,
+        internalAckEvidenceId: co.internalAckEvidenceId,
+        approvalEvidenceId: co.approvalEvidenceId,
+        partyRescreened: partyChanged,
+      },
+    });
+    return row;
+  }
+
+  async savePlan(caseId: string, dto: SavePlanDto, actorId?: string) {
+    await this.ensureCase(caseId);
+    const contract = await this.prisma.contract.findUnique({ where: { caseId } });
+    let consentId = undefined as string | undefined;
+    if (dto.customerConsent && dto.customerConsentRef) {
+      const ev = await this.addEvidence(caseId, 'N5', EvidenceKind.DELAY_CONSENT, {
+        ref: dto.customerConsentRef,
+        note: dto.delayReason || '客户同意延期',
+        payload: { trigger: dto.delayTriggerCode, triggerRef: dto.delayTriggerRef },
+      });
+      consentId = ev.id;
+    }
+    const data = {
+      plannedDelivery: parseDate(dto.plannedDelivery),
+      contractDelivery: parseDate(dto.contractDelivery) || contract?.deliveryDate || null,
+      delayRegistered: dto.delayRegistered ?? false,
+      delayTriggerCode: dto.delayTriggerCode,
+      delayTriggerRef: dto.delayTriggerRef,
+      delayReason: dto.delayReason,
+      customerConsent: dto.customerConsent ?? false,
+      customerConsentEvidenceId: consentId,
+    };
+    const row = await this.prisma.productionPlan.upsert({
+      where: { caseId },
+      create: { caseId, ...data },
+      update: data,
+    });
+    await this.touchNode(caseId, 'N5', NodeStatus.IN_PROGRESS);
+    await this.audit.append({
+      caseId,
+      actorId,
+      action: 'PRODUCTION_PLAN_SAVED',
+      nodeCode: 'N5',
+      detail: { ...dto, customerConsentEvidenceId: consentId },
+    });
+    return row;
+  }
+
+  async saveCustoms(caseId: string, dto: SaveCustomsDto, actorId?: string) {
+    await this.ensureCase(caseId);
+    let originEvidenceId: string | undefined;
+    if (dto.originEvidenceType && dto.originEvidenceRef) {
+      const ev = await this.addEvidence(caseId, 'N8', EvidenceKind.ORIGIN_CERT, {
+        ref: dto.originEvidenceRef,
+        note: dto.originEvidenceType,
+        payload: { originCountry: dto.originCountry },
+      });
+      originEvidenceId = ev.id;
+    }
+    const data = {
+      hsCode: dto.hsCode,
+      productName: dto.productName,
+      declareElementsJson: JSON.stringify(dto.declareElements ?? {}),
+      originCountry: dto.originCountry,
+      originEvidenceType: dto.originEvidenceType,
+      originEvidenceRef: dto.originEvidenceRef,
+      originEvidenceId,
+      unit: dto.unit,
+      exportTaxName: dto.exportTaxName,
+    };
+    const row = await this.prisma.customsDeclaration.upsert({
+      where: { caseId },
+      create: { caseId, ...data },
+      update: data,
+    });
+    await this.touchNode(caseId, 'N8', NodeStatus.IN_PROGRESS);
+    await this.audit.append({
+      caseId,
+      actorId,
+      action: 'CUSTOMS_SAVED',
+      nodeCode: 'N8',
+      detail: { ...dto, originEvidenceId },
+    });
+    return { ...row, declareElements: dto.declareElements ?? {}, originEvidenceId };
+  }
+
+  async syncEport(caseId: string, actorId?: string) {
+    await this.ensureCase(caseId);
+    const gate = await this.gates.evaluateAndPersist(caseId, 'N8');
+    const held = !gate.canProceed;
+    const status = held ? EportStatus.HELD : EportStatus.RELEASED;
+    const ref = held ? `EPORT-HOLD-${Date.now()}` : `EPORT-RLS-${Date.now()}`;
+    const existing = await this.prisma.customsDeclaration.findUnique({ where: { caseId } });
+    if (!existing) throw new BadRequestException('请先保存报关信息再同步电子口岸');
+    const ev = await this.addEvidence(caseId, 'N8', EvidenceKind.EPORT_SYNC, {
+      ref,
+      note: held ? '模拟电子口岸退单（申报要素/HS 缺口）' : '模拟电子口岸放行',
+      payload: { status, gate },
+    });
+    const row = await this.prisma.customsDeclaration.update({
+      where: { caseId },
+      data: {
+        eportStatus: status,
+        eportSyncRef: ref,
+        eportSyncedAt: new Date(),
+      },
+    });
+    await this.audit.append({
+      caseId,
+      actorId,
+      action: 'EPORT_SYNCED',
+      nodeCode: 'N8',
+      detail: { status, ref, evidenceId: ev.id, canProceed: gate.canProceed },
+    });
+    return { ...row, declareElements: safeJson(row.declareElementsJson), mock: true, gate, evidenceId: ev.id };
   }
 
   async saveShipment(caseId: string, dto: SaveShipmentDto, actorId?: string) {
@@ -301,27 +703,6 @@ export class CasesService {
       where: { caseId_code: { caseId, code: nodeCode } },
     });
     if (!node) throw new NotFoundException('节点不存在');
-    if (node.isStub) {
-      await this.prisma.caseNode.update({
-        where: { id: node.id },
-        data: { status: NodeStatus.STUB_TODO, summary: node.summary },
-      });
-      const next = nextMvpNode(nodeCode);
-      if (next) {
-        await this.prisma.tradeCase.update({
-          where: { id: caseId },
-          data: { currentNode: next, status: CaseStatus.IN_PROGRESS },
-        });
-      }
-      await this.audit.append({
-        caseId,
-        actorId,
-        action: 'STUB_SKIPPED',
-        nodeCode,
-        detail: { todo: node.summary },
-      });
-      return { stub: true, message: node.summary, nextNode: next };
-    }
 
     const result = await this.gates.evaluateAndPersist(caseId, nodeCode);
     await this.audit.append({
@@ -370,15 +751,15 @@ export class CasesService {
         completedAt: new Date(),
       },
     });
-    const next = nextMvpNode(nodeCode);
+    const snap = await this.gates.snapshot(caseId);
+    const next = nextNode(nodeCode, snap);
     const done = nodeCode === 'N9';
     await this.prisma.tradeCase.update({
       where: { id: caseId },
       data: {
         currentNode: done ? 'N9' : next ?? nodeCode,
         status: done ? CaseStatus.COMPLETED : CaseStatus.IN_PROGRESS,
-        overallRisk:
-          result.decision === Decision.SOFT_ALERT ? RiskLevel.LOW : undefined,
+        overallRisk: result.decision === Decision.SOFT_ALERT ? RiskLevel.LOW : undefined,
       },
     });
     return { stub: false, result, nextNode: done ? null : next };
@@ -457,6 +838,65 @@ export class CasesService {
       data: { status, startedAt: new Date() },
     });
   }
+
+  private async addEvidence(
+    caseId: string,
+    nodeCode: string,
+    kind: string,
+    input: { ref?: string; note?: string; payload?: unknown },
+  ) {
+    return this.prisma.evidence.create({
+      data: {
+        caseId,
+        nodeCode,
+        kind,
+        ref: input.ref,
+        note: input.note,
+        payload: JSON.stringify(input.payload ?? {}),
+      },
+    });
+  }
+
+  private async snapshotContract(caseId: string, changeOrderId: string | null) {
+    const contract = await this.prisma.contract.findUnique({ where: { caseId } });
+    if (!contract) return;
+    await this.prisma.contractVersion.updateMany({
+      where: { caseId, status: VersionStatus.ACTIVE },
+      data: { status: VersionStatus.SUPERSEDED },
+    });
+    const last = await this.prisma.contractVersion.findFirst({
+      where: { caseId },
+      orderBy: { version: 'desc' },
+    });
+    await this.prisma.contractVersion.create({
+      data: {
+        caseId,
+        version: (last?.version ?? 0) + 1,
+        status: VersionStatus.ACTIVE,
+        changeOrderId,
+        snapshotJson: JSON.stringify(contract),
+      },
+    });
+  }
+
+  private async currentFieldMap(caseId: string): Promise<Record<string, string>> {
+    const c = await this.prisma.tradeCase.findUnique({
+      where: { id: caseId },
+      include: { contract: true, parties: true },
+    });
+    const buyer = c?.parties.find((p) => p.role === PartyRole.BUYER)?.name || c?.contract?.buyerName || '';
+    const payer = c?.parties.find((p) => p.role === PartyRole.PAYER)?.name || '';
+    const consignee =
+      c?.parties.find((p) => p.role === PartyRole.CONSIGNEE)?.name || c?.contract?.consigneeName || '';
+    return {
+      deliveryDate: c?.contract?.deliveryDate ? c.contract.deliveryDate.toISOString().slice(0, 10) : '',
+      quantity: c?.contract?.quantity != null ? String(c.contract.quantity) : '',
+      consigneeName: consignee,
+      paymentTerms: c?.contract?.paymentTerms || '',
+      payerName: payer,
+      buyerName: buyer,
+    };
+  }
 }
 
 function safeJson(raw: string) {
@@ -465,4 +905,10 @@ function safeJson(raw: string) {
   } catch {
     return raw;
   }
+}
+
+function parseDate(v?: string | Date | null): Date | null {
+  if (!v) return null;
+  const d = v instanceof Date ? v : new Date(v);
+  return Number.isNaN(d.getTime()) ? null : d;
 }

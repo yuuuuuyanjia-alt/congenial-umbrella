@@ -85,14 +85,21 @@ page {
   color: #374151;
   font-weight: 600;
 }
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12rpx;
+  margin-top: 12rpx;
+}
 .chip {
   font-size: 22rpx;
   padding: 8rpx 16rpx;
   background: #e8eef3;
   color: #0b3a5b;
   border-radius: 8rpx;
-  margin-right: 10rpx;
 }
+.chip-on { background: #0b3a5b; color: #fff; }
 .err {
   background: #fde8e6;
   color: #7a1d16;

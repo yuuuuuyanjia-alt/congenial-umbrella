@@ -29,6 +29,9 @@ export interface ContractSnap {
   amountFen?: number | null;
   currency?: string | null;
   destination?: string | null;
+  deliveryDate?: string | Date | null;
+  quantity?: number | null;
+  unit?: string | null;
 }
 
 export interface ShipmentSnap {
@@ -70,6 +73,78 @@ export interface NodeSnap {
   decision?: string | null;
 }
 
+export interface QuoteSnap {
+  version: number;
+  status: string;
+  priceBasis: string;
+  includedItems?: string | null;
+  excludedItems?: string | null;
+  validityUntil?: string | Date | null;
+  freightBearer?: string | null;
+  taxBearer?: string | null;
+  unitPriceFen?: number | null;
+  quantity?: number | null;
+  amountFen?: number | null;
+  notes?: string | null;
+  abnormalPriceNote?: string | null;
+}
+
+export interface ChangeDiffSnap {
+  field: string;
+  fieldLabel: string;
+  oldValue: string;
+  newValue: string;
+}
+
+export interface ChangeOrderSnap {
+  id: string;
+  changeNo: string;
+  version: number;
+  status: string;
+  reason?: string | null;
+  isSensitive: boolean;
+  customerAck: boolean;
+  customerAckRef?: string | null;
+  customerAckEvidenceId?: string | null;
+  internalAck: boolean;
+  internalAckEvidenceId?: string | null;
+  approved: boolean;
+  approvalEvidenceId?: string | null;
+  diffs: ChangeDiffSnap[];
+}
+
+export interface ProductionPlanSnap {
+  plannedDelivery?: string | Date | null;
+  contractDelivery?: string | Date | null;
+  delayRegistered: boolean;
+  delayTriggerCode?: string | null;
+  delayTriggerRef?: string | null;
+  delayReason?: string | null;
+  customerConsent: boolean;
+  customerConsentEvidenceId?: string | null;
+}
+
+export interface HsTemplateSnap {
+  hsCode: string;
+  productName: string;
+  requiredElements: string[];
+  unit: string;
+  exportTaxName: string;
+}
+
+export interface CustomsSnap {
+  hsCode?: string | null;
+  productName?: string | null;
+  declareElements: Record<string, string>;
+  originCountry?: string | null;
+  originEvidenceType?: string | null;
+  originEvidenceRef?: string | null;
+  originEvidenceId?: string | null;
+  unit?: string | null;
+  exportTaxName?: string | null;
+  eportStatus?: string | null;
+}
+
 export interface CaseSnapshot {
   parties: PartySnap[];
   hits: HitSnap[];
@@ -80,6 +155,14 @@ export interface CaseSnapshot {
   mismatchFixes: FixSnap[];
   settlement?: SettlementSnap | null;
   nodes: NodeSnap[];
+  quotes: QuoteSnap[];
+  changeOrders: ChangeOrderSnap[];
+  productionPlan?: ProductionPlanSnap | null;
+  customs?: CustomsSnap | null;
+  hsTemplate?: HsTemplateSnap | null;
+  costFloorFen?: number | null;
+  historyUnitPrices: number[];
+  now?: string | Date;
 }
 
 export interface GateResult {

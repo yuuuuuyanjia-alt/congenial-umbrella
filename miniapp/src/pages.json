@@ -17,8 +17,20 @@
       "style": { "navigationBarTitleText": "询盘/客户KYC" }
     },
     {
+      "path": "pages/node/quote",
+      "style": { "navigationBarTitleText": "报价环节" }
+    },
+    {
       "path": "pages/node/contract",
       "style": { "navigationBarTitleText": "合同/订单确认" }
+    },
+    {
+      "path": "pages/node/change",
+      "style": { "navigationBarTitleText": "变更管理" }
+    },
+    {
+      "path": "pages/node/production",
+      "style": { "navigationBarTitleText": "生产/备货排期" }
     },
     {
       "path": "pages/node/shipment",
@@ -27,6 +39,10 @@
     {
       "path": "pages/node/docs",
       "style": { "navigationBarTitleText": "单证一致性" }
+    },
+    {
+      "path": "pages/node/customs",
+      "style": { "navigationBarTitleText": "报关放行" }
     },
     {
       "path": "pages/node/settlement",

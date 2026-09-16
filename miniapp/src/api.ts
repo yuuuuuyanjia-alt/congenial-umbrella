@@ -32,9 +32,18 @@ export const api = {
   upsertParty: (id: string, body: unknown) => request('POST', `/cases/${id}/parties`, body),
   screen: (id: string) => request('POST', `/cases/${id}/nodes/N1/screen`),
   saveContract: (id: string, body: unknown) => request('POST', `/cases/${id}/nodes/N3/contract`, body),
+  saveQuote: (id: string, body: unknown) => request('POST', `/cases/${id}/nodes/N2/quotes`, body),
+  createChange: (id: string, body: unknown) => request('POST', `/cases/${id}/nodes/N4/changes`, body),
+  ackChange: (id: string, changeId: string, body: unknown) =>
+    request('POST', `/cases/${id}/nodes/N4/changes/${changeId}/ack`, body),
+  applyChange: (id: string, changeId: string) =>
+    request('POST', `/cases/${id}/nodes/N4/changes/${changeId}/apply`),
+  savePlan: (id: string, body: unknown) => request('POST', `/cases/${id}/nodes/N5/plan`, body),
   saveShipment: (id: string, body: unknown) => request('POST', `/cases/${id}/nodes/N6/shipment`, body),
   saveDocument: (id: string, body: unknown) => request('POST', `/cases/${id}/nodes/N7/documents`, body),
   saveFix: (id: string, body: unknown) => request('POST', `/cases/${id}/nodes/N7/fixes`, body),
+  saveCustoms: (id: string, body: unknown) => request('POST', `/cases/${id}/nodes/N8/customs`, body),
+  syncEport: (id: string) => request('POST', `/cases/${id}/nodes/N8/eport-sync`),
   saveSettlement: (id: string, body: unknown) => request('POST', `/cases/${id}/nodes/N9/settlement`, body),
   gate: (id: string, code: string) => request('GET', `/cases/${id}/nodes/${code}/gate`),
   advance: (id: string, code: string) => request('POST', `/cases/${id}/nodes/${code}/advance`),
@@ -77,9 +86,13 @@ export function decisionText(d?: string | null) {
 
 export function nodePage(code: string) {
   if (code === 'N1') return '/pages/node/kyc';
+  if (code === 'N2') return '/pages/node/quote';
   if (code === 'N3') return '/pages/node/contract';
+  if (code === 'N4') return '/pages/node/change';
+  if (code === 'N5') return '/pages/node/production';
   if (code === 'N6') return '/pages/node/shipment';
   if (code === 'N7') return '/pages/node/docs';
+  if (code === 'N8') return '/pages/node/customs';
   if (code === 'N9') return '/pages/node/settlement';
   return '/pages/node/stub';
 }

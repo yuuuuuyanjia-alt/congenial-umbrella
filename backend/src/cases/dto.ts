@@ -1,4 +1,5 @@
-import { Allow, IsBoolean, IsInt, IsObject, IsOptional, IsString } from 'class-validator';
+import { Allow, IsArray, IsBoolean, IsInt, IsObject, IsOptional, IsString, ValidateNested } from 'class-validator';
+import { Type } from 'class-transformer';
 
 export class CreateCaseDto {
   @IsString() title: string;
@@ -32,6 +33,9 @@ export class SaveContractDto {
   @IsOptional() @IsString() destination?: string;
   @IsOptional() @IsString() buyerName?: string;
   @IsOptional() @IsString() consigneeName?: string;
+  @IsOptional() @IsString() deliveryDate?: string;
+  @IsOptional() @IsInt() quantity?: number;
+  @IsOptional() @IsString() unit?: string;
 }
 
 export class SaveShipmentDto {
@@ -77,4 +81,64 @@ export class WorkbenchDto {
   @IsOptional() @IsString() hitId?: string;
   @IsString() action: string;
   @IsOptional() @IsString() comment?: string;
+}
+
+export class SaveQuoteDto {
+  @IsString() priceBasis: string;
+  @IsOptional() @IsString() includedItems?: string;
+  @IsOptional() @IsString() excludedItems?: string;
+  @IsOptional() @IsString() validityUntil?: string;
+  @IsOptional() @IsString() freightBearer?: string;
+  @IsOptional() @IsString() taxBearer?: string;
+  @IsOptional() @IsInt() unitPriceFen?: number;
+  @IsOptional() @IsInt() quantity?: number;
+  @IsOptional() @IsInt() amountFen?: number;
+  @IsOptional() @IsString() currency?: string;
+  @IsOptional() @IsString() notes?: string;
+  @IsOptional() @IsString() abnormalPriceNote?: string;
+}
+
+export class ChangeDiffDto {
+  @IsString() field: string;
+  @IsOptional() @IsString() oldValue?: string;
+  @IsString() newValue: string;
+}
+
+export class CreateChangeDto {
+  @IsOptional() @IsString() reason?: string;
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ChangeDiffDto)
+  diffs: ChangeDiffDto[];
+}
+
+export class AckChangeDto {
+  @IsString() type: string;
+  @IsOptional() @IsString() ref?: string;
+  @IsOptional() @IsString() note?: string;
+}
+
+export class SavePlanDto {
+  @IsOptional() @IsString() plannedDelivery?: string;
+  @IsOptional() @IsString() contractDelivery?: string;
+  @IsOptional() @IsBoolean() delayRegistered?: boolean;
+  @IsOptional() @IsString() delayTriggerCode?: string;
+  @IsOptional() @IsString() delayTriggerRef?: string;
+  @IsOptional() @IsString() delayReason?: string;
+  @IsOptional() @IsBoolean() customerConsent?: boolean;
+  @IsOptional() @IsString() customerConsentRef?: string;
+}
+
+export class SaveCustomsDto {
+  @IsOptional() @IsString() hsCode?: string;
+  @IsOptional() @IsString() productName?: string;
+  @Allow()
+  @IsOptional()
+  @IsObject()
+  declareElements?: Record<string, string>;
+  @IsOptional() @IsString() originCountry?: string;
+  @IsOptional() @IsString() originEvidenceType?: string;
+  @IsOptional() @IsString() originEvidenceRef?: string;
+  @IsOptional() @IsString() unit?: string;
+  @IsOptional() @IsString() exportTaxName?: string;
 }

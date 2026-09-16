@@ -37,50 +37,56 @@ model TradeCase {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  parties       Party[]
-  nodes         CaseNode[]
-  hits          ScreeningHit[]
-  kycReports    KycReport[]
-  contract      Contract?
-  shipment      Shipment?
-  documents     TradeDocument[]
-  mismatchFixes DocMismatchFix[]
-  settlement    Settlement?
-  auditLogs     AuditLog[]
-  workbench     WorkbenchAction[]
-  gateChecks    GateCheck[]
+  parties           Party[]
+  nodes             CaseNode[]
+  hits              ScreeningHit[]
+  kycReports        KycReport[]
+  contract          Contract?
+  shipment          Shipment?
+  documents         TradeDocument[]
+  mismatchFixes     DocMismatchFix[]
+  settlement        Settlement?
+  auditLogs         AuditLog[]
+  workbench         WorkbenchAction[]
+  gateChecks        GateCheck[]
+  quotes            Quote[]
+  changeOrders      ChangeOrder[]
+  contractVersions  ContractVersion[]
+  productionPlan    ProductionPlan?
+  customs           CustomsDeclaration?
+  evidences         Evidence[]
 }
 
 model Party {
-  id               String  @id @default(cuid())
-  caseId           String
-  role             String
-  name             String
-  nameEn           String?
-  country          String?
-  address          String?
-  registrationNo   String?
-  isSameAsBuyer    Boolean @default(true)
-  relationNote     String?
-  case             TradeCase      @relation(fields: [caseId], references: [id], onDelete: Cascade)
-  hits             ScreeningHit[]
+  id             String          @id @default(cuid())
+  caseId         String
+  role           String
+  name           String
+  nameEn         String?
+  country        String?
+  address        String?
+  registrationNo String?
+  isSameAsBuyer  Boolean         @default(true)
+  relationNote   String?
+  case           TradeCase       @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  hits           ScreeningHit[]
 
   @@index([caseId, role])
 }
 
 model CaseNode {
-  id           String    @id @default(cuid())
-  caseId       String
-  code         String
-  name         String
-  status       String
-  decision     String?
-  isStub       Boolean   @default(false)
-  isHardGate   Boolean   @default(false)
-  summary      String?
-  startedAt    DateTime?
-  completedAt  DateTime?
-  case         TradeCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  id          String    @id @default(cuid())
+  caseId      String
+  code        String
+  name        String
+  status      String
+  decision    String?
+  isStub      Boolean   @default(false)
+  isHardGate  Boolean   @default(false)
+  summary     String?
+  startedAt   DateTime?
+  completedAt DateTime?
+  case        TradeCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
 
   @@unique([caseId, code])
 }
@@ -95,7 +101,7 @@ model BlacklistEntry {
 }
 
 model ScreeningHit {
-  id          String   @id @default(cuid())
+  id          String            @id @default(cuid())
   caseId      String
   partyId     String
   listCode    String
@@ -103,45 +109,48 @@ model ScreeningHit {
   matchedName String
   confidence  String
   riskLevel   String
-  disposition String   @default("OPEN")
+  disposition String            @default("OPEN")
   score       Int
   rawJson     String
-  createdAt   DateTime @default(now())
-  case        TradeCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
-  party       Party     @relation(fields: [partyId], references: [id], onDelete: Cascade)
+  createdAt   DateTime          @default(now())
+  case        TradeCase         @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  party       Party             @relation(fields: [partyId], references: [id], onDelete: Cascade)
   actions     WorkbenchAction[]
 
   @@index([caseId, disposition])
 }
 
 model KycReport {
-  id        String   @id @default(cuid())
+  id        String    @id @default(cuid())
   caseId    String
   score     Int
   riskLevel String
   summary   String
   payload   String
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
   case      TradeCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
 }
 
 model Contract {
-  id                    String    @id @default(cuid())
-  caseId                String    @unique
-  counterparty          String
-  incoterms             String?
-  paymentTerms          String?
-  hasRetentionOfTitle   Boolean   @default(false)
-  hasDisputeClause      Boolean   @default(false)
-  isFinal               Boolean   @default(false)
-  goodsDesc             String?
-  amountFen             Int?
-  currency              String    @default("USD")
-  destination           String?
-  buyerName             String?
-  consigneeName         String?
-  updatedAt             DateTime  @updatedAt
-  case                  TradeCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  id                  String    @id @default(cuid())
+  caseId              String    @unique
+  counterparty        String
+  incoterms           String?
+  paymentTerms        String?
+  hasRetentionOfTitle Boolean   @default(false)
+  hasDisputeClause    Boolean   @default(false)
+  isFinal             Boolean   @default(false)
+  goodsDesc           String?
+  amountFen           Int?
+  currency            String    @default("USD")
+  destination         String?
+  buyerName           String?
+  consigneeName       String?
+  deliveryDate        DateTime?
+  quantity            Int?
+  unit                String?
+  updatedAt           DateTime  @updatedAt
+  case                TradeCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
 }
 
 model Shipment {
@@ -161,68 +170,68 @@ model Shipment {
 }
 
 model TradeDocument {
-  id        String   @id @default(cuid())
-  caseId    String
-  type      String
-  isFinal   Boolean  @default(false)
+  id         String    @id @default(cuid())
+  caseId     String
+  type       String
+  isFinal    Boolean   @default(false)
   fieldsJson String
-  createdAt DateTime @default(now())
-  case      TradeCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  createdAt  DateTime  @default(now())
+  case       TradeCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
 
   @@index([caseId, type])
 }
 
 model DocMismatchFix {
-  id        String   @id @default(cuid())
+  id        String    @id @default(cuid())
   caseId    String
   field     String
   fromValue String
   toValue   String
   reason    String
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
   case      TradeCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
 }
 
 model Settlement {
-  id                       String   @id @default(cuid())
-  caseId                   String   @unique
-  payerName                String
-  buyerName                String
-  isThirdParty             Boolean  @default(false)
-  hasThirdPartyProof       Boolean  @default(false)
-  thirdPartyProofRef       String?
-  hasRemittanceMemo        Boolean  @default(false)
-  remittanceMemoRef        String?
-  hasDocConsistencyProof   Boolean  @default(false)
-  hasReleaseApproval       Boolean  @default(false)
-  amountFen                Int?
-  updatedAt                DateTime @updatedAt
-  case                     TradeCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  id                     String    @id @default(cuid())
+  caseId                 String    @unique
+  payerName              String
+  buyerName              String
+  isThirdParty           Boolean   @default(false)
+  hasThirdPartyProof     Boolean   @default(false)
+  thirdPartyProofRef     String?
+  hasRemittanceMemo      Boolean   @default(false)
+  remittanceMemoRef      String?
+  hasDocConsistencyProof Boolean   @default(false)
+  hasReleaseApproval     Boolean   @default(false)
+  amountFen              Int?
+  updatedAt              DateTime  @updatedAt
+  case                   TradeCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
 }
 
 /// 案例工作台处置（误报排除 / 确认真实 / 补充信息 / 持续监控）
 model WorkbenchAction {
-  id        String   @id @default(cuid())
+  id        String         @id @default(cuid())
   caseId    String
   hitId     String?
   actorId   String?
   action    String
   comment   String?
-  createdAt DateTime @default(now())
-  case      TradeCase     @relation(fields: [caseId], references: [id], onDelete: Cascade)
-  hit       ScreeningHit? @relation(fields: [hitId], references: [id], onDelete: SetNull)
-  actor     User?         @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  createdAt DateTime       @default(now())
+  case      TradeCase      @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  hit       ScreeningHit?  @relation(fields: [hitId], references: [id], onDelete: SetNull)
+  actor     User?          @relation(fields: [actorId], references: [id], onDelete: SetNull)
 }
 
 /// 仅追加审计日志：禁止更新/删除接口
 model AuditLog {
-  id        String   @id @default(cuid())
+  id        String     @id @default(cuid())
   caseId    String?
   actorId   String?
   action    String
   nodeCode  String?
   detail    String
-  createdAt DateTime @default(now())
+  createdAt DateTime   @default(now())
   case      TradeCase? @relation(fields: [caseId], references: [id], onDelete: SetNull)
   actor     User?      @relation(fields: [actorId], references: [id], onDelete: SetNull)
 
@@ -230,13 +239,171 @@ model AuditLog {
 }
 
 model GateCheck {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   caseId      String
   nodeCode    String
   decision    String
   canProceed  Boolean
   missingJson String
   reasonsJson String
-  createdAt   DateTime @default(now())
+  createdAt   DateTime  @default(now())
   case        TradeCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+}
+
+/// N2 报价版本（旧版 SUPERSEDED，禁止硬删除）
+model Quote {
+  id                String    @id @default(cuid())
+  caseId            String
+  version           Int
+  status            String
+  priceBasis        String
+  includedItems     String?
+  excludedItems     String?
+  validityUntil     DateTime?
+  freightBearer     String?
+  taxBearer         String?
+  unitPriceFen      Int?
+  quantity          Int?
+  amountFen         Int?
+  currency          String    @default("USD")
+  notes             String?
+  abnormalPriceNote String?
+  snapshotJson      String
+  createdAt         DateTime  @default(now())
+  case              TradeCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+
+  @@unique([caseId, version])
+  @@index([caseId, status])
+}
+
+/// 成本底线（演示用，供报价偏离校验）
+model CostFloor {
+  id        String @id @default(cuid())
+  goodsKey  String @unique
+  goodsDesc String
+  floorFen  Int
+  currency  String @default("USD")
+}
+
+/// 历史成交/报价（演示用）
+model HistoricalPrice {
+  id           String   @id @default(cuid())
+  goodsKey     String
+  counterparty String?
+  unitPriceFen Int
+  currency     String   @default("USD")
+  quotedAt     DateTime
+}
+
+/// N4 变更单（旧版 SUPERSEDED，禁止硬删除）
+model ChangeOrder {
+  id                     String       @id @default(cuid())
+  caseId                 String
+  changeNo               String
+  version                Int
+  status                 String
+  reason                 String?
+  isSensitive            Boolean      @default(false)
+  customerAck            Boolean      @default(false)
+  customerAckRef         String?
+  customerAckEvidenceId  String?
+  customerAckedAt        DateTime?
+  internalAck            Boolean      @default(false)
+  internalAckEvidenceId  String?
+  internalAckedAt        DateTime?
+  approved               Boolean      @default(false)
+  approvalEvidenceId     String?
+  approvedAt             DateTime?
+  appliedAt              DateTime?
+  createdAt              DateTime     @default(now())
+  case                   TradeCase    @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  diffs                  ChangeDiff[]
+
+  @@unique([caseId, changeNo])
+  @@index([caseId, status])
+}
+
+model ChangeDiff {
+  id            String      @id @default(cuid())
+  changeOrderId String
+  field         String
+  fieldLabel    String
+  oldValue      String
+  newValue      String
+  changeOrder   ChangeOrder @relation(fields: [changeOrderId], references: [id], onDelete: Cascade)
+}
+
+/// 合同版本快照（ACTIVE / SUPERSEDED，禁止硬删除）
+model ContractVersion {
+  id            String    @id @default(cuid())
+  caseId        String
+  version       Int
+  status        String
+  changeOrderId String?
+  snapshotJson  String
+  createdAt     DateTime  @default(now())
+  case          TradeCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+
+  @@unique([caseId, version])
+}
+
+/// N5 生产/备货排期
+model ProductionPlan {
+  id                       String    @id @default(cuid())
+  caseId                   String    @unique
+  plannedDelivery          DateTime?
+  contractDelivery         DateTime?
+  delayRegistered          Boolean   @default(false)
+  delayTriggerCode         String?
+  delayTriggerRef          String?
+  delayReason              String?
+  customerConsent          Boolean   @default(false)
+  customerConsentEvidenceId String?
+  updatedAt                DateTime  @updatedAt
+  case                     TradeCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+}
+
+/// HS 申报要素模板（演示用）
+model HsTemplate {
+  id                   String @id @default(cuid())
+  hsCode               String @unique
+  productName          String
+  requiredElementsJson String
+  unit                 String
+  exportTaxName        String
+}
+
+/// N8 报关放行
+model CustomsDeclaration {
+  id                 String    @id @default(cuid())
+  caseId             String    @unique
+  hsCode             String?
+  productName        String?
+  declareElementsJson String   @default("{}")
+  originCountry      String?
+  originEvidenceType String?
+  originEvidenceRef  String?
+  originEvidenceId   String?
+  unit               String?
+  exportTaxName      String?
+  eportStatus        String    @default("NOT_SYNCED")
+  eportSyncRef       String?
+  eportSyncedAt      DateTime?
+  updatedAt          DateTime  @updatedAt
+  case               TradeCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+}
+
+/// 通用证据链（仅追加）
+model Evidence {
+  id        String    @id @default(cuid())
+  caseId    String
+  nodeCode  String
+  kind      String
+  ref       String?
+  note      String?
+  payload   String?
+  createdAt DateTime  @default(now())
+  case      TradeCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+
+  @@index([caseId, nodeCode])
 }
