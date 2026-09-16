@@ -55,6 +55,7 @@ model TradeCase {
   productionPlan    ProductionPlan?
   customs           CustomsDeclaration?
   evidences         Evidence[]
+  sinosurePolicies  SinosurePolicy[]
 }
 
 model Party {
@@ -318,6 +319,7 @@ model ChangeOrder {
   createdAt              DateTime     @default(now())
   case                   TradeCase    @relation(fields: [caseId], references: [id], onDelete: Cascade)
   diffs                  ChangeDiff[]
+  sinosurePolicies       SinosurePolicy[]
 
   @@unique([caseId, changeNo])
   @@index([caseId, status])
@@ -391,6 +393,25 @@ model CustomsDeclaration {
   eportSyncedAt      DateTime?
   updatedAt          DateTime  @updatedAt
   case               TradeCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+}
+
+/// 中信保（出口信用保险）投保限额：挂案件，合同确认（N3）必填；变更管理（N4）再确认
+model SinosurePolicy {
+  id                String       @id @default(cuid())
+  caseId            String
+  nodeCode          String
+  changeOrderId     String?
+  evidenceId        String?
+  evidenceRef       String?
+  fileName          String?
+  insuredLimitFen   Int
+  currency          String       @default("USD")
+  confirmedExisting Boolean      @default(false)
+  createdAt         DateTime     @default(now())
+  case              TradeCase    @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  changeOrder       ChangeOrder? @relation(fields: [changeOrderId], references: [id], onDelete: SetNull)
+
+  @@index([caseId, nodeCode])
 }
 
 /// 通用证据链（仅追加）

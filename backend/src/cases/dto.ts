@@ -142,3 +142,12 @@ export class SaveCustomsDto {
   @IsOptional() @IsString() unit?: string;
   @IsOptional() @IsString() exportTaxName?: string;
 }
+
+export class SaveSinosureDto {
+  @IsOptional() @IsString() evidenceRef?: string;
+  @IsOptional() @IsString() fileName?: string;
+  @IsOptional() @IsInt() insuredLimitFen?: number;
+  @IsOptional() @IsString() currency?: string;
+  @IsOptional() @IsString() changeOrderId?: string;
+  @IsOptional() @IsBoolean() confirmedExisting?: boolean;
+}

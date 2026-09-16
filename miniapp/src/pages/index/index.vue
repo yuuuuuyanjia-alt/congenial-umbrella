@@ -51,6 +51,13 @@ const paths = [
     cls: 'badge-block',
     desc: '高置信命中 OFAC 模拟清单，N1 闸门拒绝进入后续交易。',
   },
+  {
+    caseNo: 'DEMO-LIMIT',
+    title: '中信保超额',
+    tag: 'GATE REFUSED',
+    cls: 'badge-block',
+    desc: '合同金额超过中信保投保限额，合同确认节点拒绝推进。',
+  },
 ];
 
 onMounted(async () => {

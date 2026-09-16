@@ -47,6 +47,11 @@ export class CatalogController {
       delayTriggers: DelayTriggerLabel,
       originEvidence: OriginEvidenceLabel,
       eportStatus: EportStatusLabel,
+      sinosure: {
+        label: '中信保',
+        n3: '合同确认须上传保单并登记投保限额，合同金额不得超过限额',
+        n4: '进入变更管理须再次确认或重新上传，并按变更后金额核对限额',
+      },
       hsTemplates: hsTemplates.map((h) => ({
         ...h,
         requiredElements: JSON.parse(h.requiredElementsJson),

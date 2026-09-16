@@ -13,6 +13,7 @@ import {
   SaveQuoteDto,
   SaveSettlementDto,
   SaveShipmentDto,
+  SaveSinosureDto,
   UpsertPartyDto,
 } from './dto';
 
@@ -73,6 +74,24 @@ export class CasesController {
     @Headers('x-actor-id') actorId?: string,
   ) {
     return this.cases.saveContract(id, dto, actorId);
+  }
+
+  @Post(':id/nodes/N3/sinosure')
+  saveN3Sinosure(
+    @Param('id') id: string,
+    @Body() dto: SaveSinosureDto,
+    @Headers('x-actor-id') actorId?: string,
+  ) {
+    return this.cases.saveSinosure(id, 'N3', dto, actorId);
+  }
+
+  @Post(':id/nodes/N4/sinosure')
+  saveN4Sinosure(
+    @Param('id') id: string,
+    @Body() dto: SaveSinosureDto,
+    @Headers('x-actor-id') actorId?: string,
+  ) {
+    return this.cases.saveSinosure(id, 'N4', dto, actorId);
   }
 
   @Post(':id/nodes/N4/changes')

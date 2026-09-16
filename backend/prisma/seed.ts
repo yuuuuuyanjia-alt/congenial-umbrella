@@ -85,6 +85,7 @@ function goodsKey(desc: string) {
 
 async function main() {
   await prisma.changeDiff.deleteMany();
+  await prisma.sinosurePolicy.deleteMany();
   await prisma.changeOrder.deleteMany();
   await prisma.contractVersion.deleteMany();
   await prisma.quote.deleteMany();
@@ -142,12 +143,14 @@ async function main() {
   const soft = await seedSoftCase(sales.id, compliance.id);
   const block = await seedBlockCase(sales.id, compliance.id);
   const gate = await seedGateDemoCase(sales.id);
+  const limit = await seedSinosureOverLimitCase(sales.id);
 
   console.log('种子数据已写入：');
   console.log('  PASS      ', pass.caseNo, pass.id);
   console.log('  SOFT_ALERT', soft.caseNo, soft.id);
   console.log('  HARD_BLOCK', block.caseNo, block.id);
   console.log('  GATE_DEMO ', gate.caseNo, gate.id, '（N6 缺证据，用于闸门拒绝演示）');
+  console.log('  SINOSURE  ', limit.caseNo, limit.id, '（合同金额超过中信保限额，N3 拒绝）');
 }
 
 function nodeCreates(overrides: Record<string, Partial<{ status: string; decision: string | null; summary: string }>>) {
@@ -361,6 +364,26 @@ async function seedPassCase(salesId: string, approverId: string, complianceId: s
       payload: JSON.stringify({ originCountry: 'CN' }),
     },
   });
+  const evSinosureN3 = await prisma.evidence.create({
+    data: {
+      caseId: c.id,
+      nodeCode: 'N3',
+      kind: 'SINOSURE_POLICY',
+      ref: 'SIN-NL-2026',
+      note: '中信保保单/限额批注',
+      payload: JSON.stringify({ insuredLimitFen: 15000000, currency: 'USD' }),
+    },
+  });
+  const evSinosureN4 = await prisma.evidence.create({
+    data: {
+      caseId: c.id,
+      nodeCode: 'N4',
+      kind: 'SINOSURE_CONFIRM',
+      ref: 'SIN-NL-2026',
+      note: '确认沿用当前中信保保单',
+      payload: JSON.stringify({ insuredLimitFen: 15000000, currency: 'USD', confirmedExisting: true }),
+    },
+  });
 
   const change = await prisma.changeOrder.create({
     data: {
@@ -400,6 +423,31 @@ async function seedPassCase(salesId: string, approverId: string, complianceId: s
       },
     ],
   });
+  await prisma.sinosurePolicy.createMany({
+    data: [
+      {
+        caseId: c.id,
+        nodeCode: 'N3',
+        evidenceId: evSinosureN3.id,
+        evidenceRef: 'SIN-NL-2026',
+        fileName: '中信保限额批注-Nordlicht.pdf',
+        insuredLimitFen: 15000000,
+        currency: 'USD',
+        confirmedExisting: false,
+      },
+      {
+        caseId: c.id,
+        nodeCode: 'N4',
+        changeOrderId: change.id,
+        evidenceId: evSinosureN4.id,
+        evidenceRef: 'SIN-NL-2026',
+        fileName: '中信保限额批注-Nordlicht.pdf',
+        insuredLimitFen: 15000000,
+        currency: 'USD',
+        confirmedExisting: true,
+      },
+    ],
+  });
   await prisma.auditLog.createMany({
     data: [
       { caseId: c.id, actorId: salesId, action: 'CASE_CREATED', nodeCode: 'N1', detail: JSON.stringify({ scenario: 'PASS' }) },
@@ -416,8 +464,8 @@ function passNodes() {
   return {
     N1: { status: 'PASSED', decision: 'PASS', summary: '当事方齐全，筛查未命中' },
     N2: { status: 'PASSED', decision: 'PASS', summary: '报价 v2 价格基础/有效期/承担方齐全' },
-    N3: { status: 'PASSED', decision: 'PASS', summary: '所有权保留与争议条款齐全' },
-    N4: { status: 'PASSED', decision: 'PASS', summary: 'CO-001 数量 8→10，客户与内部确认后生效' },
+    N3: { status: 'PASSED', decision: 'PASS', summary: '条款齐全，中信保限额覆盖合同金额' },
+    N4: { status: 'PASSED', decision: 'PASS', summary: 'CO-001 数量 8→10，客户与内部确认后生效；变更后再次核对中信保限额' },
     N5: { status: 'PASSED', decision: 'PASS', summary: '计划交期 2026-11-28 不晚于合同交期' },
     N6: { status: 'PASSED', decision: 'PASS', summary: '书面指示、内部审批、正本提单控制齐全' },
     N7: { status: 'PASSED', decision: 'PASS', summary: '终稿合同与单证字段一致' },
@@ -608,8 +656,8 @@ async function seedGateDemoCase(salesId: string) {
         create: nodeCreates({
           N1: { status: 'PASSED', decision: 'PASS', summary: '筛查通过' },
           N2: { status: 'PASSED', decision: 'PASS', summary: '报价要素齐全' },
-          N3: { status: 'PASSED', decision: 'PASS', summary: '合同条款齐全' },
-          N4: { status: 'PASSED', decision: 'PASS', summary: '无待确认变更' },
+          N3: { status: 'PASSED', decision: 'PASS', summary: '合同条款齐全，中信保限额覆盖合同金额' },
+          N4: { status: 'PASSED', decision: 'PASS', summary: '无待确认变更，已跳过变更管理' },
           N5: { status: 'PASSED', decision: 'PASS', summary: '计划交期不晚于合同交期' },
           N6: { status: 'IN_PROGRESS', decision: null, summary: '待补客户书面指示、内部审批、提单控制' },
         }),
@@ -661,6 +709,27 @@ async function seedGateDemoCase(salesId: string) {
       payload: JSON.stringify({ hits: [] }),
     },
   });
+  const evSin = await prisma.evidence.create({
+    data: {
+      caseId: c.id,
+      nodeCode: 'N3',
+      kind: 'SINOSURE_POLICY',
+      ref: 'SIN-HV-2026',
+      note: '中信保保单/限额批注',
+      payload: JSON.stringify({ insuredLimitFen: 8000000, currency: 'USD' }),
+    },
+  });
+  await prisma.sinosurePolicy.create({
+    data: {
+      caseId: c.id,
+      nodeCode: 'N3',
+      evidenceId: evSin.id,
+      evidenceRef: 'SIN-HV-2026',
+      fileName: '中信保限额批注-HarborView.pdf',
+      insuredLimitFen: 8000000,
+      currency: 'USD',
+    },
+  });
   await prisma.auditLog.create({
     data: {
       caseId: c.id,
@@ -669,6 +738,127 @@ async function seedGateDemoCase(salesId: string) {
       nodeCode: 'N1',
       detail: JSON.stringify({ scenario: 'GATE_DEMO' }),
     },
+  });
+  return c;
+}
+
+async function seedSinosureOverLimitCase(salesId: string) {
+  const fields = {
+    buyerName: 'Pacific Gear Ltd',
+    consigneeName: 'Pacific Gear Ltd',
+    goodsDesc: '工业泵',
+    amountFen: 8000000,
+    currency: 'USD',
+    incoterms: 'CIF',
+  };
+  const c = await prisma.tradeCase.create({
+    data: {
+      caseNo: 'DEMO-LIMIT',
+      title: '闽南泵业出口 Pacific Gear（中信保限额不足）',
+      scenario: 'SINOSURE_OVER_LIMIT',
+      status: 'IN_PROGRESS',
+      currentNode: 'N3',
+      overallRisk: 'LOW',
+      goodsDesc: '工业泵',
+      destination: 'Melbourne, AU',
+      amountFen: 8000000,
+      currency: 'USD',
+      parties: {
+        create: [
+          { role: 'BUYER', name: 'Pacific Gear Ltd', country: 'AU', isSameAsBuyer: true },
+          { role: 'PAYER', name: 'Pacific Gear Ltd', country: 'AU', isSameAsBuyer: true },
+          { role: 'CONSIGNEE', name: 'Pacific Gear Ltd', country: 'AU', isSameAsBuyer: true },
+        ],
+      },
+      nodes: {
+        create: nodeCreates({
+          N1: { status: 'PASSED', decision: 'PASS', summary: '筛查通过' },
+          N2: { status: 'PASSED', decision: 'PASS', summary: '报价要素齐全' },
+          N3: {
+            status: 'IN_PROGRESS',
+            decision: null,
+            summary: '合同已填，中信保限额低于合同金额，推进将被拒绝',
+          },
+        }),
+      },
+      contract: {
+        create: {
+          counterparty: 'Pacific Gear Ltd',
+          paymentTerms: 'T/T 30 days',
+          hasRetentionOfTitle: true,
+          hasDisputeClause: true,
+          isFinal: false,
+          deliveryDate: new Date('2026-12-20'),
+          quantity: 10,
+          unit: '台',
+          ...fields,
+          destination: 'Melbourne, AU',
+        },
+      },
+      quotes: {
+        create: {
+          version: 1,
+          status: 'ACTIVE',
+          priceBasis: 'EXCLUSIVE',
+          excludedItems: '海运费、保险',
+          validityUntil: new Date('2026-12-31'),
+          freightBearer: 'BUYER',
+          taxBearer: 'BUYER',
+          unitPriceFen: 800000,
+          quantity: 10,
+          amountFen: 8000000,
+          snapshotJson: JSON.stringify({ version: 1, priceBasis: 'EXCLUSIVE', amountFen: 8000000 }),
+        },
+      },
+    },
+  });
+  await prisma.kycReport.create({
+    data: {
+      caseId: c.id,
+      score: 0,
+      riskLevel: 'LOW',
+      summary: '未命中模拟清单。',
+      payload: JSON.stringify({ hits: [] }),
+    },
+  });
+  const evSin = await prisma.evidence.create({
+    data: {
+      caseId: c.id,
+      nodeCode: 'N3',
+      kind: 'SINOSURE_POLICY',
+      ref: 'SIN-PG-LOW',
+      note: '中信保保单/限额批注（限额不足演示）',
+      payload: JSON.stringify({ insuredLimitFen: 3000000, currency: 'USD' }),
+    },
+  });
+  await prisma.sinosurePolicy.create({
+    data: {
+      caseId: c.id,
+      nodeCode: 'N3',
+      evidenceId: evSin.id,
+      evidenceRef: 'SIN-PG-LOW',
+      fileName: '中信保限额批注-PacificGear.pdf',
+      insuredLimitFen: 3000000,
+      currency: 'USD',
+    },
+  });
+  await prisma.auditLog.createMany({
+    data: [
+      {
+        caseId: c.id,
+        actorId: salesId,
+        action: 'CASE_CREATED',
+        nodeCode: 'N1',
+        detail: JSON.stringify({ scenario: 'SINOSURE_OVER_LIMIT' }),
+      },
+      {
+        caseId: c.id,
+        actorId: salesId,
+        action: 'SINOSURE_SAVED',
+        nodeCode: 'N3',
+        detail: JSON.stringify({ evidenceRef: 'SIN-PG-LOW', insuredLimitFen: 3000000, contractAmountFen: 8000000 }),
+      },
+    ],
   });
   return c;
 }
