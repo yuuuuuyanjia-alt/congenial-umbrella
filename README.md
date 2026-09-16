@@ -104,7 +104,9 @@ docker compose up --build -d
 | API 健康检查 | http://127.0.0.1:3000/api/health |
 | 同源反代健康检查 | http://127.0.0.1:8080/api/health |
 
-`web`（nginx :8080）托管 `npm run build:h5` 产物，并把 `/api` 反代到 `api`（Nest :3000）。H5 默认 `VITE_API_BASE=/api`，与开发态 Vite 代理一致。
+`web`（nginx :8080）托管 `npm run build:h5` 产物，并把 `/api/` 反代到本机已发布的 API（`host.docker.internal:3000`，Compose 中 `extra_hosts: host.docker.internal:host-gateway`）。H5 默认 `VITE_API_BASE=/api`，与开发态 Vite 代理一致。
+
+部分沙箱 / 混合 iptables 宿主会过滤容器互访（`proxy_pass http://api:3000` 会超时），但经 Docker 宿主机网关访问已发布的 `:3000` 正常，因此默认走 host-gateway。若在普通 Docker 网桥上容器互访可用，可把 `miniapp/nginx.conf` 改回 `proxy_pass http://api:3000;`。
 
 SQLite 文件挂在 named volume `sqlite-data`（容器内 `DATABASE_URL=file:/data/demo.db`）。首次启动会 `prisma migrate deploy`，空库则自动 seed；之后重启会保留案件数据。
 
