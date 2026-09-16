@@ -15,7 +15,7 @@ export class AuditService {
     return this.prisma.auditLog.create({
       data: {
         caseId: input.caseId ?? null,
-        actorId: input.actorId ?? null,
+        actorId: input.actorId?.trim() ? input.actorId : null,
         action: input.action,
         nodeCode: input.nodeCode ?? null,
         detail: JSON.stringify(input.detail ?? {}),
