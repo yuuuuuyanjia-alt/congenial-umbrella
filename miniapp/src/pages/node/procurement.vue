@@ -155,18 +155,18 @@ function stubUpload() {
   ok.value = '已模拟挂载采购合同/PO 附件（演示占位）';
 }
 
-async function save() {
+async function save(silent = false) {
   err.value = '';
   await api.savePlan(id.value, { ...form });
   await reload();
-  ok.value = '采购/备货已保存';
+  if (!silent) ok.value = '采购/备货已保存';
 }
 
 async function runScreen() {
   err.value = '';
   ok.value = '';
   try {
-    await save();
+    await save(true);
     await api.screenSupplier(id.value);
     ok.value = '供应商筛查完成（模拟黑名单，无真实 API Key）';
     await reload();
@@ -180,7 +180,7 @@ async function tryAdvance() {
   err.value = '';
   ok.value = '';
   try {
-    await save();
+    await save(true);
     const r = await api.advance(id.value, 'N5');
     ok.value = `已推进至 ${r.nextNode}`;
     await reload();
