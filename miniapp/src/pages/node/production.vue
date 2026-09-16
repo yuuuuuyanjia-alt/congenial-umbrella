@@ -12,7 +12,7 @@
       <view class="label">登记延期</view>
       <switch :checked="form.delayRegistered" @change="(e: any) => (form.delayRegistered = e.detail.value)" />
       <view class="label">延期触发条件</view>
-      <view class="row" style="margin-top: 12rpx; flex-wrap: wrap">
+      <view class="chips">
         <view class="chip" :class="{ 'chip-on': form.delayTriggerCode === t.key }" v-for="t in triggers" :key="t.key" @click="form.delayTriggerCode = t.key">{{ t.label }}</view>
       </view>
       <view class="label">触发依据编号</view>

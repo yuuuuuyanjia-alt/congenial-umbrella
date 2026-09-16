@@ -6,7 +6,7 @@
     </view>
     <view class="card">
       <view class="label">价格基础</view>
-      <view class="row" style="margin-top: 12rpx; flex-wrap: wrap">
+      <view class="chips">
         <view class="chip" :class="{ 'chip-on': form.priceBasis === 'INCLUSIVE' }" @click="form.priceBasis = 'INCLUSIVE'">含项目</view>
         <view class="chip" :class="{ 'chip-on': form.priceBasis === 'EXCLUSIVE' }" @click="form.priceBasis = 'EXCLUSIVE'">不含项目</view>
         <view class="chip" :class="{ 'chip-on': form.priceBasis === 'MIXED' }" @click="form.priceBasis = 'MIXED'">部分含/不含</view>
@@ -18,12 +18,12 @@
       <view class="label">有效期（YYYY-MM-DD）</view>
       <input class="input" v-model="form.validityUntil" placeholder="2026-12-31" />
       <view class="label">运费承担</view>
-      <view class="row" style="margin-top: 12rpx">
+      <view class="chips">
         <view class="chip" :class="{ 'chip-on': form.freightBearer === 'SELLER' }" @click="form.freightBearer = 'SELLER'">卖方</view>
         <view class="chip" :class="{ 'chip-on': form.freightBearer === 'BUYER' }" @click="form.freightBearer = 'BUYER'">买方</view>
       </view>
       <view class="label">税费承担</view>
-      <view class="row" style="margin-top: 12rpx">
+      <view class="chips">
         <view class="chip" :class="{ 'chip-on': form.taxBearer === 'SELLER' }" @click="form.taxBearer = 'SELLER'">卖方</view>
         <view class="chip" :class="{ 'chip-on': form.taxBearer === 'BUYER' }" @click="form.taxBearer = 'BUYER'">买方</view>
       </view>

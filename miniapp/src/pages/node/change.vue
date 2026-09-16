@@ -6,7 +6,7 @@
     </view>
     <view class="card">
       <view class="label">变更字段</view>
-      <view class="row" style="margin-top: 12rpx; flex-wrap: wrap">
+      <view class="chips">
         <view class="chip" :class="{ 'chip-on': form.field === f.key }" v-for="f in fields" :key="f.key" @click="form.field = f.key">{{ f.label }}</view>
       </view>
       <view class="label">新值</view>

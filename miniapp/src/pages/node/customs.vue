@@ -18,7 +18,7 @@
       <view class="label">原产国</view>
       <input class="input" v-model="form.originCountry" />
       <view class="label">原产地证据类型</view>
-      <view class="row" style="margin-top: 12rpx; flex-wrap: wrap">
+      <view class="chips">
         <view class="chip" :class="{ 'chip-on': form.originEvidenceType === t }" v-for="t in ['CO', 'FORM_E', 'FORM_A', 'DECLARATION']" :key="t" @click="form.originEvidenceType = t">{{ t }}</view>
       </view>
       <view class="label">原产地证据编号</view>
