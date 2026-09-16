@@ -13,11 +13,11 @@
           </view>
         </view>
         <view>
-          <view class="badge" :class="remittanceClass(s.delivery?.code)">交货 {{ remittanceText(s.delivery?.code) }}</view>
+          <view class="badge" :class="remittanceClass(s.delivery?.code)">交货 {{ s.delivery?.label || remittanceText(s.delivery?.code) }}</view>
         </view>
       </view>
       <view class="chips">
-        <view class="badge" :class="remittanceClass(s.payment?.code)">付款 {{ remittanceText(s.payment?.code) }}</view>
+        <view class="badge" :class="remittanceClass(s.payment?.code)">付款 {{ s.payment?.label || remittanceText(s.payment?.code) }}</view>
       </view>
       <view class="muted" v-for="b in s.payable || []" :key="b.currency" style="margin-top: 8rpx">
         已付款 {{ money(b.settledFen, b.currency) }} · 还没付款 {{ money(b.openFen, b.currency) }}

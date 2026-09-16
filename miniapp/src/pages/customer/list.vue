@@ -13,7 +13,7 @@
           </view>
         </view>
         <view class="badge" :class="remittanceClass(c.collection?.code || c.remittance?.code)">
-          收款 {{ remittanceText(c.collection?.code || c.remittance?.code) }}
+          收款 {{ c.collection?.label || remittanceText(c.collection?.code || c.remittance?.code) }}
         </view>
       </view>
       <view class="muted" style="margin-top: 12rpx">
