@@ -123,8 +123,17 @@ export class AckChangeDto {
 }
 
 export class SavePlanDto {
+  @IsOptional() @IsString() supplierName?: string;
+  @IsOptional() @IsString() supplierNameEn?: string;
+  @IsOptional() @IsString() supplierCountry?: string;
+  @IsOptional() @IsString() supplierAddress?: string;
+  @IsOptional() @IsString() supplierRegistrationNo?: string;
+  @IsOptional() @IsString() poNo?: string;
+  @IsOptional() @IsString() plannedArrival?: string;
   @IsOptional() @IsString() plannedDelivery?: string;
   @IsOptional() @IsString() contractDelivery?: string;
+  @IsOptional() @IsString() poEvidenceStub?: string;
+  @IsOptional() @IsString() poFileName?: string;
   @IsOptional() @IsBoolean() delayRegistered?: boolean;
   @IsOptional() @IsString() delayTriggerCode?: string;
   @IsOptional() @IsString() delayTriggerRef?: string;

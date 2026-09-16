@@ -15,16 +15,16 @@
     <view class="btn" @click="runScreen">执行模拟筛查并生成 KYC 报告</view>
     <view class="btn" @click="tryAdvance">尝试推进本节点</view>
 
-    <view class="card" v-if="c.kycReports?.[0]">
+    <view class="card" v-if="kycReport">
       <view class="h2">KYC 报告</view>
       <view class="row">
-        <view>风险评分 {{ c.kycReports[0].score }}</view>
-        <view class="badge" :class="decisionClass(c.kycReports[0].riskLevel)">{{ decisionText(c.kycReports[0].riskLevel) }}</view>
+        <view>风险评分 {{ kycReport.score }}</view>
+        <view class="badge" :class="decisionClass(kycReport.riskLevel)">{{ decisionText(kycReport.riskLevel) }}</view>
       </view>
-      <view class="muted" style="margin-top: 8rpx">{{ c.kycReports[0].summary }}</view>
+      <view class="muted" style="margin-top: 8rpx">{{ kycReport.summary }}</view>
     </view>
 
-    <view class="card" v-for="h in c.hits" :key="h.id">
+    <view class="card" v-for="h in customerHits" :key="h.id">
       <view class="row">
         <view class="h2" style="margin: 0">{{ h.listCode }} · {{ h.listedName }}</view>
         <view class="badge" :class="decisionClass(h.riskLevel)">{{ h.confidence }} / {{ decisionText(h.disposition) }}</view>
@@ -39,7 +39,7 @@
 
 <script setup lang="ts">
 import { onLoad } from '@dcloudio/uni-app';
-import { reactive, ref } from 'vue';
+import { computed, reactive, ref } from 'vue';
 import { api, decisionClass, decisionText, toastErr } from '../../api';
 
 const id = ref('');
@@ -56,6 +56,10 @@ const forms = reactive<any>({
   PAYER: { name: '', country: '' },
   CONSIGNEE: { name: '', country: '' },
 });
+const kycReport = computed(() => (c.value?.kycReports || []).find((r: any) => r.nodeCode === 'N1') || (c.value?.kycReports || []).find((r: any) => !r.nodeCode));
+const customerHits = computed(() =>
+  (c.value?.hits || []).filter((h: any) => h.nodeCode !== 'N5' && h.party?.role !== 'SUPPLIER'),
+);
 
 onLoad(async (q) => {
   id.value = q?.id || '';

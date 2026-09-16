@@ -12,8 +12,8 @@ export class GateService {
       where: { id: caseId },
       include: {
         parties: true,
-        hits: true,
-        kycReports: { orderBy: { createdAt: 'desc' }, take: 1 },
+        hits: { include: { party: true } },
+        kycReports: { orderBy: { createdAt: 'desc' } },
         contract: true,
         shipment: true,
         documents: true,
@@ -22,7 +22,7 @@ export class GateService {
         nodes: true,
         quotes: { orderBy: { version: 'asc' } },
         changeOrders: { include: { diffs: true }, orderBy: { createdAt: 'asc' } },
-        productionPlan: true,
+        procurementPlan: true,
         customs: true,
         sinosurePolicies: { orderBy: { createdAt: 'asc' } },
       },
@@ -37,8 +37,19 @@ export class GateService {
     ]);
     return {
       parties: c.parties,
-      hits: c.hits,
-      kycRan: c.kycReports.length > 0,
+      hits: c.hits.map((h) => ({
+        listCode: h.listCode,
+        listedName: h.listedName,
+        matchedName: h.matchedName,
+        confidence: h.confidence,
+        riskLevel: h.riskLevel,
+        disposition: h.disposition,
+        score: h.score,
+        partyRole: h.party?.role ?? null,
+        nodeCode: h.nodeCode,
+      })),
+      kycRan: c.kycReports.some((k) => k.nodeCode === 'N1'),
+      supplierScreened: hasSupplierScreen(c.kycReports, c.parties),
       contract: c.contract,
       shipment: c.shipment,
       documents: c.documents.map(
@@ -56,7 +67,7 @@ export class GateService {
         ...co,
         diffs: co.diffs,
       })),
-      productionPlan: c.productionPlan,
+      procurementPlan: c.procurementPlan,
       customs: c.customs ? toCustomsSnap(c.customs) : null,
       hsTemplate: hsTpl ? toHsSnap(hsTpl) : null,
       costFloorFen: floor?.floorFen ?? null,
@@ -86,6 +97,24 @@ export class GateService {
 
 export function normGoods(desc: string) {
   return desc.replace(/\s+/g, '').toLowerCase();
+}
+
+function hasSupplierScreen(
+  reports: { nodeCode: string; payload: string }[],
+  parties: { role: string; name: string }[],
+): boolean {
+  const supplier = parties.find((p) => p.role === 'SUPPLIER' && p.name.trim());
+  if (!supplier) return false;
+  const want = supplier.name.trim().toUpperCase();
+  return reports.some((k) => {
+    if (k.nodeCode !== 'N5') return false;
+    try {
+      const payload = JSON.parse(k.payload) as { parties?: { name?: string }[] };
+      return (payload.parties || []).some((p) => String(p.name || '').trim().toUpperCase() === want);
+    } catch {
+      return false;
+    }
+  });
 }
 
 function toCustomsSnap(row: {

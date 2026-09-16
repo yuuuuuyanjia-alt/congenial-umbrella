@@ -2,14 +2,14 @@
   <view class="wrap">
     <view class="card">
       <view class="h2">案例工作台</view>
-      <view class="muted">对筛查命中做误报排除、确认真实、补充信息或持续监控。处置写入审计日志，并重算 N1 闸门。</view>
+      <view class="muted">对筛查命中做误报排除、确认真实、补充信息或持续监控。处置写入审计日志，并按命中所属节点重算 N1 客户 KYC 或 N5 供应商闸门。</view>
     </view>
     <view class="card" v-for="h in queue" :key="h.id">
       <view class="row">
         <view>
           <view class="muted">{{ h.case?.caseNo }}</view>
           <view class="h2" style="margin: 0">{{ h.matchedName }}</view>
-          <view class="muted">{{ h.listCode }} · {{ h.listedName }} · {{ h.confidence }}</view>
+          <view class="muted">{{ h.listCode }} · {{ h.listedName }} · {{ h.confidence }} · {{ h.nodeCode === 'N5' || h.party?.role === 'SUPPLIER' ? '国内供应商' : '客户当事方' }}</view>
         </view>
         <view class="badge" :class="decisionClass(h.riskLevel)">{{ decisionText(h.disposition) }}</view>
       </view>

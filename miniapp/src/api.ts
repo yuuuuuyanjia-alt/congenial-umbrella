@@ -34,6 +34,7 @@ export const api = {
   createCase: (body: unknown) => request('POST', '/cases', body),
   upsertParty: (id: string, body: unknown) => request('POST', `/cases/${id}/parties`, body),
   screen: (id: string) => request('POST', `/cases/${id}/nodes/N1/screen`),
+  screenSupplier: (id: string) => request('POST', `/cases/${id}/nodes/N5/screen`),
   saveContract: (id: string, body: unknown) => request('POST', `/cases/${id}/nodes/N3/contract`, body),
   saveSinosureN3: (id: string, body: unknown) => request('POST', `/cases/${id}/nodes/N3/sinosure`, body),
   saveSinosureN4: (id: string, body: unknown) => request('POST', `/cases/${id}/nodes/N4/sinosure`, body),
@@ -94,7 +95,7 @@ export function nodePage(code: string) {
   if (code === 'N2') return '/pages/node/quote';
   if (code === 'N3') return '/pages/node/contract';
   if (code === 'N4') return '/pages/node/change';
-  if (code === 'N5') return '/pages/node/production';
+  if (code === 'N5') return '/pages/node/procurement';
   if (code === 'N6') return '/pages/node/shipment';
   if (code === 'N7') return '/pages/node/docs';
   if (code === 'N8') return '/pages/node/customs';

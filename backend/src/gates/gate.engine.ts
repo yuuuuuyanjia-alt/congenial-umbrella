@@ -14,6 +14,7 @@ import {
   HISTORY_DEV_MEDIUM_PCT,
   HISTORY_DEV_SOFT_PCT,
   NodeStatus,
+  CUSTOMER_PARTY_ROLES,
   PartyRole,
   PartyRoleLabel,
   PriceBasis,
@@ -26,6 +27,7 @@ import {
   ChangeDiffSnap,
   ChangeOrderSnap,
   GateResult,
+  HitSnap,
   QuoteSnap,
   ShipmentSnap,
   SinosurePolicySnap,
@@ -69,9 +71,21 @@ export function evaluateNode(nodeCode: string, snap: CaseSnapshot): GateResult {
   }
 }
 
+export function isSupplierHit(h: HitSnap): boolean {
+  return h.partyRole === PartyRole.SUPPLIER || h.nodeCode === 'N5';
+}
+
+export function customerHitsOf(hits: HitSnap[]): HitSnap[] {
+  return hits.filter((h) => !isSupplierHit(h));
+}
+
+export function supplierHitsOf(hits: HitSnap[]): HitSnap[] {
+  return hits.filter((h) => isSupplierHit(h));
+}
+
 export function evaluateN1(snap: CaseSnapshot): GateResult {
   const r = emptyResult('N1');
-  for (const role of [PartyRole.BUYER, PartyRole.PAYER, PartyRole.CONSIGNEE]) {
+  for (const role of CUSTOMER_PARTY_ROLES) {
     if (!snap.parties.some((p) => p.role === role && p.name.trim())) {
       r.missing.push(`N1_PARTY_${role}`);
       r.reasons.push(`缺少当事方：${PartyRoleLabel[role]}`);
@@ -82,37 +96,30 @@ export function evaluateN1(snap: CaseSnapshot): GateResult {
     r.reasons.push('尚未完成制裁/不可靠实体筛查');
   }
 
-  const openHits = snap.hits.filter(
-    (h) => h.disposition === Disposition.OPEN || h.disposition === Disposition.CONFIRMED_TRUE,
-  );
-  const high = openHits.filter((h) => h.riskLevel === 'HIGH' && h.confidence === 'HIGH');
-  const confirmed = openHits.filter((h) => h.disposition === Disposition.CONFIRMED_TRUE);
-  const medium = openHits.filter((h) => h.riskLevel === 'MEDIUM' || h.confidence === 'MEDIUM');
-  const low = openHits.filter((h) => h.riskLevel === 'LOW' || h.confidence === 'LOW');
-
-  if (high.length || confirmed.length) {
-    r.decision = Decision.HARD_BLOCK;
-    r.canProceed = false;
-    r.missing.push('N1_HIGH_CONFIDENCE_HIT');
-    r.reasons.push('高置信命中制裁/不可靠实体清单，硬拦截，禁止进入后续交易节点');
+  const buckets = openHitBuckets(customerHitsOf(snap.hits));
+  if (
+    applyHighScreening(
+      r,
+      buckets,
+      'N1_HIGH_CONFIDENCE_HIT',
+      '高置信命中制裁/不可靠实体清单，硬拦截，禁止进入后续交易节点',
+    )
+  ) {
     return r;
   }
-  if (r.missing.length) {
-    r.decision = Decision.HARD_BLOCK;
-    r.canProceed = false;
+  if (r.missing.length) return blockMissing(r);
+  if (
+    applyMediumScreening(
+      r,
+      buckets,
+      'N1_REVIEW_PENDING',
+      '中风险命中，进入案例工作台审核队列，通过前不得推进',
+    )
+  ) {
     return r;
   }
-  if (medium.length) {
-    r.decision = Decision.REVIEW;
-    r.canProceed = false;
-    r.missing.push('N1_REVIEW_PENDING');
-    r.reasons.push('中风险命中，进入案例工作台审核队列，通过前不得推进');
-    return r;
-  }
-  if (low.length) {
-    r.decision = Decision.SOFT_ALERT;
-    r.canProceed = true;
-    r.alerts.push('低置信/低风险命中：软提示，不阻断业务，须保留审计痕迹');
+  if (applyLowScreeningAlert(r, buckets, '低置信/低风险命中：软提示，不阻断业务，须保留审计痕迹')) {
+    r.reasons.push('当事方齐全，筛查仅低置信软提示');
     return r;
   }
   r.decision = Decision.PASS;
@@ -274,7 +281,7 @@ export function evaluateN4(snap: CaseSnapshot): GateResult {
     (c) => c.status !== ChangeStatus.APPLIED && c.status !== ChangeStatus.SUPERSEDED,
   );
   if (!open.length && !(snap.changeOrders || []).length) {
-    r.reasons.push('无待确认变更，允许进入生产/备货排期');
+    r.reasons.push('无待确认变更，允许进入国内采购/备货');
     return r;
   }
 
@@ -343,33 +350,69 @@ export function evaluateN5(snap: CaseSnapshot): GateResult {
     r.reasons.push('存在未生效变更单，须先完成变更管理（客户确认 + 内部确认）');
     return blockMissing(r);
   }
-  const plan = snap.productionPlan;
+  const plan = snap.procurementPlan;
   if (!plan) {
     r.missing.push('N5_PLAN');
-    r.reasons.push('尚未录入生产/备货排期');
+    r.reasons.push('尚未录入国内采购/备货信息');
     return blockMissing(r);
   }
-  if (!plan.plannedDelivery) {
-    r.missing.push('N5_PLANNED_DELIVERY');
-    r.reasons.push('未填写计划交期');
+  const supplier = snap.parties.find((p) => p.role === PartyRole.SUPPLIER && p.name.trim());
+  if (!supplier) {
+    r.missing.push('N5_SUPPLIER');
+    r.reasons.push('缺少国内供应商名称');
+  }
+  if (!plan.poNo?.trim()) {
+    r.missing.push('N5_PO_NO');
+    r.reasons.push('未填写采购订单/采购合同编号');
+  }
+  if (!plan.plannedArrival) {
+    r.missing.push('N5_PLANNED_ARRIVAL');
+    r.reasons.push('未填写供应商计划到货/备妥日期');
   }
   const contractDelivery = plan.contractDelivery || snap.contract?.deliveryDate;
   if (!contractDelivery) {
     r.missing.push('N5_CONTRACT_DELIVERY');
-    r.reasons.push('缺少合同交货期，无法核对排期');
+    r.reasons.push('缺少客户合同交货期，无法核对采购到货');
+  }
+  if (!snap.supplierScreened) {
+    r.missing.push('N5_SCREENING_NOT_RUN');
+    r.reasons.push('尚未完成国内供应商制裁/不可靠实体筛查');
+  }
+
+  const buckets = openHitBuckets(supplierHitsOf(snap.hits));
+  if (
+    applyHighScreening(
+      r,
+      buckets,
+      'N5_HIGH_CONFIDENCE_HIT',
+      '国内供应商高置信命中制裁/不可靠实体清单，硬拦截，禁止推进',
+    )
+  ) {
+    return r;
   }
   if (r.missing.length) return blockMissing(r);
+  if (
+    applyMediumScreening(
+      r,
+      buckets,
+      'N5_REVIEW_PENDING',
+      '国内供应商中风险命中，进入案例工作台审核队列，通过前不得推进',
+    )
+  ) {
+    return r;
+  }
 
-  const planned = startOfDay(toDate(plan.plannedDelivery as string | Date));
+  const planned = startOfDay(toDate(plan.plannedArrival as string | Date));
   const contracted = startOfDay(toDate(contractDelivery as string | Date));
   if (planned.getTime() <= contracted.getTime()) {
-    r.reasons.push('计划交期不晚于合同交货期');
+    r.reasons.push('采购计划到货不晚于客户合同交货期');
+    applyLowScreeningAlert(r, buckets, '国内供应商低置信/低风险命中：软提示，不阻断，须保留审计痕迹');
     return r;
   }
 
   if (!plan.delayRegistered) {
     r.missing.push('N5_DELAY_NOT_REGISTERED');
-    r.reasons.push('计划交期晚于合同交货期，须登记延期');
+    r.reasons.push('采购计划到货晚于客户合同交货期，须登记延期');
   }
   const validTrigger =
     !!plan.delayTriggerCode &&
@@ -384,10 +427,11 @@ export function evaluateN5(snap: CaseSnapshot): GateResult {
     r.decision = Decision.REVIEW;
     r.canProceed = false;
     r.missing.push('N5_DELAY_WITHOUT_CONSENT');
-    r.reasons.push('延期未经客户同意（缺少可追溯证据编号），中风险，禁止推进');
+    r.reasons.push('采购到货延期未经客户同意（缺少可追溯证据编号），中风险，禁止推进');
     return r;
   }
-  r.reasons.push('已登记结构化延期且客户同意证据可追溯');
+  r.reasons.push('已登记结构化采购到货延期且客户同意证据可追溯');
+  applyLowScreeningAlert(r, buckets, '国内供应商低置信/低风险命中：软提示，不阻断，须保留审计痕迹');
   return r;
 }
 
@@ -645,6 +689,46 @@ function blockMissing(r: GateResult): GateResult {
   r.decision = Decision.HARD_BLOCK;
   r.canProceed = false;
   return r;
+}
+
+function openHitBuckets(hits: HitSnap[]) {
+  const openHits = hits.filter(
+    (h) => h.disposition === Disposition.OPEN || h.disposition === Disposition.CONFIRMED_TRUE,
+  );
+  return {
+    high: openHits.filter((h) => h.riskLevel === 'HIGH' && h.confidence === 'HIGH'),
+    confirmed: openHits.filter((h) => h.disposition === Disposition.CONFIRMED_TRUE),
+    medium: openHits.filter((h) => h.riskLevel === 'MEDIUM' || h.confidence === 'MEDIUM'),
+    low: openHits.filter((h) => h.riskLevel === 'LOW' || h.confidence === 'LOW'),
+  };
+}
+
+type HitBuckets = ReturnType<typeof openHitBuckets>;
+
+function applyHighScreening(r: GateResult, buckets: HitBuckets, missing: string, reason: string): boolean {
+  if (!buckets.high.length && !buckets.confirmed.length) return false;
+  r.decision = Decision.HARD_BLOCK;
+  r.canProceed = false;
+  r.missing.push(missing);
+  r.reasons.push(reason);
+  return true;
+}
+
+function applyMediumScreening(r: GateResult, buckets: HitBuckets, missing: string, reason: string): boolean {
+  if (!buckets.medium.length) return false;
+  r.decision = Decision.REVIEW;
+  r.canProceed = false;
+  r.missing.push(missing);
+  r.reasons.push(reason);
+  return true;
+}
+
+function applyLowScreeningAlert(r: GateResult, buckets: HitBuckets, alert: string): boolean {
+  if (!buckets.low.length) return false;
+  r.decision = Decision.SOFT_ALERT;
+  r.canProceed = true;
+  r.alerts.push(alert);
+  return true;
 }
 
 function activeQuote(snap: CaseSnapshot): QuoteSnap | undefined {

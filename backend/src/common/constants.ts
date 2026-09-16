@@ -34,11 +34,11 @@ export const NODE_CATALOG = [
   },
   {
     code: 'N5',
-    name: '生产/备货排期',
+    name: '国内采购/备货',
     mvp: true,
     isHardGate: false,
     isStub: false,
-    summary: '计划交期不得晚于合同交期，除非已登记结构化延期并保留客户同意证据。',
+    summary: '登记国内供应商、采购合同/PO 与计划到货；供应商须过制裁/不可靠实体筛查；计划到货不得晚于客户合同交期，除非已登记结构化延期并保留客户同意证据。',
   },
   {
     code: 'N6',
@@ -82,13 +82,17 @@ export const PartyRole = {
   BUYER: 'BUYER',
   PAYER: 'PAYER',
   CONSIGNEE: 'CONSIGNEE',
+  SUPPLIER: 'SUPPLIER',
 } as const;
 
 export const PartyRoleLabel: Record<string, string> = {
   BUYER: '买方',
   PAYER: '付款人',
   CONSIGNEE: '收货人',
+  SUPPLIER: '国内供应商',
 };
+
+export const CUSTOMER_PARTY_ROLES = [PartyRole.BUYER, PartyRole.PAYER, PartyRole.CONSIGNEE] as const;
 
 export const ListCode = {
   OFAC: 'OFAC',
@@ -328,7 +332,7 @@ export const DelayTriggerLabel: Record<string, string> = {
   FORCE_MAJEURE: '不可抗力',
   PORT_CONGESTION: '港口拥堵',
   MATERIAL_SHORTAGE: '原料短缺',
-  CAPACITY: '产能不足',
+  CAPACITY: '供应商交期不足',
   CUSTOMER_REQUEST: '客户要求变更交期',
   LOGISTICS: '物流运力不足',
 };
@@ -367,6 +371,7 @@ export const EvidenceKind = {
   INTERNAL_ACK: 'INTERNAL_ACK',
   CHANGE_APPROVAL: 'CHANGE_APPROVAL',
   DELAY_CONSENT: 'DELAY_CONSENT',
+  PROCUREMENT_PO: 'PROCUREMENT_PO',
   ORIGIN_CERT: 'ORIGIN_CERT',
   EPORT_SYNC: 'EPORT_SYNC',
   SINOSURE_POLICY: 'SINOSURE_POLICY',

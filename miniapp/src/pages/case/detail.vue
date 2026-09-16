@@ -59,7 +59,7 @@ async function load() {
 }
 
 function role(r: string) {
-  return ({ BUYER: '买方', PAYER: '付款人', CONSIGNEE: '收货人' } as any)[r] || r;
+  return ({ BUYER: '买方', PAYER: '付款人', CONSIGNEE: '收货人', SUPPLIER: '国内供应商' } as any)[r] || r;
 }
 
 function openNode(n: any) {
