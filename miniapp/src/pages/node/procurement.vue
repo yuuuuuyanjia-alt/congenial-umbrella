@@ -29,6 +29,18 @@
       <input class="input" v-model="form.contractDelivery" placeholder="YYYY-MM-DD" />
       <view class="label">供应商计划到货 / 备妥日期</view>
       <input class="input" v-model="form.plannedArrival" placeholder="YYYY-MM-DD" />
+      <view class="label">实际到货日期</view>
+      <input class="input" v-model="form.actualArrival" placeholder="YYYY-MM-DD，用于判断是否按期交货" />
+      <view class="label">采购金额（元）</view>
+      <input class="input" type="digit" v-model="form.amountYuan" placeholder="采购合同/PO 金额" />
+      <view class="label">币种</view>
+      <input class="input" v-model="form.currency" placeholder="CNY" />
+      <view class="label">已付货款（元）</view>
+      <input class="input" type="digit" v-model="form.paidYuan" placeholder="已付给供应商的金额" />
+      <view class="label">约定付款日期</view>
+      <input class="input" v-model="form.paymentDueAt" placeholder="YYYY-MM-DD" />
+      <view class="label">付款日期（付清或最近一次）</view>
+      <input class="input" v-model="form.paidAt" placeholder="YYYY-MM-DD" />
       <view class="label">采购合同/PO 附件（可选，模拟上传）</view>
       <input class="input" v-model="form.poEvidenceStub" placeholder="如 PO-2026-011.pdf" />
       <view class="btn btn-ghost" @click="stubUpload">模拟上传采购合同</view>
@@ -79,7 +91,7 @@
 <script setup lang="ts">
 import { onLoad } from '@dcloudio/uni-app';
 import { computed, reactive, ref } from 'vue';
-import { api, decisionClass, decisionText, toastErr } from '../../api';
+import { api, decisionClass, decisionText, fenToYuan, toastErr, yuanToFen } from '../../api';
 
 const id = ref('');
 const c = ref<any>(null);
@@ -102,6 +114,12 @@ const form = reactive({
   poNo: '',
   contractDelivery: '2026-11-30',
   plannedArrival: '2026-11-28',
+  actualArrival: '',
+  amountYuan: '',
+  currency: 'CNY',
+  paidYuan: '',
+  paymentDueAt: '',
+  paidAt: '',
   poEvidenceStub: '',
   delayRegistered: false,
   delayTriggerCode: '',
@@ -140,6 +158,12 @@ async function reload() {
     form.poNo = p.poNo || form.poNo;
     form.contractDelivery = String(p.contractDelivery || form.contractDelivery).slice(0, 10);
     form.plannedArrival = String(p.plannedArrival || '').slice(0, 10) || form.plannedArrival;
+    form.actualArrival = String(p.actualArrival || '').slice(0, 10);
+    form.amountYuan = fenToYuan(p.amountFen);
+    form.currency = p.currency || 'CNY';
+    form.paidYuan = fenToYuan(p.paidFen);
+    form.paymentDueAt = String(p.paymentDueAt || '').slice(0, 10);
+    form.paidAt = String(p.paidAt || '').slice(0, 10);
     form.poEvidenceStub = p.poEvidenceStub || '';
     form.delayRegistered = !!p.delayRegistered;
     form.delayTriggerCode = p.delayTriggerCode || '';
@@ -157,7 +181,14 @@ function stubUpload() {
 
 async function save(silent = false) {
   err.value = '';
-  await api.savePlan(id.value, { ...form });
+  await api.savePlan(id.value, {
+    ...form,
+    amountFen: form.amountYuan === '' ? undefined : yuanToFen(form.amountYuan),
+    paidFen: form.paidYuan === '' ? undefined : yuanToFen(form.paidYuan),
+    actualArrival: form.actualArrival || undefined,
+    paymentDueAt: form.paymentDueAt || undefined,
+    paidAt: form.paidAt || undefined,
+  });
   await reload();
   if (!silent) ok.value = '采购/备货已保存';
 }

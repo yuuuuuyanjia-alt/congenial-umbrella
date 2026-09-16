@@ -37,6 +37,9 @@ import {
   UpsertPartyDto,
 } from './dto';
 import { GateResult } from '../common/types';
+import { CustomersService } from '../customers/customers.service';
+import { derivePaymentDueAt } from '../customers/remittance';
+import { SuppliersService } from '../suppliers/suppliers.service';
 
 @Injectable()
 export class CasesService {
@@ -45,6 +48,8 @@ export class CasesService {
     private readonly audit: AuditService,
     private readonly screening: ScreeningService,
     private readonly gates: GateService,
+    private readonly customers: CustomersService,
+    private readonly suppliers: SuppliersService,
   ) {}
 
   async list() {
@@ -143,9 +148,23 @@ export class CasesService {
     const existing = await this.prisma.party.findFirst({
       where: { caseId, role: dto.role },
     });
+    let customerId: string | undefined;
+    let supplierId: string | undefined;
+    if (dto.role === PartyRole.SUPPLIER) {
+      const supplier = await this.suppliers.findOrCreateFromParty(dto);
+      supplierId = supplier?.id;
+    } else {
+      const customer = await this.customers.findOrCreateFromParty(dto);
+      customerId = customer?.id;
+    }
+    const data = {
+      ...dto,
+      ...(customerId ? { customerId } : {}),
+      ...(supplierId ? { supplierId } : {}),
+    };
     const party = existing
-      ? await this.prisma.party.update({ where: { id: existing.id }, data: dto })
-      : await this.prisma.party.create({ data: { caseId, ...dto } });
+      ? await this.prisma.party.update({ where: { id: existing.id }, data })
+      : await this.prisma.party.create({ data: { caseId, ...data } });
     const nodeCode = dto.role === PartyRole.SUPPLIER ? 'N5' : 'N1';
     await this.touchNode(caseId, nodeCode, NodeStatus.IN_PROGRESS);
     await this.audit.append({
@@ -168,10 +187,12 @@ export class CasesService {
 
   async saveContract(caseId: string, dto: SaveContractDto, actorId?: string) {
     await this.ensureCase(caseId);
-    const { deliveryDate, ...rest } = dto;
+    const { deliveryDate, paymentDueAt, ...rest } = dto;
+    const parsedDelivery = parseDate(deliveryDate);
     const data = {
       ...rest,
-      deliveryDate: parseDate(deliveryDate),
+      deliveryDate: parsedDelivery,
+      paymentDueAt: parseDate(paymentDueAt) ?? derivePaymentDueAt(parsedDelivery, dto.paymentTerms),
     };
     const row = await this.prisma.contract.upsert({
       where: { caseId },
@@ -610,18 +631,25 @@ export class CasesService {
         poEvidenceId = ev.id;
       }
     }
+    const existingPlan = await this.prisma.procurementPlan.findUnique({ where: { caseId } });
     const data = {
       poNo: dto.poNo || null,
       plannedArrival: parseDate(dto.plannedArrival || dto.plannedDelivery),
       contractDelivery: parseDate(dto.contractDelivery) || contract?.deliveryDate || null,
       poEvidenceStub: poStub || null,
-      poEvidenceId: poEvidenceId || null,
+      poEvidenceId: poEvidenceId || existingPlan?.poEvidenceId || null,
       delayRegistered: dto.delayRegistered ?? false,
       delayTriggerCode: dto.delayTriggerCode,
       delayTriggerRef: dto.delayTriggerRef,
       delayReason: dto.delayReason,
       customerConsent: dto.customerConsent ?? false,
-      customerConsentEvidenceId: consentId,
+      customerConsentEvidenceId: consentId || existingPlan?.customerConsentEvidenceId || null,
+      actualArrival: parseDate(dto.actualArrival) ?? existingPlan?.actualArrival ?? null,
+      amountFen: dto.amountFen ?? existingPlan?.amountFen ?? null,
+      currency: dto.currency || existingPlan?.currency || 'CNY',
+      paidFen: dto.paidFen ?? existingPlan?.paidFen ?? 0,
+      paymentDueAt: parseDate(dto.paymentDueAt) ?? existingPlan?.paymentDueAt ?? null,
+      paidAt: parseDate(dto.paidAt) ?? existingPlan?.paidAt ?? null,
     };
     const row = await this.prisma.procurementPlan.upsert({
       where: { caseId },
@@ -782,10 +810,14 @@ export class CasesService {
     await this.ensureCase(caseId);
     const isThirdParty =
       dto.isThirdParty ?? dto.payerName.trim().toUpperCase() !== dto.buyerName.trim().toUpperCase();
+    const { receivedAt, ...rest } = dto;
+    const existing = await this.prisma.settlement.findUnique({ where: { caseId } });
+    const parsedReceived =
+      parseDate(receivedAt) ?? existing?.receivedAt ?? (dto.hasRemittanceMemo ? new Date() : null);
     const row = await this.prisma.settlement.upsert({
       where: { caseId },
-      create: { caseId, ...dto, isThirdParty },
-      update: { ...dto, isThirdParty },
+      create: { caseId, ...rest, isThirdParty, receivedAt: parsedReceived },
+      update: { ...rest, isThirdParty, receivedAt: parsedReceived },
     });
     await this.touchNode(caseId, 'N9', NodeStatus.IN_PROGRESS);
     await this.audit.append({

@@ -11,6 +11,8 @@
       <input class="input" v-model="form.payerName" />
       <view class="label">汇款附言 / 水单编号</view>
       <input class="input" v-model="form.remittanceMemoRef" />
+      <view class="label">实际到账日期（年-月-日）</view>
+      <input class="input" v-model="form.receivedAt" placeholder="用于判断是否按期回款" />
       <view class="label">已附汇款附言</view>
       <switch :checked="form.hasRemittanceMemo" @change="(e: any) => (form.hasRemittanceMemo = e.detail.value)" />
       <view class="label">单证一致证明</view>
@@ -39,6 +41,7 @@ const form = reactive({
   buyerName: '',
   payerName: '',
   remittanceMemoRef: '',
+  receivedAt: '',
   hasRemittanceMemo: false,
   hasDocConsistencyProof: false,
   hasReleaseApproval: false,
@@ -52,11 +55,13 @@ onLoad(async (q) => {
   form.buyerName = c.settlement?.buyerName || buyer;
   form.payerName = c.settlement?.payerName || buyer;
   if (c.settlement) Object.assign(form, c.settlement);
+  form.receivedAt = (c.settlement?.receivedAt || '').toString().slice(0, 10);
 });
 
 async function save() {
   await api.saveSettlement(id.value, {
     ...form,
+    receivedAt: form.receivedAt || undefined,
     isThirdParty: form.payerName.trim() !== form.buyerName.trim(),
     hasRemittanceMemo: !!form.remittanceMemoRef && form.hasRemittanceMemo,
   });

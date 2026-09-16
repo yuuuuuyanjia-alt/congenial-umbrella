@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import { NODE_CATALOG } from '../src/common/constants';
+import { derivePaymentDueAt } from '../src/customers/remittance';
 
 const prisma = new PrismaClient();
 
@@ -103,6 +104,8 @@ async function main() {
   await prisma.kycReport.deleteMany();
   await prisma.screeningHit.deleteMany();
   await prisma.party.deleteMany();
+  await prisma.supplier.deleteMany();
+  await prisma.customer.deleteMany();
   await prisma.caseNode.deleteMany();
   await prisma.tradeCase.deleteMany();
   await prisma.blacklistEntry.deleteMany();
@@ -140,6 +143,8 @@ async function main() {
   });
 
   const pass = await seedPassCase(sales.id, approver.id, compliance.id);
+  const nordLate = await seedNordlichtLateCase(sales.id, approver.id);
+  const nordOpen = await seedNordlichtOpenCase(sales.id, approver.id);
   const soft = await seedSoftCase(sales.id, compliance.id);
   const block = await seedBlockCase(sales.id, compliance.id);
   const gate = await seedGateDemoCase(sales.id);
@@ -147,8 +152,14 @@ async function main() {
   const limit = await seedSinosureOverLimitCase(sales.id);
   const supplierBlock = await seedSupplierBlockCase(sales.id);
 
+  await attachBuyersToCustomers();
+  await attachSuppliers();
+  await fillPaymentDueDates();
+
   console.log('种子数据已写入：');
   console.log('  PASS      ', pass.caseNo, pass.id);
+  console.log('  NORD_LATE ', nordLate.caseNo, nordLate.id, '（Nordlicht 逾期收汇）');
+  console.log('  NORD_OPEN ', nordOpen.caseNo, nordOpen.id, '（Nordlicht 收汇未到期）');
   console.log('  SOFT_ALERT', soft.caseNo, soft.id);
   console.log('  HARD_BLOCK', block.caseNo, block.id);
   console.log('  GATE_DEMO ', gate.caseNo, gate.id, '（N6 缺证据，用于闸门拒绝演示）');
@@ -281,6 +292,7 @@ async function seedPassCase(salesId: string, approverId: string, complianceId: s
           hasDocConsistencyProof: true,
           hasReleaseApproval: true,
           amountFen: 12800000,
+          receivedAt: new Date('2026-09-10T00:00:00.000Z'),
         },
       },
       kycReports: {
@@ -329,8 +341,14 @@ async function seedPassCase(salesId: string, approverId: string, complianceId: s
           poNo: 'PO-BH-2026-011',
           plannedArrival: new Date('2026-11-28'),
           contractDelivery: new Date('2026-11-30'),
+          actualArrival: new Date('2026-11-25'),
           poEvidenceStub: 'PO-BH-2026-011.pdf',
           delayRegistered: false,
+          amountFen: 82000000,
+          currency: 'CNY',
+          paidFen: 82000000,
+          paymentDueAt: new Date('2026-09-01T00:00:00.000Z'),
+          paidAt: new Date('2026-08-20T00:00:00.000Z'),
         },
       },
       customs: {
@@ -739,6 +757,10 @@ async function seedGateDemoCase(salesId: string) {
           contractDelivery: new Date('2026-12-15'),
           poEvidenceStub: 'PO-HV-2026-088.pdf',
           delayRegistered: false,
+          amountFen: 35000000,
+          currency: 'CNY',
+          paidFen: 0,
+          paymentDueAt: new Date('2026-12-31T00:00:00.000Z'),
         },
       },
     },
@@ -885,6 +907,11 @@ async function seedFobNoBlCase(salesId: string, approverId: string) {
           contractDelivery: new Date('2026-12-20'),
           poEvidenceStub: 'PO-PT-FOB-004.pdf',
           delayRegistered: false,
+          amountFen: 21000000,
+          currency: 'CNY',
+          paidFen: 21000000,
+          paymentDueAt: new Date('2026-12-01T00:00:00.000Z'),
+          paidAt: new Date('2026-09-01T00:00:00.000Z'),
         },
       },
     },
@@ -1137,6 +1164,10 @@ async function seedSupplierBlockCase(salesId: string) {
           contractDelivery: new Date('2026-12-10'),
           poEvidenceStub: 'PO-UNREL-2026-001.pdf',
           delayRegistered: false,
+          amountFen: 60000000,
+          currency: 'CNY',
+          paidFen: 0,
+          paymentDueAt: new Date('2026-06-01T00:00:00.000Z'),
         },
       },
     },
@@ -1211,6 +1242,331 @@ async function seedSupplierBlockCase(salesId: string) {
     ],
   });
   return c;
+}
+
+async function seedNordlichtLateCase(salesId: string, approverId: string) {
+  const fields = {
+    buyerName: 'Nordlicht GmbH',
+    consigneeName: 'Nordlicht GmbH',
+    goodsDesc: '数控机床配件',
+    amountFen: 4500000,
+    currency: 'USD',
+    incoterms: 'CIF',
+  };
+  const c = await prisma.tradeCase.create({
+    data: {
+      caseNo: 'DEMO-NORD-LATE',
+      title: '北海机电出口德国 Nordlicht（历史订单，逾期收汇）',
+      scenario: 'OVERDUE_SETTLEMENT',
+      status: 'COMPLETED',
+      currentNode: 'N9',
+      overallRisk: 'LOW',
+      goodsDesc: '数控机床配件',
+      destination: 'Hamburg, DE',
+      amountFen: 4500000,
+      currency: 'USD',
+      parties: {
+        create: [
+          { role: 'BUYER', name: 'Nordlicht GmbH', country: 'DE', isSameAsBuyer: true },
+          { role: 'PAYER', name: 'Nordlicht GmbH', country: 'DE', isSameAsBuyer: true },
+          { role: 'CONSIGNEE', name: 'Nordlicht GmbH', country: 'DE', isSameAsBuyer: true },
+          {
+            role: 'SUPPLIER',
+            name: '苏州精工机械有限公司',
+            country: 'CN',
+            registrationNo: '91320500MA1BHTEST',
+            isSameAsBuyer: false,
+          },
+        ],
+      },
+      nodes: { create: nodeCreates(passNodes()) },
+      contract: {
+        create: {
+          counterparty: 'Nordlicht GmbH',
+          paymentTerms: 'T/T 30 days',
+          hasRetentionOfTitle: true,
+          hasDisputeClause: true,
+          isFinal: true,
+          deliveryDate: new Date('2026-03-15T00:00:00.000Z'),
+          paymentDueAt: new Date('2026-04-14T00:00:00.000Z'),
+          quantity: 4,
+          unit: '套',
+          ...fields,
+          destination: 'Hamburg',
+        },
+      },
+      shipment: {
+        create: {
+          hasCustomerWrittenInstruction: true,
+          instructionRef: 'INST-NL-2026-003',
+          hasInternalApproval: true,
+          approverId,
+          blControl: 'ORIGINAL',
+          blNo: 'COSU7700112',
+          vessel: 'COSCO SHIPPING',
+          consigneeOnBl: 'Nordlicht GmbH',
+        },
+      },
+      settlement: {
+        create: {
+          payerName: 'Nordlicht GmbH',
+          buyerName: 'Nordlicht GmbH',
+          isThirdParty: false,
+          hasRemittanceMemo: true,
+          remittanceMemoRef: 'SWIFT MT103 / INV-NL-003',
+          hasDocConsistencyProof: true,
+          hasReleaseApproval: true,
+          amountFen: 2000000,
+          receivedAt: new Date('2026-05-20T00:00:00.000Z'),
+        },
+      },
+      procurementPlan: {
+        create: {
+          poNo: 'PO-BH-2026-003',
+          plannedArrival: new Date('2026-03-10T00:00:00.000Z'),
+          contractDelivery: new Date('2026-03-15T00:00:00.000Z'),
+          actualArrival: new Date('2026-03-22T00:00:00.000Z'),
+          poEvidenceStub: 'PO-BH-2026-003.pdf',
+          delayRegistered: true,
+          delayTriggerCode: 'CAPACITY',
+          delayReason: '供应商交期不足，实际到货晚于计划',
+          amountFen: 28000000,
+          currency: 'CNY',
+          paidFen: 10000000,
+          paymentDueAt: new Date('2026-04-30T00:00:00.000Z'),
+          paidAt: new Date('2026-05-10T00:00:00.000Z'),
+        },
+      },
+      kycReports: {
+        create: {
+          nodeCode: 'N1',
+          score: 0,
+          riskLevel: 'LOW',
+          summary: '未命中模拟清单。',
+          payload: JSON.stringify({ hits: [], disclaimer: 'mock' }),
+        },
+      },
+    },
+  });
+  await attachClearSupplierScreen(c.id, '苏州精工机械有限公司');
+  const evSin = await prisma.evidence.create({
+    data: {
+      caseId: c.id,
+      nodeCode: 'N3',
+      kind: 'SINOSURE_POLICY',
+      ref: 'SIN-NL-2026',
+      note: '中信保保单/限额批注',
+      payload: JSON.stringify({ insuredLimitFen: 15000000, currency: 'USD' }),
+    },
+  });
+  await prisma.sinosurePolicy.create({
+    data: {
+      caseId: c.id,
+      nodeCode: 'N3',
+      evidenceId: evSin.id,
+      evidenceRef: 'SIN-NL-2026',
+      fileName: '中信保限额批注-Nordlicht.pdf',
+      insuredLimitFen: 15000000,
+      currency: 'USD',
+    },
+  });
+  await prisma.auditLog.createMany({
+    data: [
+      { caseId: c.id, actorId: salesId, action: 'CASE_CREATED', nodeCode: 'N1', detail: JSON.stringify({ scenario: 'OVERDUE_SETTLEMENT' }) },
+      { caseId: c.id, actorId: salesId, action: 'NODE_ADVANCED', nodeCode: 'N9', detail: JSON.stringify({ decision: 'PASS', remittance: 'OVERDUE' }) },
+    ],
+  });
+  return c;
+}
+
+async function seedNordlichtOpenCase(salesId: string, approverId: string) {
+  const fields = {
+    buyerName: 'Nordlicht GmbH',
+    consigneeName: 'Nordlicht GmbH',
+    goodsDesc: '数控机床配件',
+    amountFen: 7200000,
+    currency: 'USD',
+    incoterms: 'CIF',
+  };
+  const c = await prisma.tradeCase.create({
+    data: {
+      caseNo: 'DEMO-NORD-OPEN',
+      title: '北海机电出口德国 Nordlicht（在手订单，收汇未到期）',
+      scenario: 'OPEN_SETTLEMENT',
+      status: 'IN_PROGRESS',
+      currentNode: 'N9',
+      overallRisk: 'LOW',
+      goodsDesc: '数控机床配件',
+      destination: 'Hamburg, DE',
+      amountFen: 7200000,
+      currency: 'USD',
+      parties: {
+        create: [
+          { role: 'BUYER', name: 'Nordlicht GmbH', country: 'DE', isSameAsBuyer: true },
+          { role: 'PAYER', name: 'Nordlicht GmbH', country: 'DE', isSameAsBuyer: true },
+          { role: 'CONSIGNEE', name: 'Nordlicht GmbH', country: 'DE', isSameAsBuyer: true },
+          {
+            role: 'SUPPLIER',
+            name: '苏州精工机械有限公司',
+            country: 'CN',
+            registrationNo: '91320500MA1BHTEST',
+            isSameAsBuyer: false,
+          },
+        ],
+      },
+      nodes: {
+        create: nodeCreates({
+          N1: { status: 'PASSED', decision: 'PASS', summary: '当事方齐全，筛查未命中' },
+          N2: { status: 'PASSED', decision: 'PASS', summary: '报价要素齐全' },
+          N3: { status: 'PASSED', decision: 'PASS', summary: '条款齐全，中信保限额覆盖合同金额' },
+          N4: { status: 'PASSED', decision: 'PASS', summary: '无待确认变更' },
+          N5: { status: 'PASSED', decision: 'PASS', summary: '采购到货不晚于合同交期' },
+          N6: { status: 'PASSED', decision: 'PASS', summary: '书面指示与正本提单齐全' },
+          N7: { status: 'PASSED', decision: 'PASS', summary: '单证一致' },
+          N8: { status: 'PASSED', decision: 'PASS', summary: '已报关放行，待收汇' },
+          N9: { status: 'IN_PROGRESS', decision: null, summary: '约定收汇到期日未到，尚无到账记录' },
+        }),
+      },
+      contract: {
+        create: {
+          counterparty: 'Nordlicht GmbH',
+          paymentTerms: 'T/T 30 days',
+          hasRetentionOfTitle: true,
+          hasDisputeClause: true,
+          isFinal: true,
+          deliveryDate: new Date('2026-12-01T00:00:00.000Z'),
+          paymentDueAt: new Date('2026-12-31T00:00:00.000Z'),
+          quantity: 6,
+          unit: '套',
+          ...fields,
+          destination: 'Hamburg',
+        },
+      },
+      shipment: {
+        create: {
+          hasCustomerWrittenInstruction: true,
+          instructionRef: 'INST-NL-2026-019',
+          hasInternalApproval: true,
+          approverId,
+          blControl: 'ORIGINAL',
+          blNo: 'COSU9911223',
+          vessel: 'EVER GOODS',
+          consigneeOnBl: 'Nordlicht GmbH',
+        },
+      },
+      procurementPlan: {
+        create: {
+          poNo: 'PO-BH-2026-019',
+          plannedArrival: new Date('2026-11-20T00:00:00.000Z'),
+          contractDelivery: new Date('2026-12-01T00:00:00.000Z'),
+          poEvidenceStub: 'PO-BH-2026-019.pdf',
+          delayRegistered: false,
+          amountFen: 46000000,
+          currency: 'CNY',
+          paidFen: 0,
+          paymentDueAt: new Date('2026-12-20T00:00:00.000Z'),
+        },
+      },
+      kycReports: {
+        create: {
+          nodeCode: 'N1',
+          score: 0,
+          riskLevel: 'LOW',
+          summary: '未命中模拟清单。',
+          payload: JSON.stringify({ hits: [], disclaimer: 'mock' }),
+        },
+      },
+    },
+  });
+  await attachClearSupplierScreen(c.id, '苏州精工机械有限公司');
+  const evSin = await prisma.evidence.create({
+    data: {
+      caseId: c.id,
+      nodeCode: 'N3',
+      kind: 'SINOSURE_POLICY',
+      ref: 'SIN-NL-2026',
+      note: '中信保保单/限额批注',
+      payload: JSON.stringify({ insuredLimitFen: 15000000, currency: 'USD' }),
+    },
+  });
+  await prisma.sinosurePolicy.create({
+    data: {
+      caseId: c.id,
+      nodeCode: 'N3',
+      evidenceId: evSin.id,
+      evidenceRef: 'SIN-NL-2026',
+      fileName: '中信保限额批注-Nordlicht.pdf',
+      insuredLimitFen: 15000000,
+      currency: 'USD',
+    },
+  });
+  await prisma.auditLog.create({
+    data: {
+      caseId: c.id,
+      actorId: salesId,
+      action: 'CASE_CREATED',
+      nodeCode: 'N1',
+      detail: JSON.stringify({ scenario: 'OPEN_SETTLEMENT' }),
+    },
+  });
+  return c;
+}
+
+async function attachBuyersToCustomers() {
+  const buyers = await prisma.party.findMany({ where: { role: 'BUYER' } });
+  for (const buyer of buyers) {
+    const customer = await prisma.customer.upsert({
+      where: { name: buyer.name },
+      create: {
+        name: buyer.name,
+        nameEn: buyer.nameEn,
+        country: buyer.country,
+        address: buyer.address,
+        registrationNo: buyer.registrationNo,
+      },
+      update: {
+        ...(buyer.country ? { country: buyer.country } : {}),
+      },
+    });
+    await prisma.party.updateMany({
+      where: { caseId: buyer.caseId, role: { in: ['BUYER', 'PAYER', 'CONSIGNEE'] } },
+      data: { customerId: customer.id },
+    });
+  }
+}
+
+async function attachSuppliers() {
+  const rows = await prisma.party.findMany({ where: { role: 'SUPPLIER' } });
+  for (const row of rows) {
+    const supplier = await prisma.supplier.upsert({
+      where: { name: row.name },
+      create: {
+        name: row.name,
+        nameEn: row.nameEn,
+        country: row.country,
+        address: row.address,
+        registrationNo: row.registrationNo,
+      },
+      update: {
+        ...(row.country ? { country: row.country } : {}),
+        ...(row.registrationNo ? { registrationNo: row.registrationNo } : {}),
+      },
+    });
+    await prisma.party.update({
+      where: { id: row.id },
+      data: { supplierId: supplier.id },
+    });
+  }
+}
+
+async function fillPaymentDueDates() {
+  const contracts = await prisma.contract.findMany();
+  for (const row of contracts) {
+    if (row.paymentDueAt) continue;
+    const due = derivePaymentDueAt(row.deliveryDate, row.paymentTerms);
+    if (!due) continue;
+    await prisma.contract.update({ where: { id: row.id }, data: { paymentDueAt: due } });
+  }
 }
 
 main()

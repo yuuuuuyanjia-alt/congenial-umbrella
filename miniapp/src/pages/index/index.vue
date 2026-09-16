@@ -18,6 +18,8 @@
 
     <view class="card">
       <view class="h2">工作入口</view>
+      <view class="btn" @click="go('/pages/customer/list')">客户管理</view>
+      <view class="btn" @click="go('/pages/supplier/list')">供应商管理</view>
       <view class="btn" @click="go('/pages/case/list')">案件工作台</view>
       <view class="btn btn-ghost" @click="go('/pages/workbench/index')">命中处置（误报/确认/补充/监控）</view>
     </view>

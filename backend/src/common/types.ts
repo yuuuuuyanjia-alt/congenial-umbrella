@@ -36,6 +36,7 @@ export interface ContractSnap {
   deliveryDate?: string | Date | null;
   quantity?: number | null;
   unit?: string | null;
+  paymentDueAt?: string | Date | null;
 }
 
 export interface ShipmentSnap {
@@ -77,6 +78,7 @@ export interface SettlementSnap {
   remittanceMemoRef?: string | null;
   hasDocConsistencyProof: boolean;
   hasReleaseApproval: boolean;
+  receivedAt?: string | Date | null;
 }
 
 export interface NodeSnap {
@@ -149,6 +151,12 @@ export interface ProcurementPlanSnap {
   delayReason?: string | null;
   customerConsent: boolean;
   customerConsentEvidenceId?: string | null;
+  actualArrival?: string | Date | null;
+  amountFen?: number | null;
+  currency?: string | null;
+  paidFen?: number | null;
+  paymentDueAt?: string | Date | null;
+  paidAt?: string | Date | null;
 }
 
 export interface HsTemplateSnap {
