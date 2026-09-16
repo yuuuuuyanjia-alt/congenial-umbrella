@@ -1,0 +1,18 @@
+{
+  "name": "export-risk-guard",
+  "install": "npm --prefix backend install && npm --prefix miniapp install && cp -n backend/.env.example backend/.env 2>/dev/null || true; cd backend && DATABASE_URL=\"file:./dev.db\" npx prisma migrate deploy && DATABASE_URL=\"file:./dev.db\" npm run seed",
+  "terminals": [
+    {
+      "name": "backend",
+      "command": "cd backend && DATABASE_URL=\"file:./dev.db\" PORT=3000 npm run start:dev"
+    },
+    {
+      "name": "miniapp-h5",
+      "command": "cd miniapp && VITE_API_BASE=/api npm run dev:h5"
+    }
+  ],
+  "ports": [
+    { "name": "api", "port": 3000 },
+    { "name": "miniapp-h5", "port": 5173 }
+  ]
+}
