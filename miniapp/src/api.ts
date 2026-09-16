@@ -55,6 +55,10 @@ export const api = {
   advance: (id: string, code: string) => request('POST', `/cases/${id}/nodes/${code}/advance`),
   queue: () => request('GET', '/workbench/queue'),
   workbench: (caseId: string, body: unknown) => request('POST', `/workbench/${caseId}/action`, body),
+  customers: () => request('GET', '/customers'),
+  customer: (id: string) => request('GET', `/customers/${id}`),
+  suppliers: () => request('GET', '/suppliers'),
+  supplier: (id: string) => request('GET', `/suppliers/${id}`),
 };
 
 export function decisionClass(d?: string | null) {
@@ -86,6 +90,8 @@ export function decisionText(d?: string | null) {
     CONFIRMED_TRUE: '确认真实',
     SUPPLEMENTED: '已补充',
     MONITORING: '持续监控',
+    OVERDUE_SETTLEMENT: '逾期收汇',
+    OPEN_SETTLEMENT: '收汇未到期',
   };
   return (d && map[d]) || d || '-';
 }
@@ -101,6 +107,28 @@ export function nodePage(code: string) {
   if (code === 'N8') return '/pages/node/customs';
   if (code === 'N9') return '/pages/node/settlement';
   return '/pages/node/stub';
+}
+
+export function remittanceClass(code?: string | null) {
+  if (code === 'OVERDUE') return 'badge-block';
+  if (code === 'ON_TIME') return 'badge-pass';
+  if (code === 'NOT_DUE') return 'badge-soft';
+  return 'badge-stub';
+}
+
+export function remittanceText(code?: string | null) {
+  const map: Record<string, string> = {
+    ON_TIME: '按期',
+    OVERDUE: '逾期',
+    NOT_DUE: '未到期',
+    NO_RECORD: '无记录',
+  };
+  return (code && map[code]) || '无记录';
+}
+
+export function money(fen?: number | null, currency = 'USD') {
+  if (fen == null || !Number.isFinite(Number(fen))) return '未登记';
+  return `${currency} ${(Number(fen) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 export function toastErr(e: any) {

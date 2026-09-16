@@ -36,6 +36,7 @@ export class SaveContractDto {
   @IsOptional() @IsString() deliveryDate?: string;
   @IsOptional() @IsInt() quantity?: number;
   @IsOptional() @IsString() unit?: string;
+  @IsOptional() @IsString() paymentDueAt?: string;
 }
 
 export class SaveShipmentDto {
@@ -79,6 +80,7 @@ export class SaveSettlementDto {
   @IsOptional() @IsBoolean() hasDocConsistencyProof?: boolean;
   @IsOptional() @IsBoolean() hasReleaseApproval?: boolean;
   @IsOptional() @IsInt() amountFen?: number;
+  @IsOptional() @IsString() receivedAt?: string;
 }
 
 export class WorkbenchDto {
@@ -140,6 +142,12 @@ export class SavePlanDto {
   @IsOptional() @IsString() delayReason?: string;
   @IsOptional() @IsBoolean() customerConsent?: boolean;
   @IsOptional() @IsString() customerConsentRef?: string;
+  @IsOptional() @IsString() actualArrival?: string;
+  @IsOptional() @IsInt() amountFen?: number;
+  @IsOptional() @IsString() currency?: string;
+  @IsOptional() @IsInt() paidFen?: number;
+  @IsOptional() @IsString() paymentDueAt?: string;
+  @IsOptional() @IsString() paidAt?: string;
 }
 
 export class SaveCustomsDto {

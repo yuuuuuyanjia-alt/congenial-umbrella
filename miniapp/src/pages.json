@@ -57,6 +57,22 @@
       "style": { "navigationBarTitleText": "案例工作台" }
     },
     {
+      "path": "pages/customer/list",
+      "style": { "navigationBarTitleText": "客户管理" }
+    },
+    {
+      "path": "pages/customer/detail",
+      "style": { "navigationBarTitleText": "客户详情" }
+    },
+    {
+      "path": "pages/supplier/list",
+      "style": { "navigationBarTitleText": "供应商管理" }
+    },
+    {
+      "path": "pages/supplier/detail",
+      "style": { "navigationBarTitleText": "供应商详情" }
+    },
+    {
       "path": "pages/audit/index",
       "style": { "navigationBarTitleText": "审计日志" }
     }

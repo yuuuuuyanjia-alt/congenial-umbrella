@@ -67,7 +67,7 @@ npm run bootstrap
 # npm --prefix backend install
 # npm --prefix miniapp install
 
-# 2. 迁移 + 种子（演示路径含绿灯 / 软提示 / 硬拦截 / 闸门拒绝 / FOB 无提单 / 中信保超额）
+# 2. 迁移 + 种子（演示路径含绿灯 / 软提示 / 硬拦截 / 闸门拒绝 / FOB 无提单 / 中信保超额 / 客户按期与逾期收汇）
 cd backend
 cp -n .env.example .env 2>/dev/null || true
 npx prisma migrate deploy
@@ -87,7 +87,7 @@ npm run miniapp
 
 ## 演示环境部署
 
-克隆后一条命令拉起 **API + 已构建 H5**（同一主机、同源 `/api`），SQLite 写入 `DEMO-PASS` / `DEMO-SOFT` / `DEMO-BLOCK` / `DEMO-GATE` / `DEMO-FOB` / `DEMO-LIMIT` / `DEMO-SUPPLIER`。制裁筛查仍为本地模拟名单，**不需要、也不读取真实 OFAC/UN 等 API Key**。
+克隆后一条命令拉起 **API + 已构建 H5**（同一主机、同源 `/api`），SQLite 写入 `DEMO-PASS` / `DEMO-NORD-LATE` / `DEMO-NORD-OPEN` / `DEMO-SOFT` / `DEMO-BLOCK` / `DEMO-GATE` / `DEMO-FOB` / `DEMO-LIMIT` / `DEMO-SUPPLIER`。制裁筛查仍为本地模拟名单，**不需要、也不读取真实 OFAC/UN 等 API Key**。
 
 需要本机已安装 Docker 与 Docker Compose v2。
 
@@ -151,6 +151,47 @@ npm test
 | `DEMO-FOB` | FOB 无提单 | Pacific Tools，FOB 买方订舱；N6 走「无提单」路径（书面指示 + 内部审批 + 装船通知依据），已过闸停在 N7 |
 | `DEMO-LIMIT` | 中信保超额 | Pacific Gear Ltd，合同 80,000 USD，投保限额仅 30,000 USD，停在 N3；推进应 **409 GATE_REFUSED** |
 | `DEMO-SUPPLIER` | 供应商硬拦截 | 国外买方 Rhein Parts 筛查通过；国内供应商「某不可靠实体贸易有限公司」高置信命中模拟不可靠实体清单，N5 拒绝 |
+| `DEMO-NORD-LATE` | 逾期收汇 | 同为 Nordlicht 历史订单，约定到期 2026-04-14，到账 2026-05-20，**逾期** |
+| `DEMO-NORD-OPEN` | 收汇未到期 | Nordlicht 在手订单，已过报关，约定到期 2026-12-31，尚无到账，**未到期** |
+
+## 客户管理
+
+首页「工作入口」进入 **客户管理**。按买方聚合全部案件，便于业务人员查看：
+
+1. **中信保限额**：该客户名下最新一笔中信保保单的投保限额与币种（无保单则显示未登记）
+2. **签过哪些合同**：已登记出口合同的案件（相对方、金额、付款条件、约定收款日）
+3. **已收汇 / 未收汇**：合同金额与 N9 到账金额之差（支持部分收汇）
+4. **约定收款日**：每笔及总体为 **按期 / 逾期 / 未到期 / 无收款约定**（即是否按期回款）
+5. **历次交易记录**：含尚无合同的询盘/报价案件
+
+判断口径（合同到期日字段较薄时的推算）：
+
+- 合同可手填 `paymentDueAt`（约定收款日）
+- 未手填时，用 **交货期 + 付款条件账期天数**（如 `T/T 30 days`、`OA 60天`）推算
+- 收汇节点登记 `receivedAt`（实际到账日）与 `amountFen`（已收汇金额）；有汇款附言但未填到账日则保存时记为当天
+- 未收齐且到期日已过 → 逾期；已收齐且到账不晚于到期日 → 按期；未到期则未到期
+- 客户总体：任一笔逾期则为逾期
+
+演示客户 **Nordlicht GmbH**：中信保限额 150,000 USD；三份合同——`DEMO-PASS` 已收齐且按期、`DEMO-NORD-LATE` 部分收汇且逾期、`DEMO-NORD-OPEN` 未收汇且未到期。Acme 等停在合同前的客户为无收款约定。
+
+```bash
+curl -s http://127.0.0.1:3000/api/customers | python -c "import json,sys; [print(c['name'], c['collection']['label'], c.get('receivable')) for c in json.load(sys.stdin)]"
+```
+
+## 供应商管理
+
+首页「工作入口」进入 **供应商管理**。按 N5 国内供应商（`Party.role=SUPPLIER`）聚合采购合同/PO：
+
+1. **每一笔采购合同/采购单**：PO 号、关联出口案件、计划/实际到货、客户合同交期
+2. **是否按期交货**：实际到货对照计划到货（无计划则对照客户合同交期）→ 按期 / 逾期 / 未到期 / 无交货记录
+3. **货款已付款 / 还没付款**：采购金额 `amountFen` 与已付 `paidFen`
+4. **是否超过约定付款日期**：约定付款日 `paymentDueAt`；未付清且到期已过为逾期
+
+演示供应商 **苏州精工机械有限公司** 有三笔采购：`PO-BH-2026-011` 交货与付款均按期并已付清；`PO-BH-2026-003` 交货逾期、货款部分支付且逾期；`PO-BH-2026-019` 交货与付款均未到期。宁波五金为已付清、交货未到期；某不可靠实体为货款逾期（未付且约定付款日已过）。
+
+```bash
+curl -s http://127.0.0.1:3000/api/suppliers | python -c "import json,sys; [print(s['name'], s['delivery']['label'], s['payment']['label'], s.get('payable')) for s in json.load(sys.stdin)]"
+```
 
 ## 硬闸门 / 业务闸门拒绝示例
 
@@ -195,6 +236,10 @@ curl -s -X POST http://127.0.0.1:3000/api/cases/<DEMO-LIMIT的id>/nodes/N3/advan
 - `GET /api/workbench/queue` 命中队列
 - `POST /api/workbench/:caseId/action` 工作台处置
 - `GET /api/cases/:id/audit` 审计轨迹
+- `GET /api/customers` 客户列表（中信保限额、合同数、已收汇/未收汇、约定收款日）
+- `GET /api/customers/:id` 客户详情（限额、合同、历次交易、收汇与收款日）
+- `GET /api/suppliers` 供应商列表（采购单数、已付/未付、交货与付款是否按期）
+- `GET /api/suppliers/:id` 供应商详情（每笔采购合同/PO、交货、货款）
 
 请求头 `x-actor-id` 可传入种子用户 id，写入审计。
 
@@ -208,6 +253,8 @@ curl -s -X POST http://127.0.0.1:3000/api/cases/<DEMO-LIMIT的id>/nodes/N3/advan
 - **工作台动作**：误报排除、确认真实、补充信息、持续监控
 - **硬闸门**：N6 / N7 / N9，证据缺失即拒绝推进
 - **中信保限额**：合同（及变更后）总金额不得超过投保限额，否则闸门拒绝推进
+- **约定收款日 / 按期回款**：出口合同收款是否按期；对照到期日与收汇到账，并统计已收汇/未收汇
+- **国内供应商货款**：采购合同/PO 的已付与未付、约定付款日是否逾期；交货对照计划到货与实际到货
 
 ## 明确不做
 

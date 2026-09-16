@@ -21,6 +21,34 @@ model User {
   approvals        Shipment[]        @relation("ShipmentApprover")
 }
 
+/// 客户主数据：由买方（及同名付款人/收货人）聚合，跨案件查看限额与收汇
+model Customer {
+  id             String   @id @default(cuid())
+  name           String   @unique
+  nameEn         String?
+  country        String?
+  address        String?
+  registrationNo String?
+  note           String?
+  createdAt      DateTime @default(now())
+
+  parties Party[]
+}
+
+/// 国内供应商主数据：由 N5 Party SUPPLIER 聚合，跨案件查看采购单、交货与货款
+model Supplier {
+  id             String   @id @default(cuid())
+  name           String   @unique
+  nameEn         String?
+  country        String?
+  address        String?
+  registrationNo String?
+  note           String?
+  createdAt      DateTime @default(now())
+
+  parties Party[]
+}
+
 /// 出口案件（询盘→收汇全流程载体）
 model TradeCase {
   id          String   @id @default(cuid())
@@ -61,6 +89,8 @@ model TradeCase {
 model Party {
   id             String          @id @default(cuid())
   caseId         String
+  customerId     String?
+  supplierId     String?
   role           String
   name           String
   nameEn         String?
@@ -70,9 +100,13 @@ model Party {
   isSameAsBuyer  Boolean         @default(true)
   relationNote   String?
   case           TradeCase       @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  customer       Customer?       @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  supplier       Supplier?       @relation(fields: [supplierId], references: [id], onDelete: SetNull)
   hits           ScreeningHit[]
 
   @@index([caseId, role])
+  @@index([customerId])
+  @@index([supplierId])
 }
 
 model CaseNode {
@@ -155,6 +189,8 @@ model Contract {
   deliveryDate        DateTime?
   quantity            Int?
   unit                String?
+  /// 约定收汇到期日。优先手填；否则由交货期 + 付款条件中的账期天数推算（如 T/T 30 days）
+  paymentDueAt        DateTime?
   updatedAt           DateTime  @updatedAt
   case                TradeCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
 }
@@ -215,6 +251,8 @@ model Settlement {
   hasDocConsistencyProof Boolean   @default(false)
   hasReleaseApproval     Boolean   @default(false)
   amountFen              Int?
+  /// 实际到账/收汇日期，与合同 paymentDueAt 比较得出按期/逾期
+  receivedAt             DateTime?
   updatedAt              DateTime  @updatedAt
   case                   TradeCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
 }
@@ -373,6 +411,17 @@ model ProcurementPlan {
   delayReason               String?
   customerConsent           Boolean   @default(false)
   customerConsentEvidenceId String?
+  /// 供应商实际到货日，与计划到货/客户合同交期比较得出是否按期交货
+  actualArrival             DateTime?
+  /// 采购合同/PO 金额（分）
+  amountFen                 Int?
+  currency                  String    @default("CNY")
+  /// 已付货款（分）
+  paidFen                   Int       @default(0)
+  /// 约定向供应商付款日
+  paymentDueAt              DateTime?
+  /// 付清或最近一次付款日
+  paidAt                    DateTime?
   updatedAt                 DateTime  @updatedAt
   case                      TradeCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
 }

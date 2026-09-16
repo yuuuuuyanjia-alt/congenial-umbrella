@@ -1,4 +1,5 @@
 import { Controller, Get } from '@nestjs/common';
+import { RemittanceStatusLabel } from '../customers/remittance';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   BearerLabel,
@@ -49,10 +50,19 @@ export class CatalogController {
       delayTriggers: DelayTriggerLabel,
       originEvidence: OriginEvidenceLabel,
       eportStatus: EportStatusLabel,
+      remittance: RemittanceStatusLabel,
       sinosure: {
         label: '中信保',
         n3: '合同确认须上传保单并登记投保限额，合同金额不得超过限额',
         n4: '进入变更管理须再次确认或重新上传，并按变更后金额核对限额',
+      },
+      customers: {
+        label: '客户管理',
+        note: '按买方聚合。展示中信保限额、签过的合同、已收汇/未收汇、约定收款日（按期/逾期/未到期）。到期日优先用合同 paymentDueAt，否则由交货期 + 付款条件账期推算。',
+      },
+      suppliers: {
+        label: '供应商管理',
+        note: '按国内供应商聚合 N5 采购合同/PO。展示是否按期交货（实际到货 vs 计划到货/客户合同交期）、已付/未付货款、是否超过约定付款日。',
       },
       procurement: {
         label: '国内采购/备货',
