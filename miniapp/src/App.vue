@@ -13,6 +13,8 @@ page {
 }
 .wrap {
   padding: 24rpx;
+  max-width: 860rpx;
+  margin: 0 auto;
 }
 .card {
   background: #fff;
@@ -101,6 +103,7 @@ page {
   font-size: 24rpx;
   margin-top: 12rpx;
   line-height: 1.55;
+  white-space: pre-wrap;
 }
 .ok {
   background: #e3f4ea;

@@ -14,10 +14,10 @@ export class AuditService {
   }) {
     return this.prisma.auditLog.create({
       data: {
-        caseId: input.caseId ?? null,
-        actorId: input.actorId ?? null,
+        caseId: input.caseId || null,
+        actorId: input.actorId || null,
         action: input.action,
-        nodeCode: input.nodeCode ?? null,
+        nodeCode: input.nodeCode || null,
         detail: JSON.stringify(input.detail ?? {}),
       },
     });

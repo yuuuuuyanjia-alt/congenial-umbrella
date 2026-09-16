@@ -218,8 +218,8 @@ export class CasesService {
     await this.ensureCase(caseId);
     const row = await this.prisma.shipment.upsert({
       where: { caseId },
-      create: { caseId, ...dto },
-      update: dto,
+      create: { caseId, ...dto, approverId: dto.approverId || null },
+      update: { ...dto, approverId: dto.approverId || null },
     });
     await this.touchNode(caseId, 'N6', NodeStatus.IN_PROGRESS);
     await this.audit.append({
@@ -332,7 +332,7 @@ export class CasesService {
       detail: result,
     });
     if (!result.canProceed) {
-      const blocked = result.decision === Decision.HARD_BLOCK;
+      const sanctionBlock = nodeCode === 'N1' && result.decision === Decision.HARD_BLOCK;
       await this.prisma.caseNode.update({
         where: { id: node.id },
         data: {
@@ -341,14 +341,19 @@ export class CasesService {
           summary: result.reasons.join('；'),
         },
       });
-      if (blocked || result.decision === Decision.REVIEW) {
+      if (result.decision === Decision.REVIEW || sanctionBlock) {
         await this.prisma.tradeCase.update({
           where: { id: caseId },
           data: {
-            status: blocked ? CaseStatus.BLOCKED : CaseStatus.IN_PROGRESS,
-            overallRisk: blocked ? RiskLevel.HIGH : RiskLevel.MEDIUM,
+            status: sanctionBlock ? CaseStatus.BLOCKED : CaseStatus.IN_PROGRESS,
+            overallRisk: sanctionBlock ? RiskLevel.HIGH : RiskLevel.MEDIUM,
             currentNode: nodeCode,
           },
+        });
+      } else {
+        await this.prisma.tradeCase.update({
+          where: { id: caseId },
+          data: { currentNode: nodeCode, status: CaseStatus.IN_PROGRESS },
         });
       }
       throw new HttpException(
@@ -406,8 +411,8 @@ export class CasesService {
     const action = await this.prisma.workbenchAction.create({
       data: {
         caseId,
-        hitId: input.hitId,
-        actorId,
+        hitId: input.hitId || null,
+        actorId: actorId || null,
         action: input.action,
         comment: input.comment,
       },

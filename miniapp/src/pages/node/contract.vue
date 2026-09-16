@@ -26,7 +26,7 @@
 <script setup lang="ts">
 import { onLoad } from '@dcloudio/uni-app';
 import { reactive, ref } from 'vue';
-import { api } from '../../api';
+import { api, formatGateError } from '../../api';
 
 const id = ref('');
 const c = ref<any>(null);
@@ -60,7 +60,7 @@ async function tryAdvance() {
     const r = await api.advance(id.value, 'N3');
     ok.value = `已推进至 ${r.nextNode}`;
   } catch (e: any) {
-    err.value = (e?.reasons || []).join('；') || e?.message || '闸门拒绝';
+    err.value = formatGateError(e);
   }
 }
 </script>

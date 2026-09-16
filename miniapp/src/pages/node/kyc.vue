@@ -40,7 +40,7 @@
 <script setup lang="ts">
 import { onLoad } from '@dcloudio/uni-app';
 import { reactive, ref } from 'vue';
-import { api, decisionClass, decisionText, toastErr } from '../../api';
+import { api, decisionClass, decisionText, formatGateError, toastErr } from '../../api';
 
 const id = ref('');
 const c = ref<any>(null);
@@ -97,13 +97,8 @@ async function tryAdvance() {
     ok.value = r.stub ? r.message : `已推进，下一节点 ${r.nextNode || '结束'}`;
     await reload();
   } catch (e: any) {
-    err.value = formatGate(e);
+    err.value = formatGateError(e);
   }
 }
 
-function formatGate(e: any) {
-  const reasons = e?.reasons || e?.message;
-  const missing = e?.missing ? `缺失：${e.missing.join(', ')}` : '';
-  return [e?.message, Array.isArray(reasons) ? reasons.join('；') : '', missing].filter(Boolean).join('\n');
-}
 </script>

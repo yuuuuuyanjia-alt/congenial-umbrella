@@ -19,7 +19,7 @@
       <view class="muted" style="margin-top: 8rpx">当前：{{ form.blControl || '未选择' }}</view>
       <view class="label">提单号</view>
       <input class="input" v-model="form.blNo" />
-      <view class="btn" @click="save">保存指示</view>
+      <view class="btn" @click="saveOnly">保存指示</view>
       <view class="btn btn-danger" @click="tryAdvance">校验硬闸门并推进</view>
     </view>
     <view class="err" v-if="err">{{ err }}</view>
@@ -30,7 +30,7 @@
 <script setup lang="ts">
 import { onLoad } from '@dcloudio/uni-app';
 import { reactive, ref } from 'vue';
-import { api } from '../../api';
+import { api, formatGateError } from '../../api';
 
 const id = ref('');
 const err = ref('');
@@ -51,6 +51,11 @@ onLoad(async (q) => {
 
 async function save() {
   await api.saveShipment(id.value, form);
+}
+
+async function saveOnly() {
+  err.value = '';
+  await save();
   ok.value = '装运指示已保存（尚未过闸）';
 }
 
@@ -62,9 +67,7 @@ async function tryAdvance() {
     const r = await api.advance(id.value, 'N6');
     ok.value = `硬闸门通过，下一节点 ${r.nextNode}`;
   } catch (e: any) {
-    err.value = ['硬闸门拒绝推进', ...(e?.reasons || []), e?.missing ? `缺失项 ${e.missing.join(', ')}` : '']
-      .filter(Boolean)
-      .join('\n');
+    err.value = formatGateError(e);
   }
 }
 </script>

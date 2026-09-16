@@ -11,7 +11,10 @@ function request<T = any>(method: string, url: string, data?: unknown): Promise<
       url: BASE + url,
       method: method as any,
       data: data as any,
-      header: { 'Content-Type': 'application/json', 'x-actor-id': uni.getStorageSync('actorId') || '' },
+      header: {
+        'Content-Type': 'application/json',
+        ...(uni.getStorageSync('actorId') ? { 'x-actor-id': uni.getStorageSync('actorId') } : {}),
+      },
       success: (res) => {
         if (res.statusCode >= 200 && res.statusCode < 300) resolve(res.data as T);
         else reject(res.data || { message: '请求失败', statusCode: res.statusCode });
@@ -84,7 +87,20 @@ export function nodePage(code: string) {
   return '/pages/node/stub';
 }
 
+export function formatGateError(e: any) {
+  const body = e?.reasons ? e : e?.message && typeof e.message === 'object' ? e.message : e;
+  const reasons = Array.isArray(body?.reasons) ? body.reasons : [];
+  const missing = Array.isArray(body?.missing) ? body.missing : [];
+  return [
+    body?.message || '闸门拒绝推进',
+    ...reasons,
+    missing.length ? `缺失项：${missing.join('，')}` : '',
+  ]
+    .filter(Boolean)
+    .join('\n');
+}
+
 export function toastErr(e: any) {
-  const msg = e?.message || e?.reasons?.join('；') || '操作失败';
+  const msg = formatGateError(e).split('\n')[0] || '操作失败';
   uni.showToast({ title: String(msg).slice(0, 40), icon: 'none', duration: 2800 });
 }
