@@ -58,6 +58,13 @@ const paths = [
     cls: 'badge-pass',
     desc: '买方安排运输，N6 走无提单路径（书面指示 + 内部审批 + 装船通知），不要求正本/电放。',
   },
+  {
+    caseNo: 'DEMO-LIMIT',
+    title: '中信保超额',
+    tag: 'GATE REFUSED',
+    cls: 'badge-block',
+    desc: '合同金额超过中信保投保限额，合同确认节点拒绝推进。',
+  },
 ];
 
 onMounted(async () => {

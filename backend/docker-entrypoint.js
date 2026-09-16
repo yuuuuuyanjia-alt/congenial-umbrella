@@ -22,7 +22,7 @@ async function main() {
       console.log(
         force
           ? '[demo] DEMO_FORCE_SEED=1，重新写入种子数据'
-          : '[demo] 空库，写入 DEMO-PASS / DEMO-SOFT / DEMO-BLOCK / DEMO-GATE / DEMO-FOB',
+          : '[demo] 空库，写入 DEMO-PASS / DEMO-SOFT / DEMO-BLOCK / DEMO-GATE / DEMO-FOB / DEMO-LIMIT',
       );
       await prisma.$disconnect();
       run('node', ['dist-seed/prisma/seed.js']);

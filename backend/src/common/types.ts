@@ -121,6 +121,18 @@ export interface ChangeOrderSnap {
   diffs: ChangeDiffSnap[];
 }
 
+export interface SinosurePolicySnap {
+  id?: string;
+  nodeCode: string;
+  changeOrderId?: string | null;
+  evidenceId?: string | null;
+  evidenceRef?: string | null;
+  fileName?: string | null;
+  insuredLimitFen: number;
+  currency: string;
+  confirmedExisting?: boolean;
+}
+
 export interface ProductionPlanSnap {
   plannedDelivery?: string | Date | null;
   contractDelivery?: string | Date | null;
@@ -171,6 +183,9 @@ export interface CaseSnapshot {
   costFloorFen?: number | null;
   historyUnitPrices: number[];
   now?: string | Date;
+  caseAmountFen?: number | null;
+  caseCurrency?: string | null;
+  sinosurePolicies: SinosurePolicySnap[];
 }
 
 export interface GateResult {

@@ -22,7 +22,7 @@ export const NODE_CATALOG = [
     mvp: true,
     isHardGate: false,
     isStub: false,
-    summary: '所有权保留与争议解决条款必填；校验国际贸易术语与付款条件。',
+    summary: '所有权保留与争议解决条款必填；须上传中信保保单并登记投保限额，合同总金额不得超过限额。',
   },
   {
     code: 'N4',
@@ -30,7 +30,7 @@ export const NODE_CATALOG = [
     mvp: true,
     isHardGate: false,
     isStub: false,
-    summary: '交货期/数量/收货人/付款条件变更须出变更单（含 diff），客户与内部确认后生效；旧版 SUPERSEDED，禁止硬删除。',
+    summary: '交货期/数量/收货人/付款条件变更须出变更单（含 diff），客户与内部确认后生效；进入变更时须再次确认中信保限额（对照变更后金额）。',
   },
   {
     code: 'N5',
@@ -369,6 +369,8 @@ export const EvidenceKind = {
   DELAY_CONSENT: 'DELAY_CONSENT',
   ORIGIN_CERT: 'ORIGIN_CERT',
   EPORT_SYNC: 'EPORT_SYNC',
+  SINOSURE_POLICY: 'SINOSURE_POLICY',
+  SINOSURE_CONFIRM: 'SINOSURE_CONFIRM',
 } as const;
 
 /** 模糊报价用语：命中则禁止推进 */

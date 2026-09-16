@@ -28,6 +28,7 @@ import {
   GateResult,
   QuoteSnap,
   ShipmentSnap,
+  SinosurePolicySnap,
 } from '../common/types';
 
 const HARD_GATES = new Set(['N6', 'N7', 'N9']);
@@ -244,6 +245,15 @@ export function evaluateN3(snap: CaseSnapshot): GateResult {
   } else if (/OA|开账|赊销/i.test(c.paymentTerms) && /90|120|180/.test(c.paymentTerms)) {
     r.alerts.push(`付款条件「${c.paymentTerms}」账期较长，软提示关注收汇风险`);
   }
+
+  const total = contractTotalFen(snap);
+  const ccy = contractCurrency(snap);
+  if (!total || total <= 0) {
+    r.missing.push('N3_CONTRACT_AMOUNT');
+    r.reasons.push('未填写合同总金额，无法核对中信保限额');
+  }
+  applySinosureGate(r, snap, 'N3', total, ccy);
+
   if (r.missing.length) {
     r.decision = Decision.HARD_BLOCK;
     r.canProceed = false;
@@ -254,7 +264,7 @@ export function evaluateN3(snap: CaseSnapshot): GateResult {
     r.canProceed = true;
     return r;
   }
-  r.reasons.push('所有权保留与争议条款齐全，贸易术语与付款条件已校验');
+  r.reasons.push('所有权保留与争议条款齐全，贸易术语、付款条件与中信保限额已校验');
   return r;
 }
 
@@ -291,6 +301,11 @@ export function evaluateN4(snap: CaseSnapshot): GateResult {
     }
   }
 
+  const post = snapAfterChanges(snap);
+  const total = contractTotalFen(post);
+  const ccy = contractCurrency(post);
+  applySinosureGate(r, snap, 'N4', total, ccy);
+
   if (r.missing.length) return blockMissing(r);
 
   const relevant = (snap.changeOrders || []).filter((c) => c.status !== ChangeStatus.SUPERSEDED);
@@ -317,7 +332,7 @@ export function evaluateN4(snap: CaseSnapshot): GateResult {
     r.reasons.push('变更均已确认生效，关联节点复核仅软提示');
     return r;
   }
-  r.reasons.push('变更单证据链完整（diff → 客户/内部确认 → 新版本），允许进入排期');
+  r.reasons.push('变更单证据链完整（diff → 客户/内部确认 → 新版本），中信保限额已按变更后金额核对');
   return r;
 }
 
@@ -681,7 +696,23 @@ export function applyDiffsToSnap(snap: CaseSnapshot, diffs: ChangeDiffSnap[]): C
   };
   for (const d of diffs) {
     if (d.field === 'deliveryDate') next.contract.deliveryDate = d.newValue;
-    if (d.field === 'quantity') next.contract.quantity = Number(d.newValue);
+    if (d.field === 'quantity') {
+      const qty = Number(d.newValue);
+      next.contract.quantity = qty;
+      const quote = activeQuote(next);
+      if (quote?.unitPriceFen && Number.isFinite(qty)) {
+        next.contract.amountFen = quote.unitPriceFen * qty;
+      } else {
+        const oldQty = Number(d.oldValue);
+        if (next.contract.amountFen && oldQty > 0 && Number.isFinite(qty)) {
+          next.contract.amountFen = Math.round((next.contract.amountFen * qty) / oldQty);
+        }
+      }
+    }
+    if (d.field === 'amountFen') {
+      const amt = Number(d.newValue);
+      if (Number.isFinite(amt)) next.contract.amountFen = amt;
+    }
     if (d.field === 'consigneeName') {
       next.contract.consigneeName = d.newValue;
       upsertPartySnap(next, PartyRole.CONSIGNEE, d.newValue);
@@ -728,4 +759,68 @@ export function isChangeField(field: string): field is (typeof CHANGE_FIELDS)[nu
 
 export function isSensitiveChange(fields: string[]): boolean {
   return fields.some((f) => SENSITIVE_CHANGE_FIELDS.has(f));
+}
+
+export function latestSinosure(snap: CaseSnapshot, nodeCode: string): SinosurePolicySnap | undefined {
+  const list = (snap.sinosurePolicies || []).filter((p) => p.nodeCode === nodeCode);
+  return list.length ? list[list.length - 1] : undefined;
+}
+
+export function hasSinosureEvidence(p?: SinosurePolicySnap | null): boolean {
+  return !!(p && (p.evidenceId || p.evidenceRef || p.fileName));
+}
+
+export function contractCurrency(snap: CaseSnapshot): string {
+  return snap.contract?.currency || snap.caseCurrency || 'USD';
+}
+
+/** 合同总金额（分）：优先 数量×报价单价，其次合同金额，再次报价/案件金额 */
+export function contractTotalFen(snap: CaseSnapshot): number {
+  const quote = activeQuote(snap);
+  const qty = snap.contract?.quantity ?? quote?.quantity ?? null;
+  if (qty && quote?.unitPriceFen) return qty * quote.unitPriceFen;
+  if (snap.contract?.amountFen && snap.contract.amountFen > 0) return snap.contract.amountFen;
+  if (quote?.amountFen && quote.amountFen > 0) return quote.amountFen;
+  if (snap.caseAmountFen && snap.caseAmountFen > 0) return snap.caseAmountFen;
+  return 0;
+}
+
+export function snapAfterChanges(snap: CaseSnapshot): CaseSnapshot {
+  let next = snap;
+  for (const co of (snap.changeOrders || []).filter((c) => c.status !== ChangeStatus.SUPERSEDED)) {
+    next = applyDiffsToSnap(next, co.diffs);
+  }
+  return next;
+}
+
+function applySinosureGate(
+  r: GateResult,
+  snap: CaseSnapshot,
+  nodeCode: 'N3' | 'N4',
+  totalFen: number,
+  currency: string,
+) {
+  const pol = latestSinosure(snap, nodeCode);
+  if (!hasSinosureEvidence(pol)) {
+    r.missing.push(`${nodeCode}_SINOSURE_EVIDENCE`);
+    r.reasons.push(
+      nodeCode === 'N3'
+        ? '尚未上传中信保保单或限额批注'
+        : '进入变更后须再次上传或确认中信保保单',
+    );
+  }
+  if (!pol || !pol.insuredLimitFen || pol.insuredLimitFen <= 0) {
+    r.missing.push(`${nodeCode}_SINOSURE_LIMIT`);
+    r.reasons.push(nodeCode === 'N3' ? '未填写中信保投保限额' : '变更后须重新登记中信保投保限额');
+  }
+  if (pol?.currency && currency && pol.currency.toUpperCase() !== currency.toUpperCase()) {
+    r.missing.push(`${nodeCode}_SINOSURE_CURRENCY`);
+    r.reasons.push(`中信保限额币种（${pol.currency}）与合同币种（${currency}）不一致，禁止推进`);
+  }
+  if (pol && pol.insuredLimitFen > 0 && totalFen > 0 && totalFen > pol.insuredLimitFen) {
+    r.missing.push(`${nodeCode}_SINOSURE_OVER_LIMIT`);
+    r.reasons.push(
+      `合同总金额超过中信保投保限额（合同 ${(totalFen / 100).toFixed(2)} ${currency}，限额 ${(pol.insuredLimitFen / 100).toFixed(2)} ${pol.currency || currency}），禁止推进`,
+    );
+  }
 }

@@ -24,6 +24,7 @@ export class GateService {
         changeOrders: { include: { diffs: true }, orderBy: { createdAt: 'asc' } },
         productionPlan: true,
         customs: true,
+        sinosurePolicies: { orderBy: { createdAt: 'asc' } },
       },
     });
     const goodsKey = normGoods(c.goodsDesc);
@@ -60,6 +61,9 @@ export class GateService {
       hsTemplate: hsTpl ? toHsSnap(hsTpl) : null,
       costFloorFen: floor?.floorFen ?? null,
       historyUnitPrices: history.map((h) => h.unitPriceFen),
+      caseAmountFen: c.amountFen,
+      caseCurrency: c.currency,
+      sinosurePolicies: c.sinosurePolicies,
     };
   }
 

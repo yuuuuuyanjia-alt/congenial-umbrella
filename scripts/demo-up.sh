@@ -23,7 +23,7 @@ echo "等待 API 健康检查 /api/health ..."
 for _ in $(seq 1 60); do
   if curl -fsS "http://127.0.0.1:3000/api/health" >/dev/null 2>&1; then
     echo
-    echo "演示环境已启动（SQLite 种子含 DEMO-PASS / SOFT / BLOCK / GATE / FOB，无需制裁 API Key）"
+    echo "演示环境已启动（SQLite 种子含 DEMO-PASS / SOFT / BLOCK / GATE / FOB / LIMIT，无需制裁 API Key）"
     echo "  H5 界面:     http://127.0.0.1:8080"
     echo "  API 健康:    http://127.0.0.1:3000/api/health"
     echo "  同源 /api:   http://127.0.0.1:8080/api/health"
