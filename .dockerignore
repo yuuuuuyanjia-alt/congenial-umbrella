@@ -1,0 +1,12 @@
+.git
+.github
+**/node_modules
+**/dist
+**/dist-seed
+**/.env
+**/*.db
+**/*.db-journal
+**/coverage
+**/.DS_Store
+**/unpackage
+npm-debug.log

@@ -1,0 +1,9 @@
+node_modules
+dist
+dist-seed
+.env
+*.db
+*.db-journal
+coverage
+npm-debug.log
+.git
