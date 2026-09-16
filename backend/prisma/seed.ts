@@ -143,6 +143,7 @@ async function main() {
   const soft = await seedSoftCase(sales.id, compliance.id);
   const block = await seedBlockCase(sales.id, compliance.id);
   const gate = await seedGateDemoCase(sales.id);
+  const fob = await seedFobNoBlCase(sales.id, approver.id);
   const limit = await seedSinosureOverLimitCase(sales.id);
 
   console.log('种子数据已写入：');
@@ -150,6 +151,7 @@ async function main() {
   console.log('  SOFT_ALERT', soft.caseNo, soft.id);
   console.log('  HARD_BLOCK', block.caseNo, block.id);
   console.log('  GATE_DEMO ', gate.caseNo, gate.id, '（N6 缺证据，用于闸门拒绝演示）');
+  console.log('  FOB_NO_BL ', fob.caseNo, fob.id, '（FOB 无提单路径已过 N6）');
   console.log('  SINOSURE  ', limit.caseNo, limit.id, '（合同金额超过中信保限额，N3 拒绝）');
 }
 
@@ -467,7 +469,7 @@ function passNodes() {
     N3: { status: 'PASSED', decision: 'PASS', summary: '条款齐全，中信保限额覆盖合同金额' },
     N4: { status: 'PASSED', decision: 'PASS', summary: 'CO-001 数量 8→10，客户与内部确认后生效；变更后再次核对中信保限额' },
     N5: { status: 'PASSED', decision: 'PASS', summary: '计划交期 2026-11-28 不晚于合同交期' },
-    N6: { status: 'PASSED', decision: 'PASS', summary: '书面指示、内部审批、正本提单控制齐全' },
+    N6: { status: 'PASSED', decision: 'PASS', summary: '书面指示、内部审批、正本提单（与电放二选一）齐全' },
     N7: { status: 'PASSED', decision: 'PASS', summary: '终稿合同与单证字段一致' },
     N8: { status: 'PASSED', decision: 'PASS', summary: 'HS 8458.11.00 申报要素与原产地证齐全，电子口岸已放行' },
     N9: { status: 'PASSED', decision: 'PASS', summary: '收汇硬闸门证据齐全并已放行' },
@@ -659,7 +661,7 @@ async function seedGateDemoCase(salesId: string) {
           N3: { status: 'PASSED', decision: 'PASS', summary: '合同条款齐全，中信保限额覆盖合同金额' },
           N4: { status: 'PASSED', decision: 'PASS', summary: '无待确认变更，已跳过变更管理' },
           N5: { status: 'PASSED', decision: 'PASS', summary: '计划交期不晚于合同交期' },
-          N6: { status: 'IN_PROGRESS', decision: null, summary: '待补客户书面指示、内部审批、提单控制' },
+          N6: { status: 'IN_PROGRESS', decision: null, summary: '待补客户书面指示、内部审批；FOB 须走无提单路径或仍选正本/电放' },
         }),
       },
       contract: {
@@ -738,6 +740,139 @@ async function seedGateDemoCase(salesId: string) {
       nodeCode: 'N1',
       detail: JSON.stringify({ scenario: 'GATE_DEMO' }),
     },
+  });
+  return c;
+}
+
+async function seedFobNoBlCase(salesId: string, approverId: string) {
+  const fields = {
+    buyerName: 'Pacific Tools Pte Ltd',
+    consigneeName: 'Pacific Tools Pte Ltd',
+    goodsDesc: '手工具套装',
+    amountFen: 3600000,
+    currency: 'USD',
+    incoterms: 'FOB',
+  };
+  const c = await prisma.tradeCase.create({
+    data: {
+      caseNo: 'DEMO-FOB',
+      title: '沪上五金 FOB 出口 Pacific Tools（无提单路径通过）',
+      scenario: 'FOB_NO_BL',
+      status: 'IN_PROGRESS',
+      currentNode: 'N7',
+      overallRisk: 'LOW',
+      goodsDesc: '手工具套装',
+      destination: 'Singapore',
+      amountFen: 3600000,
+      currency: 'USD',
+      parties: {
+        create: [
+          { role: 'BUYER', name: 'Pacific Tools Pte Ltd', country: 'SG', isSameAsBuyer: true },
+          { role: 'PAYER', name: 'Pacific Tools Pte Ltd', country: 'SG', isSameAsBuyer: true },
+          { role: 'CONSIGNEE', name: 'Pacific Tools Pte Ltd', country: 'SG', isSameAsBuyer: true },
+        ],
+      },
+      nodes: {
+        create: nodeCreates({
+          N1: { status: 'PASSED', decision: 'PASS', summary: '当事方齐全，筛查未命中' },
+          N2: { status: 'PASSED', decision: 'PASS', summary: '报价要素齐全，运费由买方承担' },
+          N3: { status: 'PASSED', decision: 'PASS', summary: 'FOB，条款与中信保限额齐全' },
+          N4: { status: 'PASSED', decision: 'PASS', summary: '无待确认变更' },
+          N5: { status: 'PASSED', decision: 'PASS', summary: '计划交期不晚于合同交期' },
+          N6: {
+            status: 'PASSED',
+            decision: 'PASS',
+            summary: '书面指示、内部审批、无提单路径（FOB 买方订舱）依据齐全',
+          },
+        }),
+      },
+      contract: {
+        create: {
+          counterparty: 'Pacific Tools Pte Ltd',
+          paymentTerms: 'T/T 15 days',
+          hasRetentionOfTitle: true,
+          hasDisputeClause: true,
+          isFinal: true,
+          deliveryDate: new Date('2026-12-20'),
+          quantity: 10,
+          unit: '套',
+          ...fields,
+          destination: 'Singapore',
+        },
+      },
+      shipment: {
+        create: {
+          hasCustomerWrittenInstruction: true,
+          instructionRef: 'INST-FOB-PT-2026-004',
+          hasInternalApproval: true,
+          approverId,
+          blControl: 'NO_BL',
+          blNo: null,
+          noBlReason: 'FOB 买方指定货代自行订舱，卖方不签发、不控提单',
+          noBlRef: 'SA-FOB-2026-004',
+          noBlEvidenceStub: 'DEMO-SA-FOB-004.pdf',
+        },
+      },
+      quotes: {
+        create: {
+          version: 1,
+          status: 'ACTIVE',
+          priceBasis: 'EXCLUSIVE',
+          excludedItems: '海运费、保险、目的港费用',
+          validityUntil: new Date('2026-12-31'),
+          freightBearer: 'BUYER',
+          taxBearer: 'BUYER',
+          unitPriceFen: 360000,
+          quantity: 10,
+          amountFen: 3600000,
+          snapshotJson: JSON.stringify({ version: 1, priceBasis: 'EXCLUSIVE', incoterms: 'FOB' }),
+        },
+      },
+      productionPlan: {
+        create: {
+          plannedDelivery: new Date('2026-12-15'),
+          contractDelivery: new Date('2026-12-20'),
+          delayRegistered: false,
+        },
+      },
+    },
+  });
+  await prisma.kycReport.create({
+    data: {
+      caseId: c.id,
+      score: 0,
+      riskLevel: 'LOW',
+      summary: '未命中模拟清单。',
+      payload: JSON.stringify({ hits: [] }),
+    },
+  });
+  const evSin = await prisma.evidence.create({
+    data: {
+      caseId: c.id,
+      nodeCode: 'N3',
+      kind: 'SINOSURE_POLICY',
+      ref: 'SIN-PT-FOB',
+      note: '中信保保单/限额批注',
+      payload: JSON.stringify({ insuredLimitFen: 5000000, currency: 'USD' }),
+    },
+  });
+  await prisma.sinosurePolicy.create({
+    data: {
+      caseId: c.id,
+      nodeCode: 'N3',
+      evidenceId: evSin.id,
+      evidenceRef: 'SIN-PT-FOB',
+      fileName: '中信保限额批注-PacificTools.pdf',
+      insuredLimitFen: 5000000,
+      currency: 'USD',
+    },
+  });
+  await prisma.auditLog.createMany({
+    data: [
+      { caseId: c.id, actorId: salesId, action: 'CASE_CREATED', nodeCode: 'N1', detail: JSON.stringify({ scenario: 'FOB_NO_BL' }) },
+      { caseId: c.id, actorId: salesId, action: 'SHIPMENT_SAVED', nodeCode: 'N6', detail: JSON.stringify({ blControl: 'NO_BL', noBlRef: 'SA-FOB-2026-004' }) },
+      { caseId: c.id, actorId: salesId, action: 'NODE_ADVANCED', nodeCode: 'N6', detail: JSON.stringify({ decision: 'PASS', nextNode: 'N7' }) },
+    ],
   });
   return c;
 }

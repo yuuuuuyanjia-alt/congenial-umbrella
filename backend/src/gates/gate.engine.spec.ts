@@ -325,6 +325,209 @@ describe('闸门引擎 MVP 节点', () => {
     );
   });
 
+  it('N6 正本或电放任一即可过闸（不必同时具备）', () => {
+    const baseShip = {
+      hasCustomerWrittenInstruction: true,
+      instructionRef: 'INST-001',
+      hasInternalApproval: true,
+      blNo: 'COSU123',
+    };
+    expect(
+      evaluateN6(baseSnap({ shipment: { ...baseShip, blControl: 'ORIGINAL' } })).canProceed,
+    ).toBe(true);
+    expect(
+      evaluateN6(baseSnap({ shipment: { ...baseShip, blControl: 'TELEX_RELEASE', blNo: null } }))
+        .canProceed,
+    ).toBe(true);
+  });
+
+  it('N6 卖方出单术语未选正本/电放则拒绝', () => {
+    const r = evaluateN6(
+      baseSnap({
+        contract: { ...baseSnap().contract!, incoterms: 'CIF' },
+        shipment: {
+          hasCustomerWrittenInstruction: true,
+          instructionRef: 'INST-001',
+          hasInternalApproval: true,
+          blControl: null,
+        },
+      }),
+    );
+    expect(r.canProceed).toBe(false);
+    expect(r.missing).toContain('N6_BL_CONTROL');
+    expect(r.missing).not.toContain('N6_NO_BL_PATH');
+  });
+
+  it('N6 FOB 交易仍可只选正本或电放过闸', () => {
+    const ship = {
+      hasCustomerWrittenInstruction: true,
+      instructionRef: 'INST-001',
+      hasInternalApproval: true,
+    };
+    expect(
+      evaluateN6(
+        baseSnap({
+          contract: { ...baseSnap().contract!, incoterms: 'FOB' },
+          shipment: { ...ship, blControl: 'ORIGINAL' },
+        }),
+      ).canProceed,
+    ).toBe(true);
+    expect(
+      evaluateN6(
+        baseSnap({
+          contract: { ...baseSnap().contract!, incoterms: 'FOB' },
+          shipment: { ...ship, blControl: 'TELEX_RELEASE' },
+        }),
+      ).canProceed,
+    ).toBe(true);
+  });
+
+  it('N6 FOB 无提单路径可不填提单号/正本/电放', () => {
+    const r = evaluateN6(
+      baseSnap({
+        contract: { ...baseSnap().contract!, incoterms: 'FOB Shanghai' },
+        shipment: {
+          hasCustomerWrittenInstruction: true,
+          instructionRef: 'INST-FOB-001',
+          hasInternalApproval: true,
+          blControl: 'NO_BL',
+          blNo: null,
+          noBlReason: 'FOB 买方指定货代，卖方不控提单',
+          noBlRef: 'SA-FOB-2026-001',
+        },
+      }),
+    );
+    expect(r.canProceed).toBe(true);
+    expect(r.missing).not.toContain('N6_BL_CONTROL');
+    expect(r.reasons.some((x) => x.includes('无提单'))).toBe(true);
+  });
+
+  it('N6 FOB_NO_BL 别名与 EXW/FAS/FCA 同样可走无提单', () => {
+    for (const term of ['FOB', 'EXW', 'FAS', 'FCA']) {
+      const r = evaluateN6(
+        baseSnap({
+          contract: { ...baseSnap().contract!, incoterms: term },
+          shipment: {
+            hasCustomerWrittenInstruction: true,
+            instructionRef: 'INST-X',
+            hasInternalApproval: true,
+            blControl: 'FOB_NO_BL',
+            noBlEvidenceStub: 'DEMO-SA.pdf',
+          },
+        }),
+      );
+      expect(r.canProceed).toBe(true);
+    }
+  });
+
+  it('N6 FOB 未选无提单且未选正本/电放则拒绝', () => {
+    const r = evaluateN6(
+      baseSnap({
+        contract: { ...baseSnap().contract!, incoterms: 'FOB' },
+        shipment: {
+          hasCustomerWrittenInstruction: true,
+          instructionRef: 'INST-001',
+          hasInternalApproval: true,
+          blControl: null,
+        },
+      }),
+    );
+    expect(r.canProceed).toBe(false);
+    expect(r.missing).toContain('N6_NO_BL_PATH');
+    expect(r.missing).not.toContain('N6_BL_CONTROL');
+  });
+
+  it('N6 FOB 无提单缺依据则拒绝', () => {
+    const r = evaluateN6(
+      baseSnap({
+        contract: { ...baseSnap().contract!, incoterms: 'FOB' },
+        shipment: {
+          hasCustomerWrittenInstruction: true,
+          instructionRef: 'INST-001',
+          hasInternalApproval: true,
+          blControl: 'NO_BL',
+        },
+      }),
+    );
+    expect(r.canProceed).toBe(false);
+    expect(r.missing).toContain('N6_NO_BL_JUSTIFICATION');
+  });
+
+  it('N6 非 FOB（CIF/CFR）未选提单控制则拒绝', () => {
+    for (const term of ['CIF', 'CFR']) {
+      const r = evaluateN6(
+        baseSnap({
+          contract: { ...baseSnap().contract!, incoterms: term },
+          shipment: {
+            hasCustomerWrittenInstruction: true,
+            instructionRef: 'INST-001',
+            hasInternalApproval: true,
+            blControl: null,
+            blNo: null,
+          },
+        }),
+      );
+      expect(r.canProceed).toBe(false);
+      expect(r.missing).toContain('N6_BL_CONTROL');
+    }
+  });
+
+  it('N6 CIF 选无提单但未改贸易术语则拒绝', () => {
+    const r = evaluateN6(
+      baseSnap({
+        contract: { ...baseSnap().contract!, incoterms: 'CIF' },
+        shipment: {
+          hasCustomerWrittenInstruction: true,
+          instructionRef: 'INST-001',
+          hasInternalApproval: true,
+          blControl: 'NO_BL',
+          noBlReason: '误操作',
+          noBlRef: 'X-1',
+        },
+      }),
+    );
+    expect(r.canProceed).toBe(false);
+    expect(r.missing).toContain('N6_NO_BL_INCOTERMS');
+  });
+
+  it('N6 本节点手工改贸易术语后可走无提单', () => {
+    const r = evaluateN6(
+      baseSnap({
+        contract: { ...baseSnap().contract!, incoterms: 'CIF' },
+        shipment: {
+          hasCustomerWrittenInstruction: true,
+          instructionRef: 'INST-001',
+          hasInternalApproval: true,
+          blControl: 'NO_BL',
+          incotermsOverride: 'FOB',
+          noBlReason: '合同实际按 FOB 执行，买方自行订舱',
+          noBlRef: 'BK-OV-01',
+        },
+      }),
+    );
+    expect(r.canProceed).toBe(true);
+  });
+
+  it('N6 无提单仍须书面指示与内部审批', () => {
+    const r = evaluateN6(
+      baseSnap({
+        contract: { ...baseSnap().contract!, incoterms: 'FOB' },
+        shipment: {
+          hasCustomerWrittenInstruction: false,
+          instructionRef: null,
+          hasInternalApproval: false,
+          blControl: 'NO_BL',
+          noBlReason: 'FOB',
+          noBlRef: 'SA-1',
+        },
+      }),
+    );
+    expect(r.canProceed).toBe(false);
+    expect(r.missing).toEqual(
+      expect.arrayContaining(['N6_CUSTOMER_WRITTEN_INSTRUCTION', 'N6_INTERNAL_APPROVAL']),
+    );
+  });
+
   it('N6 证据齐全可通过', () => {
     expect(evaluateN6(baseSnap()).canProceed).toBe(true);
   });

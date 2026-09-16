@@ -47,6 +47,10 @@ export class SaveShipmentDto {
   @IsOptional() @IsString() blNo?: string;
   @IsOptional() @IsString() vessel?: string;
   @IsOptional() @IsString() consigneeOnBl?: string;
+  @IsOptional() @IsString() noBlReason?: string;
+  @IsOptional() @IsString() noBlRef?: string;
+  @IsOptional() @IsString() noBlEvidenceStub?: string;
+  @IsOptional() @IsString() incotermsOverride?: string;
 }
 
 export class SaveDocumentDto {

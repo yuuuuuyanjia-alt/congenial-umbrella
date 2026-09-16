@@ -52,6 +52,13 @@ const paths = [
     desc: '高置信命中 OFAC 模拟清单，N1 闸门拒绝进入后续交易。',
   },
   {
+    caseNo: 'DEMO-FOB',
+    title: 'FOB 无提单',
+    tag: 'NO BL',
+    cls: 'badge-pass',
+    desc: '买方安排运输，N6 走无提单路径（书面指示 + 内部审批 + 装船通知），不要求正本/电放。',
+  },
+  {
     caseNo: 'DEMO-LIMIT',
     title: '中信保超额',
     tag: 'GATE REFUSED',

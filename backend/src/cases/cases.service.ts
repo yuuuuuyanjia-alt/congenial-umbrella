@@ -736,10 +736,24 @@ export class CasesService {
 
   async saveShipment(caseId: string, dto: SaveShipmentDto, actorId?: string) {
     await this.ensureCase(caseId);
+    const data = {
+      hasCustomerWrittenInstruction: dto.hasCustomerWrittenInstruction,
+      instructionRef: dto.instructionRef || null,
+      hasInternalApproval: dto.hasInternalApproval,
+      approverId: dto.approverId || undefined,
+      blControl: dto.blControl || null,
+      blNo: dto.blNo || null,
+      vessel: dto.vessel || null,
+      consigneeOnBl: dto.consigneeOnBl || null,
+      noBlReason: dto.noBlReason || null,
+      noBlRef: dto.noBlRef || null,
+      noBlEvidenceStub: dto.noBlEvidenceStub || null,
+      incotermsOverride: dto.incotermsOverride || null,
+    };
     const row = await this.prisma.shipment.upsert({
       where: { caseId },
-      create: { caseId, ...dto },
-      update: dto,
+      create: { caseId, ...data },
+      update: data,
     });
     await this.touchNode(caseId, 'N6', NodeStatus.IN_PROGRESS);
     await this.audit.append({

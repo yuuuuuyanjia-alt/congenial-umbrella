@@ -11,7 +11,10 @@ function request<T = any>(method: string, url: string, data?: unknown): Promise<
       url: BASE + url,
       method: method as any,
       data: data as any,
-      header: { 'Content-Type': 'application/json', 'x-actor-id': uni.getStorageSync('actorId') || '' },
+      header: {
+        'Content-Type': 'application/json',
+        ...(uni.getStorageSync('actorId') ? { 'x-actor-id': uni.getStorageSync('actorId') } : {}),
+      },
       success: (res) => {
         if (res.statusCode >= 200 && res.statusCode < 300) resolve(res.data as T);
         else reject(res.data || { message: '请求失败', statusCode: res.statusCode });

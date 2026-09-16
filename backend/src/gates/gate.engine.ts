@@ -1,5 +1,7 @@
 import {
   Bearer,
+  BlControl,
+  BUYER_ARRANGED_FREIGHT_INCOTERMS,
   CHANGE_FIELDS,
   COMPARE_FIELDS,
   ChangeStatus,
@@ -25,6 +27,7 @@ import {
   ChangeOrderSnap,
   GateResult,
   QuoteSnap,
+  ShipmentSnap,
   SinosurePolicySnap,
 } from '../common/types';
 
@@ -388,26 +391,92 @@ export function evaluateN5(snap: CaseSnapshot): GateResult {
   return r;
 }
 
+/** 从「FOB Shanghai」「Incoterms 2020 CIF」等文本取出术语代码。 */
+export function parseIncotermsCode(raw?: string | null): string {
+  if (!raw) return '';
+  return raw
+    .trim()
+    .toUpperCase()
+    .replace(/^INCOTERMS(?:\s*20\d{2})?\s+/i, '')
+    .split(/[\s,;/:：-]+/)[0];
+}
+
+export function isBuyerArrangedFreight(incoterms?: string | null): boolean {
+  const code = parseIncotermsCode(incoterms);
+  return (BUYER_ARRANGED_FREIGHT_INCOTERMS as readonly string[]).includes(code);
+}
+
+/** N6 闸门使用的贸易术语：本节点手工覆盖优先，否则取 N3 合同。 */
+export function effectiveN6Incoterms(snap: CaseSnapshot): string {
+  return parseIncotermsCode(snap.shipment?.incotermsOverride || snap.contract?.incoterms);
+}
+
+export function isBlTypeControl(blControl?: string | null): boolean {
+  return blControl === BlControl.ORIGINAL || blControl === BlControl.TELEX_RELEASE;
+}
+
+export function isNoBlControl(blControl?: string | null): boolean {
+  return blControl === BlControl.NO_BL || blControl === BlControl.FOB_NO_BL;
+}
+
+export function hasNoBlJustification(s: Pick<ShipmentSnap, 'noBlReason' | 'noBlRef' | 'noBlEvidenceStub'>): boolean {
+  return !!(s.noBlReason?.trim() || s.noBlRef?.trim() || s.noBlEvidenceStub?.trim());
+}
+
 export function evaluateN6(snap: CaseSnapshot): GateResult {
   const r = emptyResult('N6');
   const s = snap.shipment;
   if (!s) {
     r.missing.push('N6_SHIPMENT');
     r.reasons.push('尚未录入装运/提单指示');
+    return finalizeHard(r);
+  }
+
+  if (!s.hasCustomerWrittenInstruction || !s.instructionRef?.trim()) {
+    r.missing.push('N6_CUSTOMER_WRITTEN_INSTRUCTION');
+    r.reasons.push('硬闸门：缺少客户书面提单指示');
+  }
+  if (!s.hasInternalApproval) {
+    r.missing.push('N6_INTERNAL_APPROVAL');
+    r.reasons.push('硬闸门：缺少内部审批');
+  }
+
+  const incoterms = effectiveN6Incoterms(snap);
+  const buyerFreight = isBuyerArrangedFreight(incoterms);
+  const blType = isBlTypeControl(s.blControl);
+  const noBl = isNoBlControl(s.blControl);
+
+  if (noBl) {
+    if (!buyerFreight) {
+      r.missing.push('N6_NO_BL_INCOTERMS');
+      r.reasons.push(
+        '硬闸门：无提单路径仅适用于 FOB/EXW/FAS/FCA（买方安排运输）；CIF/CFR 等须改本节点贸易术语或改选正本/电放',
+      );
+    }
+    if (!hasNoBlJustification(s)) {
+      r.missing.push('N6_NO_BL_JUSTIFICATION');
+      r.reasons.push('硬闸门：无提单路径须记录依据（装船通知 / 订舱 / 买方自行安排运输说明）');
+    }
+  } else if (blType) {
+    // 正本或电放任一即可，不必同时具备；FOB 交易若实际仍有提单亦可走此路径。
+  } else if (buyerFreight) {
+    r.missing.push('N6_NO_BL_PATH');
+    r.reasons.push('硬闸门：FOB 等买方安排运输须选择「无提单」路径并记录依据，或仍选择正本/电放其一');
   } else {
-    if (!s.hasCustomerWrittenInstruction || !s.instructionRef) {
-      r.missing.push('N6_CUSTOMER_WRITTEN_INSTRUCTION');
-      r.reasons.push('硬闸门：缺少客户书面提单指示');
-    }
-    if (!s.hasInternalApproval) {
-      r.missing.push('N6_INTERNAL_APPROVAL');
-      r.reasons.push('硬闸门：缺少内部审批');
-    }
-    if (!s.blControl) {
-      r.missing.push('N6_BL_CONTROL');
-      r.reasons.push('硬闸门：未明确提单控制方式（正本/电放）');
+    r.missing.push('N6_BL_CONTROL');
+    r.reasons.push('硬闸门：未明确提单控制方式（正本或电放，二选一即可）');
+  }
+
+  if (!r.missing.length) {
+    if (noBl) {
+      r.reasons.push(`硬闸门证据齐全：书面指示、内部审批、无提单路径（${incoterms || '买方安排运输'}）`);
+    } else if (s.blControl === BlControl.TELEX_RELEASE) {
+      r.reasons.push('硬闸门证据齐全：书面指示、内部审批、电放提单');
+    } else {
+      r.reasons.push('硬闸门证据齐全：书面指示、内部审批、正本提单');
     }
   }
+
   return finalizeHard(r);
 }
 
