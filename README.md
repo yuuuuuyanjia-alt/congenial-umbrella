@@ -20,8 +20,8 @@
 | --- | --- | --- |
 | N1 | 询盘/客户KYC | 买方 / 付款人 / 收货人关系；模拟筛查 OFAC、UN、EU、UK、中国不可靠实体清单；KYC 报告 + 风险评分；高置信命中硬拦截 |
 | N2 | 报价环节 | 价格基础（含/不含项目）、有效期、运费/税费承担方必填；「价格待定/费用另议」禁止推进；相对成本底线/历史价异常偏离软提示或中风险；报价版本 + 字段快照入审计 |
-| N3 | 合同/订单确认 | **所有权保留**、**争议解决**条款必填；校验 Incoterms 与付款条件；记录交货期与数量 |
-| N4 | 变更管理 | 交货期 / 数量 / 收货人 / 付款条件变更须出变更单（含 diff）；客户确认 + 内部确认；敏感变更须审批；旧版 `SUPERSEDED`；当事方/付款/收货人变更会重跑关联节点闸门 |
+| N3 | 合同/订单确认 | **所有权保留**、**争议解决**条款必填；校验 Incoterms 与付款条件；记录交货期与数量；**须上传中信保保单并登记投保限额**，合同总金额不得超过限额 |
+| N4 | 变更管理 | 交货期 / 数量 / 收货人 / 付款条件变更须出变更单（含 diff）；客户确认 + 内部确认；敏感变更须审批；旧版 `SUPERSEDED`；当事方/付款/收货人变更会重跑关联节点闸门；**进入变更时须再次确认中信保并按变更后金额核对限额** |
 | N5 | 生产/备货排期 | 计划交期 ≤ 合同交期，否则须登记**结构化延期触发条件**；客户同意延期须有可追溯证据编号；无同意则中风险不得推进 |
 | N6 | 装运/提单指示 | **硬闸门**：客户书面指示 + 内部审批 + 提单控制（正本 / 电放） |
 | N7 | 单证一致性 | **硬闸门**：终稿合同 + 合同/发票/装箱单/提单字段一致 + 不符点修改记录 |
@@ -87,7 +87,7 @@ npm run miniapp
 
 ## 演示环境部署
 
-克隆后一条命令拉起 **API + 已构建 H5**（同一主机、同源 `/api`），SQLite 写入 `DEMO-PASS` / `DEMO-SOFT` / `DEMO-BLOCK` / `DEMO-GATE`。制裁筛查仍为本地模拟名单，**不需要、也不读取真实 OFAC/UN 等 API Key**。
+克隆后一条命令拉起 **API + 已构建 H5**（同一主机、同源 `/api`），SQLite 写入 `DEMO-PASS` / `DEMO-SOFT` / `DEMO-BLOCK` / `DEMO-GATE` / `DEMO-LIMIT`。制裁筛查仍为本地模拟名单，**不需要、也不读取真实 OFAC/UN 等 API Key**。
 
 需要本机已安装 Docker 与 Docker Compose v2。
 
@@ -124,7 +124,7 @@ docker compose down
 # 清库并重新写入种子
 docker compose down -v && docker compose up --build -d
 
-# 强制重种但保留卷（会清空业务表再写入四条演示路径）
+# 强制重种但保留卷（会清空业务表再写入演示路径）
 DEMO_FORCE_SEED=1 docker compose up -d --force-recreate api
 ```
 
@@ -136,7 +136,7 @@ DEMO_FORCE_SEED=1 docker compose up -d --force-recreate api
 npm test
 ```
 
-覆盖：N1 高置信硬拦截 / 低置信软提示；N2 模糊报价拒绝与成本底线偏离；N3 缺条款拒绝；N4 变更确认链；N5 延期无同意中风险；**N6 / N7 / N9 缺证据拒绝推进**；N8 HS/申报要素缺口禁止申报。
+覆盖：N1 高置信硬拦截 / 低置信软提示；N2 模糊报价拒绝与成本底线偏离；N3 缺条款拒绝、**中信保缺保单/超额拒绝**；N4 变更确认链、**变更后限额复核**、无变更跳过且不要求 N4 中信保；N5 延期无同意中风险；**N6 / N7 / N9 缺证据拒绝推进**；N8 HS/申报要素缺口禁止申报。
 
 ## 种子案件
 
@@ -144,10 +144,11 @@ npm test
 
 | 案件号 | 路径 | 说明 |
 | --- | --- | --- |
-| `DEMO-PASS` | 绿灯通过 | Nordlicht GmbH，清单未命中；报价 v1 废止 / v2 生效；变更单 CO-001 数量 8→10 已确认生效；排期未延期；HS 要素与原产地证齐全并模拟放行 |
+| `DEMO-PASS` | 绿灯通过 | Nordlicht GmbH，清单未命中；报价 v1 废止 / v2 生效；中信保限额 150,000 USD 覆盖合同 128,000 USD；变更单 CO-001 数量 8→10 已确认生效并再次核对限额；排期未延期；HS 要素与原产地证齐全并模拟放行 |
 | `DEMO-SOFT` | 软提示 | `Acme Industrial Co` 低置信近似命中，不阻断；N2 报价已过，停在 N3 |
 | `DEMO-BLOCK` | 硬拦截 | `Banned Trading LLC` 高置信命中模拟 OFAC，N1 拒绝 |
-| `DEMO-GATE` | 闸门演示 | 已过 KYC / 报价 / 合同 / 无变更 / 排期，停在 N6，书面指示等证据为空 |
+| `DEMO-GATE` | 闸门演示 | 已过 KYC / 报价 / 合同（含中信保）/ **无变更故跳过 N4** / 排期，停在 N6，书面指示等证据为空 |
+| `DEMO-LIMIT` | 中信保超额 | Pacific Gear Ltd，合同 80,000 USD，投保限额仅 30,000 USD，停在 N3；推进应 **409 GATE_REFUSED** |
 
 ## 硬闸门 / 业务闸门拒绝示例
 
@@ -164,16 +165,25 @@ curl -s http://127.0.0.1:3000/api/cases | python -c "import json,sys; d=json.loa
 curl -s -X POST http://127.0.0.1:3000/api/cases/<DEMO-GATE的id>/nodes/N6/advance
 ```
 
-报价含模糊用语、变更单未确认、延期无客户同意、HS 申报要素缺口，分别对 N2 / N4 / N5 / N8 `advance` 同样拒绝。
+对 `DEMO-LIMIT`（合同金额超过中信保限额）推进 N3，同样返回 **409**，`missing` 含 `N3_SINOSURE_OVER_LIMIT`：
+
+```bash
+curl -s -X POST http://127.0.0.1:3000/api/cases/<DEMO-LIMIT的id>/nodes/N3/advance
+```
+
+报价含模糊用语、变更单未确认、延期无客户同意、HS 申报要素缺口，分别对 N2 / N4 / N5 / N8 `advance` 同样拒绝。进入 N4 后若未再次确认中信保，或变更后金额超过限额，N4 `advance` 也会拒绝。无变更单时 N3 通过后直接进入 N5，不要求 N4 中信保。
 
 常用接口：
 
 - `GET /api/catalog` 节点、HS 模板、延期原因、价格基础等
 - `POST /api/cases/:id/nodes/N1/screen` 模拟筛查
 - `POST /api/cases/:id/nodes/N2/quotes` 保存报价新版本
+- `POST /api/cases/:id/nodes/N3/contract` 保存合同要素
+- `POST /api/cases/:id/nodes/N3/sinosure` 登记中信保保单与投保限额
 - `POST /api/cases/:id/nodes/N4/changes` 创建变更单
 - `POST /api/cases/:id/nodes/N4/changes/:changeId/ack` 客户/内部确认或审批
 - `POST /api/cases/:id/nodes/N4/changes/:changeId/apply` 生效新版本
+- `POST /api/cases/:id/nodes/N4/sinosure` 变更后再次上传或确认中信保
 - `POST /api/cases/:id/nodes/N5/plan` 生产排期
 - `POST /api/cases/:id/nodes/N8/customs` 报关单
 - `POST /api/cases/:id/nodes/N8/eport-sync` 模拟电子口岸同步
@@ -193,6 +203,7 @@ curl -s -X POST http://127.0.0.1:3000/api/cases/<DEMO-GATE的id>/nodes/N6/advanc
 - **提单控制**：正本提单 / 电放提单
 - **工作台动作**：误报排除、确认真实、补充信息、持续监控
 - **硬闸门**：N6 / N7 / N9，证据缺失即拒绝推进
+- **中信保限额**：合同（及变更后）总金额不得超过投保限额，否则闸门拒绝推进
 
 ## 明确不做
 

@@ -32,6 +32,7 @@ import {
   SaveQuoteDto,
   SaveSettlementDto,
   SaveShipmentDto,
+  SaveSinosureDto,
   UpsertPartyDto,
 } from './dto';
 import { GateResult } from '../common/types';
@@ -76,6 +77,7 @@ export class CasesService {
         productionPlan: true,
         customs: true,
         evidences: { orderBy: { createdAt: 'asc' } },
+        sinosurePolicies: { orderBy: { createdAt: 'asc' } },
       },
     });
     if (!c) throw new NotFoundException('案件不存在');
@@ -232,6 +234,15 @@ export class CasesService {
       create: { caseId, ...data },
       update: data,
     });
+    if (dto.amountFen != null || dto.currency) {
+      await this.prisma.tradeCase.update({
+        where: { id: caseId },
+        data: {
+          ...(dto.amountFen != null ? { amountFen: dto.amountFen } : {}),
+          ...(dto.currency ? { currency: dto.currency } : {}),
+        },
+      });
+    }
     await this.snapshotContract(caseId, null);
     await this.touchNode(caseId, 'N3', NodeStatus.IN_PROGRESS);
     await this.audit.append({
@@ -240,6 +251,96 @@ export class CasesService {
       action: 'CONTRACT_SAVED',
       nodeCode: 'N3',
       detail: dto,
+    });
+    return row;
+  }
+
+  async saveSinosure(caseId: string, nodeCode: string, dto: SaveSinosureDto, actorId?: string) {
+    await this.ensureCase(caseId);
+    const code = (nodeCode || 'N3').toUpperCase();
+    if (code !== 'N3' && code !== 'N4') {
+      throw new BadRequestException('中信保登记仅适用于合同确认（N3）或变更管理（N4）');
+    }
+
+    let changeOrderId = dto.changeOrderId ?? null;
+    if (code === 'N4' && !changeOrderId) {
+      const latestChange = await this.prisma.changeOrder.findFirst({
+        where: { caseId, status: { not: ChangeStatus.SUPERSEDED } },
+        orderBy: { createdAt: 'desc' },
+      });
+      changeOrderId = latestChange?.id ?? null;
+    }
+
+    let evidenceRef = dto.evidenceRef?.trim() || '';
+    let fileName = dto.fileName?.trim() || '';
+    let insuredLimitFen = dto.insuredLimitFen;
+    let currency = dto.currency || 'USD';
+    let confirmedExisting = !!dto.confirmedExisting;
+    let sourceId: string | null = null;
+
+    if (confirmedExisting) {
+      const prior = await this.prisma.sinosurePolicy.findFirst({
+        where: { caseId, nodeCode: 'N3' },
+        orderBy: { createdAt: 'desc' },
+      });
+      if (!prior) throw new BadRequestException('尚无合同环节的中信保记录，请先上传保单');
+      sourceId = prior.id;
+      evidenceRef = evidenceRef || prior.evidenceRef || '';
+      fileName = fileName || prior.fileName || '';
+      insuredLimitFen = insuredLimitFen ?? prior.insuredLimitFen;
+      currency = dto.currency || prior.currency;
+    }
+
+    if (!insuredLimitFen || insuredLimitFen <= 0) {
+      throw new BadRequestException('请填写中信保投保限额');
+    }
+    if (!evidenceRef && !fileName) {
+      evidenceRef = `SINOSURE-${Date.now()}`;
+      fileName = fileName || '中信保限额批注-模拟.pdf';
+    }
+
+    const kind = confirmedExisting ? EvidenceKind.SINOSURE_CONFIRM : EvidenceKind.SINOSURE_POLICY;
+    const ev = await this.addEvidence(caseId, code, kind, {
+      ref: evidenceRef || fileName,
+      note: confirmedExisting ? '确认沿用当前中信保保单' : '中信保保单/限额批注',
+      payload: {
+        fileName,
+        insuredLimitFen,
+        currency,
+        confirmedExisting,
+        changeOrderId,
+        sourcePolicyId: sourceId,
+      },
+    });
+
+    const row = await this.prisma.sinosurePolicy.create({
+      data: {
+        caseId,
+        nodeCode: code,
+        changeOrderId,
+        evidenceId: ev.id,
+        evidenceRef: evidenceRef || ev.id,
+        fileName: fileName || null,
+        insuredLimitFen,
+        currency,
+        confirmedExisting,
+      },
+    });
+    await this.touchNode(caseId, code, NodeStatus.IN_PROGRESS);
+    await this.audit.append({
+      caseId,
+      actorId,
+      action: confirmedExisting ? 'SINOSURE_CONFIRMED' : 'SINOSURE_SAVED',
+      nodeCode: code,
+      detail: {
+        policyId: row.id,
+        evidenceId: ev.id,
+        evidenceRef: row.evidenceRef,
+        insuredLimitFen,
+        currency,
+        changeOrderId,
+        confirmedExisting,
+      },
     });
     return row;
   }
@@ -462,7 +563,18 @@ export class CasesService {
     let partyChanged = false;
     for (const d of co.diffs) {
       if (d.field === 'deliveryDate') patch.deliveryDate = parseDate(d.newValue);
-      if (d.field === 'quantity') patch.quantity = Number(d.newValue);
+      if (d.field === 'quantity') {
+        patch.quantity = Number(d.newValue);
+        const quote = await this.prisma.quote.findFirst({
+          where: { caseId, status: QuoteStatus.ACTIVE },
+          orderBy: { version: 'desc' },
+        });
+        if (quote?.unitPriceFen && Number.isFinite(Number(d.newValue))) {
+          patch.amountFen = quote.unitPriceFen * Number(d.newValue);
+        } else if (contract?.amountFen && Number(d.oldValue) > 0) {
+          patch.amountFen = Math.round((contract.amountFen * Number(d.newValue)) / Number(d.oldValue));
+        }
+      }
       if (d.field === 'paymentTerms') patch.paymentTerms = d.newValue;
       if (d.field === 'consigneeName') {
         patch.consigneeName = d.newValue;
@@ -481,6 +593,12 @@ export class CasesService {
     }
     if (contract && Object.keys(patch).length) {
       await this.prisma.contract.update({ where: { caseId }, data: patch as any });
+      if (typeof patch.amountFen === 'number') {
+        await this.prisma.tradeCase.update({
+          where: { id: caseId },
+          data: { amountFen: patch.amountFen as number },
+        });
+      }
     }
     if (partyChanged) {
       await this.screenKyc(caseId, actorId);

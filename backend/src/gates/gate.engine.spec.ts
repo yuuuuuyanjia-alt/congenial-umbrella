@@ -149,6 +149,27 @@ function baseSnap(over: Partial<CaseSnapshot> = {}): CaseSnapshot {
     costFloorFen: 1000000,
     historyUnitPrices: [1200000, 1300000, 1250000],
     now: '2026-09-16',
+    caseAmountFen: 12800000,
+    caseCurrency: 'USD',
+    sinosurePolicies: [
+      {
+        nodeCode: 'N3',
+        evidenceRef: 'SIN-DEMO',
+        evidenceId: 'ev-sin-n3',
+        fileName: '中信保限额批注-模拟.pdf',
+        insuredLimitFen: 50000000,
+        currency: 'USD',
+      },
+      {
+        nodeCode: 'N4',
+        evidenceRef: 'SIN-DEMO',
+        evidenceId: 'ev-sin-n4',
+        fileName: '中信保限额批注-模拟.pdf',
+        insuredLimitFen: 50000000,
+        currency: 'USD',
+        confirmedExisting: true,
+      },
+    ],
     ...over,
   };
 }
@@ -229,6 +250,55 @@ describe('闸门引擎 MVP 节点', () => {
     );
     expect(r.canProceed).toBe(false);
     expect(r.missing).toEqual(expect.arrayContaining(['N3_RETENTION_OF_TITLE', 'N3_DISPUTE_CLAUSE']));
+  });
+
+  it('N3 未上传中信保保单拒绝', () => {
+    const r = evaluateN3(baseSnap({ sinosurePolicies: [] }));
+    expect(r.canProceed).toBe(false);
+    expect(r.decision).toBe(Decision.HARD_BLOCK);
+    expect(r.missing).toEqual(expect.arrayContaining(['N3_SINOSURE_EVIDENCE', 'N3_SINOSURE_LIMIT']));
+  });
+
+  it('N3 合同金额超过投保限额拒绝', () => {
+    const r = evaluateN3(
+      baseSnap({
+        sinosurePolicies: [
+          {
+            nodeCode: 'N3',
+            evidenceRef: 'SIN-LOW',
+            evidenceId: 'ev-sin-low',
+            insuredLimitFen: 100000,
+            currency: 'USD',
+          },
+        ],
+      }),
+    );
+    expect(r.canProceed).toBe(false);
+    expect(r.decision).toBe(Decision.HARD_BLOCK);
+    expect(r.missing).toContain('N3_SINOSURE_OVER_LIMIT');
+    expect(r.reasons.join('')).toContain('投保限额');
+  });
+
+  it('N3 限额币种与合同不一致拒绝', () => {
+    const r = evaluateN3(
+      baseSnap({
+        sinosurePolicies: [
+          {
+            nodeCode: 'N3',
+            evidenceRef: 'SIN-CNY',
+            evidenceId: 'ev-sin-cny',
+            insuredLimitFen: 50000000,
+            currency: 'CNY',
+          },
+        ],
+      }),
+    );
+    expect(r.canProceed).toBe(false);
+    expect(r.missing).toContain('N3_SINOSURE_CURRENCY');
+  });
+
+  it('N3 条款与中信保限额齐全可通过', () => {
+    expect(evaluateN3(baseSnap()).canProceed).toBe(true);
   });
 
   it('N6 缺少书面指示/审批/提单控制拒绝推进', () => {
@@ -510,6 +580,91 @@ describe('闸门引擎 N4 变更管理', () => {
       }),
     );
     expect(r.canProceed).toBe(true);
+  });
+
+  it('进入变更路径但未再次确认中信保拒绝', () => {
+    const r = evaluateN4(
+      baseSnap({
+        sinosurePolicies: [
+          {
+            nodeCode: 'N3',
+            evidenceRef: 'SIN-DEMO',
+            evidenceId: 'ev-sin-n3',
+            insuredLimitFen: 50000000,
+            currency: 'USD',
+          },
+        ],
+        changeOrders: [
+          {
+            ...pending,
+            status: 'APPLIED',
+            customerAck: true,
+            customerAckEvidenceId: 'ev-c',
+            internalAck: true,
+            internalAckEvidenceId: 'ev-i',
+          },
+        ],
+      }),
+    );
+    expect(r.canProceed).toBe(false);
+    expect(r.missing).toEqual(expect.arrayContaining(['N4_SINOSURE_EVIDENCE', 'N4_SINOSURE_LIMIT']));
+  });
+
+  it('变更后金额超过投保限额拒绝', () => {
+    const r = evaluateN4(
+      baseSnap({
+        quotes: [{ ...baseSnap().quotes[0], unitPriceFen: 1280000, quantity: 10, amountFen: 12800000 }],
+        sinosurePolicies: [
+          {
+            nodeCode: 'N3',
+            evidenceRef: 'SIN-DEMO',
+            evidenceId: 'ev-sin-n3',
+            insuredLimitFen: 12000000,
+            currency: 'USD',
+          },
+          {
+            nodeCode: 'N4',
+            evidenceRef: 'SIN-DEMO',
+            evidenceId: 'ev-sin-n4',
+            insuredLimitFen: 12000000,
+            currency: 'USD',
+            confirmedExisting: true,
+          },
+        ],
+        changeOrders: [
+          {
+            ...pending,
+            status: 'APPLIED',
+            customerAck: true,
+            customerAckEvidenceId: 'ev-c',
+            internalAck: true,
+            internalAckEvidenceId: 'ev-i',
+            diffs: [{ field: 'quantity', fieldLabel: '数量', oldValue: '8', newValue: '10' }],
+          },
+        ],
+      }),
+    );
+    expect(r.canProceed).toBe(false);
+    expect(r.missing).toContain('N4_SINOSURE_OVER_LIMIT');
+  });
+
+  it('无变更单可直接过闸且不要求 N4 中信保', () => {
+    const r = evaluateN4(
+      baseSnap({
+        changeOrders: [],
+        sinosurePolicies: [
+          {
+            nodeCode: 'N3',
+            evidenceRef: 'SIN-DEMO',
+            evidenceId: 'ev-sin-n3',
+            insuredLimitFen: 50000000,
+            currency: 'USD',
+          },
+        ],
+      }),
+    );
+    expect(r.canProceed).toBe(true);
+    expect(r.reasons.join('')).toContain('无待确认变更');
   });
 
   it('收货人变更为空时关联复核 N1 拒绝', () => {

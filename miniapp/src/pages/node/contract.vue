@@ -2,26 +2,46 @@
   <view class="wrap" v-if="c">
     <view class="card">
       <view class="h2">合同 / 订单确认</view>
-      <view class="muted">所有权保留条款、争议解决条款为必填。国际贸易术语与付款条件将做风险提示校验。</view>
+      <view class="muted">所有权保留、争议解决条款为必填。须上传中信保保单并登记投保限额；合同总金额不得超过限额，否则不能推进。</view>
     </view>
     <view class="card">
       <view class="label">相对方</view>
       <input class="input" v-model="form.counterparty" />
-      <view class="label">Incoterms</view>
+      <view class="label">国际贸易术语</view>
       <input class="input" v-model="form.incoterms" placeholder="如 CIF / FOB / CFR" />
       <view class="label">付款条件</view>
       <input class="input" v-model="form.paymentTerms" placeholder="如 T/T 30 days" />
-      <view class="label">合同交货期（YYYY-MM-DD）</view>
+      <view class="label">合同交货期（年-月-日）</view>
       <input class="input" v-model="form.deliveryDate" placeholder="2026-11-30" />
       <view class="label">数量</view>
       <input class="input" type="number" v-model="form.quantity" />
       <view class="label">单位</view>
       <input class="input" v-model="form.unit" placeholder="套 / 台 / 千克" />
+      <view class="label">合同总金额</view>
+      <input class="input" type="digit" v-model="form.amountYuan" placeholder="与投保限额同一币种" />
+      <view class="label">币种</view>
+      <input class="input" v-model="form.currency" placeholder="USD" />
       <view class="label">所有权保留条款</view>
       <switch :checked="form.hasRetentionOfTitle" @change="(e: any) => (form.hasRetentionOfTitle = e.detail.value)" />
       <view class="label">争议解决条款</view>
       <switch :checked="form.hasDisputeClause" @change="(e: any) => (form.hasDisputeClause = e.detail.value)" />
       <view class="btn" @click="save">保存合同要素</view>
+    </view>
+
+    <view class="card">
+      <view class="h2">中信保</view>
+      <view class="muted">请上传出口信用保险保单或限额批注，并填写投保限额。合同总金额超过限额时系统将拒绝推进。</view>
+      <view class="muted" v-if="sinosureHint" style="margin-top: 8rpx">{{ sinosureHint }}</view>
+      <view class="label">保单编号 / 附件编号</view>
+      <input class="input" v-model="sino.evidenceRef" placeholder="可手填编号，或点下方模拟上传" />
+      <view class="label">附件名称</view>
+      <input class="input" v-model="sino.fileName" placeholder="如 中信保限额批注.pdf" />
+      <view class="btn btn-ghost" @click="stubUpload">模拟上传保单</view>
+      <view class="label">投保限额</view>
+      <input class="input" type="digit" v-model="sino.limitYuan" placeholder="须不低于合同总金额" />
+      <view class="label">限额币种</view>
+      <input class="input" v-model="sino.currency" placeholder="须与合同一致" />
+      <view class="btn" @click="saveSino">保存中信保信息</view>
       <view class="btn btn-ghost" @click="tryAdvance">尝试确认并推进</view>
     </view>
     <view class="err" v-if="err">{{ err }}</view>
@@ -31,8 +51,8 @@
 
 <script setup lang="ts">
 import { onLoad } from '@dcloudio/uni-app';
-import { reactive, ref } from 'vue';
-import { api } from '../../api';
+import { computed, reactive, ref } from 'vue';
+import { api, fenToYuan, latestSinosure, yuanToFen } from '../../api';
 
 const id = ref('');
 const c = ref<any>(null);
@@ -47,6 +67,21 @@ const form = reactive({
   deliveryDate: '2026-11-30',
   quantity: 10,
   unit: '套',
+  amountYuan: '',
+  currency: 'USD',
+});
+const sino = reactive({
+  evidenceRef: '',
+  fileName: '',
+  limitYuan: '',
+  currency: 'USD',
+});
+
+const sinosureHint = computed(() => {
+  const p = latestSinosure(c.value?.sinosurePolicies, 'N3');
+  if (!p) return '';
+  const limit = fenToYuan(p.insuredLimitFen);
+  return `已登记：限额 ${p.currency} ${limit} · ${p.fileName || p.evidenceRef || '已留存附件'}`;
 });
 
 onLoad(async (q) => {
@@ -57,23 +92,65 @@ onLoad(async (q) => {
     Object.assign(form, {
       ...ct,
       deliveryDate: ct.deliveryDate ? String(ct.deliveryDate).slice(0, 10) : form.deliveryDate,
+      amountYuan: fenToYuan(ct.amountFen || c.value.amountFen),
+      currency: ct.currency || c.value.currency || 'USD',
     });
+  } else {
+    if (c.value.parties?.[0]) form.counterparty = c.value.parties[0].name;
+    form.amountYuan = fenToYuan(c.value.amountFen);
+    form.currency = c.value.currency || 'USD';
   }
-  else if (c.value.parties?.[0]) form.counterparty = c.value.parties[0].name;
+  const p = latestSinosure(c.value.sinosurePolicies, 'N3');
+  if (p) {
+    sino.evidenceRef = p.evidenceRef || '';
+    sino.fileName = p.fileName || '';
+    sino.limitYuan = fenToYuan(p.insuredLimitFen);
+    sino.currency = p.currency || form.currency;
+  } else {
+    sino.currency = form.currency;
+  }
 });
+
+function stubUpload() {
+  sino.evidenceRef = `SINOSURE-${Date.now()}`;
+  sino.fileName = '中信保限额批注-模拟.pdf';
+  ok.value = '已生成模拟保单附件编号（演示环境，非真实上传）';
+}
 
 async function save() {
   await api.saveContract(id.value, {
-    ...form,
+    counterparty: form.counterparty,
+    incoterms: form.incoterms,
+    paymentTerms: form.paymentTerms,
+    hasRetentionOfTitle: form.hasRetentionOfTitle,
+    hasDisputeClause: form.hasDisputeClause,
+    deliveryDate: form.deliveryDate,
     quantity: Number(form.quantity),
+    unit: form.unit,
+    amountFen: yuanToFen(form.amountYuan),
+    currency: form.currency,
   });
   ok.value = '合同要素已保存';
+}
+
+async function saveSino() {
+  err.value = '';
+  if (!sino.evidenceRef && !sino.fileName) stubUpload();
+  await api.saveSinosureN3(id.value, {
+    evidenceRef: sino.evidenceRef,
+    fileName: sino.fileName,
+    insuredLimitFen: yuanToFen(sino.limitYuan),
+    currency: sino.currency || form.currency,
+  });
+  c.value = await api.case(id.value);
+  ok.value = '中信保信息已保存';
 }
 
 async function tryAdvance() {
   err.value = '';
   try {
     await save();
+    await saveSino();
     const r = await api.advance(id.value, 'N3');
     ok.value = `已推进至 ${r.nextNode}`;
   } catch (e: any) {

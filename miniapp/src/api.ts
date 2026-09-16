@@ -32,6 +32,8 @@ export const api = {
   upsertParty: (id: string, body: unknown) => request('POST', `/cases/${id}/parties`, body),
   screen: (id: string) => request('POST', `/cases/${id}/nodes/N1/screen`),
   saveContract: (id: string, body: unknown) => request('POST', `/cases/${id}/nodes/N3/contract`, body),
+  saveSinosureN3: (id: string, body: unknown) => request('POST', `/cases/${id}/nodes/N3/sinosure`, body),
+  saveSinosureN4: (id: string, body: unknown) => request('POST', `/cases/${id}/nodes/N4/sinosure`, body),
   saveQuote: (id: string, body: unknown) => request('POST', `/cases/${id}/nodes/N2/quotes`, body),
   createChange: (id: string, body: unknown) => request('POST', `/cases/${id}/nodes/N4/changes`, body),
   ackChange: (id: string, changeId: string, body: unknown) =>
@@ -100,4 +102,20 @@ export function nodePage(code: string) {
 export function toastErr(e: any) {
   const msg = e?.message || e?.reasons?.join('；') || '操作失败';
   uni.showToast({ title: String(msg).slice(0, 40), icon: 'none', duration: 2800 });
+}
+
+export function yuanToFen(v: string | number | null | undefined) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return 0;
+  return Math.round(n * 100);
+}
+
+export function fenToYuan(fen?: number | null) {
+  if (fen == null || !Number.isFinite(Number(fen))) return '';
+  return (Number(fen) / 100).toFixed(2);
+}
+
+export function latestSinosure(list: any[] | undefined, nodeCode: string) {
+  const rows = (list || []).filter((p) => p.nodeCode === nodeCode);
+  return rows.length ? rows[rows.length - 1] : null;
 }
