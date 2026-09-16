@@ -46,7 +46,7 @@ export const NODE_CATALOG = [
     mvp: true,
     isHardGate: true,
     isStub: false,
-    summary: '硬闸门：客户书面指示 + 内部审批 + 提单控制（正本/电放）。',
+    summary: '硬闸门：客户书面指示 + 内部审批；CIF/CFR 等须正本或电放其一；FOB/EXW/FAS/FCA 可走无提单路径。',
   },
   {
     code: 'N7',
@@ -185,12 +185,22 @@ export const WorkbenchActionLabel: Record<string, string> = {
 export const BlControl = {
   ORIGINAL: 'ORIGINAL',
   TELEX_RELEASE: 'TELEX_RELEASE',
+  NO_BL: 'NO_BL',
+  FOB_NO_BL: 'FOB_NO_BL',
 } as const;
 
 export const BlControlLabel: Record<string, string> = {
   ORIGINAL: '正本提单',
   TELEX_RELEASE: '电放提单',
+  NO_BL: '无提单',
+  FOB_NO_BL: '无提单（FOB）',
 };
+
+/**
+ * 买方安排主运、卖方通常不控提单的贸易术语。
+ * FOB 为主场景；EXW / FAS / FCA 一并纳入无提单可选路径（与 CIF/CFR 等卖方出单相对）。
+ */
+export const BUYER_ARRANGED_FREIGHT_INCOTERMS = ['FOB', 'EXW', 'FAS', 'FCA'] as const;
 
 export const DocType = {
   CONTRACT: 'CONTRACT',

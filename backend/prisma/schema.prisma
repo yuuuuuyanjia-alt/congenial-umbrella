@@ -164,6 +164,10 @@ model Shipment {
   blNo                          String?
   vessel                        String?
   consigneeOnBl                 String?
+  noBlReason                    String?
+  noBlRef                       String?
+  noBlEvidenceStub              String?
+  incotermsOverride             String?
   updatedAt                     DateTime  @updatedAt
   case                          TradeCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
   approver                      User?     @relation("ShipmentApprover", fields: [approverId], references: [id])

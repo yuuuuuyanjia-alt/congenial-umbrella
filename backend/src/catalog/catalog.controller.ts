@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import {
   BearerLabel,
   BlControlLabel,
+  BUYER_ARRANGED_FREIGHT_INCOTERMS,
   ChangeFieldLabel,
   ChangeStatusLabel,
   DecisionLabel,
@@ -39,6 +40,7 @@ export class CatalogController {
       decisions: DecisionLabel,
       risks: RiskLevelLabel,
       blControl: BlControlLabel,
+      buyerArrangedFreightIncoterms: BUYER_ARRANGED_FREIGHT_INCOTERMS,
       workbench: WorkbenchActionLabel,
       priceBasis: PriceBasisLabel,
       bearers: BearerLabel,

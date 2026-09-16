@@ -100,6 +100,29 @@ page {
   border-radius: 8rpx;
 }
 .chip-on { background: #0b3a5b; color: #fff; }
+.choice-row {
+  display: flex;
+  align-items: stretch;
+  gap: 16rpx;
+  margin-top: 12rpx;
+}
+.choice-btn {
+  flex: 1;
+  text-align: center;
+  padding: 22rpx 12rpx;
+  border-radius: 12rpx;
+  background: #e8eef3;
+  color: #0b3a5b;
+  font-size: 28rpx;
+  font-weight: 650;
+  border: 2rpx solid #c5d4e0;
+  box-sizing: border-box;
+}
+.choice-btn-on {
+  background: #0b3a5b;
+  color: #fff;
+  border-color: #0b3a5b;
+}
 .err {
   background: #fde8e6;
   color: #7a1d16;

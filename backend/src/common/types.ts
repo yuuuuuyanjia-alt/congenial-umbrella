@@ -41,6 +41,14 @@ export interface ShipmentSnap {
   blControl?: string | null;
   blNo?: string | null;
   consigneeOnBl?: string | null;
+  /** 无提单路径的原因说明 */
+  noBlReason?: string | null;
+  /** 装船通知 / 订舱 / 买方运输安排编号 */
+  noBlRef?: string | null;
+  /** 演示上传占位（文件名或附件编号） */
+  noBlEvidenceStub?: string | null;
+  /** N6 手工覆盖合同贸易术语；空则沿用 N3 contract.incoterms */
+  incotermsOverride?: string | null;
 }
 
 export interface DocSnap {
