@@ -48,7 +48,49 @@ const LISTS = [
   },
 ];
 
+const HS = [
+  {
+    hsCode: '8458.11.00',
+    productName: '数控机床配件',
+    requiredElementsJson: JSON.stringify(['品牌', '型号', '用途', '是否数控', '加工材料']),
+    unit: '千克',
+    exportTaxName: '加工中心用零件',
+  },
+  {
+    hsCode: '8205.40.00',
+    productName: '手工具套装',
+    requiredElementsJson: JSON.stringify(['品牌', '材质', '规格', '用途']),
+    unit: '套',
+    exportTaxName: '手工工具',
+  },
+  {
+    hsCode: '8413.70.00',
+    productName: '工业泵',
+    requiredElementsJson: JSON.stringify(['品牌', '型号', '扬程', '介质']),
+    unit: '台',
+    exportTaxName: '离心泵',
+  },
+  {
+    hsCode: '8708.30.00',
+    productName: '汽车制动组件',
+    requiredElementsJson: JSON.stringify(['品牌', '适用车型', '材质']),
+    unit: '千克',
+    exportTaxName: '制动器零件',
+  },
+];
+
+function goodsKey(desc: string) {
+  return desc.replace(/\s+/g, '').toLowerCase();
+}
+
 async function main() {
+  await prisma.changeDiff.deleteMany();
+  await prisma.changeOrder.deleteMany();
+  await prisma.contractVersion.deleteMany();
+  await prisma.quote.deleteMany();
+  await prisma.productionPlan.deleteMany();
+  await prisma.customsDeclaration.deleteMany();
+  await prisma.evidence.deleteMany();
   await prisma.gateCheck.deleteMany();
   await prisma.auditLog.deleteMany();
   await prisma.workbenchAction.deleteMany();
@@ -63,6 +105,9 @@ async function main() {
   await prisma.caseNode.deleteMany();
   await prisma.tradeCase.deleteMany();
   await prisma.blacklistEntry.deleteMany();
+  await prisma.costFloor.deleteMany();
+  await prisma.historicalPrice.deleteMany();
+  await prisma.hsTemplate.deleteMany();
   await prisma.user.deleteMany();
 
   const [sales, compliance, approver, finance] = await Promise.all([
@@ -74,6 +119,24 @@ async function main() {
   void finance;
 
   await prisma.blacklistEntry.createMany({ data: LISTS });
+  await prisma.hsTemplate.createMany({ data: HS });
+  await prisma.costFloor.createMany({
+    data: [
+      { goodsKey: goodsKey('数控机床配件'), goodsDesc: '数控机床配件', floorFen: 1000000 },
+      { goodsKey: goodsKey('手工具套装'), goodsDesc: '手工具套装', floorFen: 250000 },
+      { goodsKey: goodsKey('工业泵'), goodsDesc: '工业泵', floorFen: 400000 },
+      { goodsKey: goodsKey('汽车制动组件'), goodsDesc: '汽车制动组件', floorFen: 500000 },
+    ],
+  });
+  await prisma.historicalPrice.createMany({
+    data: [
+      { goodsKey: goodsKey('数控机床配件'), counterparty: 'Nordlicht GmbH', unitPriceFen: 1200000, quotedAt: new Date('2025-11-01') },
+      { goodsKey: goodsKey('数控机床配件'), counterparty: 'Rhein Parts', unitPriceFen: 1300000, quotedAt: new Date('2026-03-15') },
+      { goodsKey: goodsKey('数控机床配件'), counterparty: 'Hansa Tech', unitPriceFen: 1250000, quotedAt: new Date('2026-06-20') },
+      { goodsKey: goodsKey('手工具套装'), counterparty: 'Acme Industrial Co', unitPriceFen: 320000, quotedAt: new Date('2026-01-10') },
+      { goodsKey: goodsKey('工业泵'), counterparty: 'Harbor View Ltd', unitPriceFen: 520000, quotedAt: new Date('2026-02-02') },
+    ],
+  });
 
   const pass = await seedPassCase(sales.id, approver.id, compliance.id);
   const soft = await seedSoftCase(sales.id, compliance.id);
@@ -91,9 +154,9 @@ function nodeCreates(overrides: Record<string, Partial<{ status: string; decisio
   return NODE_CATALOG.map((n) => ({
     code: n.code,
     name: n.name,
-    isStub: n.isStub,
+    isStub: false,
     isHardGate: n.isHardGate,
-    status: n.isStub ? 'STUB_TODO' : overrides[n.code]?.status ?? 'NOT_STARTED',
+    status: overrides[n.code]?.status ?? 'NOT_STARTED',
     decision: overrides[n.code]?.decision ?? null,
     summary: overrides[n.code]?.summary ?? n.summary,
     completedAt: overrides[n.code]?.status === 'PASSED' ? new Date() : null,
@@ -108,6 +171,18 @@ async function seedPassCase(salesId: string, approverId: string, complianceId: s
     amountFen: 12800000,
     currency: 'USD',
     incoterms: 'CIF',
+  };
+  const quoteSnap = {
+    version: 2,
+    priceBasis: 'MIXED',
+    includedItems: '海运费、出口报关费',
+    excludedItems: '目的港关税与增值税',
+    validityUntil: '2026-12-31',
+    freightBearer: 'SELLER',
+    taxBearer: 'BUYER',
+    unitPriceFen: 1280000,
+    quantity: 10,
+    amountFen: 12800000,
   };
   const c = await prisma.tradeCase.create({
     data: {
@@ -136,6 +211,9 @@ async function seedPassCase(salesId: string, approverId: string, complianceId: s
           hasRetentionOfTitle: true,
           hasDisputeClause: true,
           isFinal: true,
+          deliveryDate: new Date('2026-11-30'),
+          quantity: 10,
+          unit: '套',
           ...fields,
           destination: 'Hamburg',
         },
@@ -180,31 +258,155 @@ async function seedPassCase(salesId: string, approverId: string, complianceId: s
           payload: JSON.stringify({ hits: [], disclaimer: 'mock' }),
         },
       },
+      quotes: {
+        create: [
+          {
+            version: 1,
+            status: 'SUPERSEDED',
+            priceBasis: 'MIXED',
+            includedItems: '海运费',
+            excludedItems: '关税',
+            validityUntil: new Date('2026-10-01'),
+            freightBearer: 'SELLER',
+            taxBearer: 'BUYER',
+            unitPriceFen: 1280000,
+            quantity: 8,
+            amountFen: 10240000,
+            snapshotJson: JSON.stringify({ version: 1, quantity: 8, superseded: true }),
+          },
+          {
+            version: 2,
+            status: 'ACTIVE',
+            priceBasis: 'MIXED',
+            includedItems: '海运费、出口报关费',
+            excludedItems: '目的港关税与增值税',
+            validityUntil: new Date('2026-12-31'),
+            freightBearer: 'SELLER',
+            taxBearer: 'BUYER',
+            unitPriceFen: 1280000,
+            quantity: 10,
+            amountFen: 12800000,
+            snapshotJson: JSON.stringify(quoteSnap),
+          },
+        ],
+      },
+      productionPlan: {
+        create: {
+          plannedDelivery: new Date('2026-11-28'),
+          contractDelivery: new Date('2026-11-30'),
+          delayRegistered: false,
+        },
+      },
+      customs: {
+        create: {
+          hsCode: '8458.11.00',
+          productName: '数控机床配件',
+          declareElementsJson: JSON.stringify({
+            品牌: 'Beihai',
+            型号: 'BH-200',
+            用途: '金属切削',
+            是否数控: '是',
+            加工材料: '铸铁',
+          }),
+          originCountry: 'CN',
+          originEvidenceType: 'CO',
+          originEvidenceRef: 'CO-2026-011',
+          unit: '千克',
+          exportTaxName: '加工中心用零件',
+          eportStatus: 'RELEASED',
+          eportSyncRef: 'EPORT-RLS-DEMO',
+          eportSyncedAt: new Date(),
+        },
+      },
     },
   });
-  await prisma.auditLog.createMany({
+
+  const evCustomer = await prisma.evidence.create({
+    data: {
+      caseId: c.id,
+      nodeCode: 'N4',
+      kind: 'CUSTOMER_ACK',
+      ref: 'MAIL-NL-QTY',
+      note: '客户确认数量 8→10',
+      payload: JSON.stringify({ changeNo: 'CO-001' }),
+    },
+  });
+  const evInternal = await prisma.evidence.create({
+    data: {
+      caseId: c.id,
+      nodeCode: 'N4',
+      kind: 'INTERNAL_ACK',
+      ref: 'OA-NL-QTY',
+      note: '内部确认数量变更',
+      payload: JSON.stringify({ changeNo: 'CO-001' }),
+    },
+  });
+  await prisma.evidence.create({
+    data: {
+      caseId: c.id,
+      nodeCode: 'N2',
+      kind: 'QUOTE_SNAPSHOT',
+      ref: 'Q-v2',
+      note: '报价版本字段快照',
+      payload: JSON.stringify(quoteSnap),
+    },
+  });
+  await prisma.evidence.create({
+    data: {
+      caseId: c.id,
+      nodeCode: 'N8',
+      kind: 'ORIGIN_CERT',
+      ref: 'CO-2026-011',
+      note: 'CO',
+      payload: JSON.stringify({ originCountry: 'CN' }),
+    },
+  });
+
+  const change = await prisma.changeOrder.create({
+    data: {
+      caseId: c.id,
+      changeNo: 'CO-001',
+      version: 1,
+      status: 'APPLIED',
+      reason: '客户追加两套备件',
+      isSensitive: false,
+      customerAck: true,
+      customerAckRef: 'MAIL-NL-QTY',
+      customerAckEvidenceId: evCustomer.id,
+      customerAckedAt: new Date(),
+      internalAck: true,
+      internalAckEvidenceId: evInternal.id,
+      internalAckedAt: new Date(),
+      appliedAt: new Date(),
+      diffs: {
+        create: [{ field: 'quantity', fieldLabel: '数量', oldValue: '8', newValue: '10' }],
+      },
+    },
+  });
+  await prisma.contractVersion.createMany({
     data: [
       {
         caseId: c.id,
-        actorId: salesId,
-        action: 'CASE_CREATED',
-        nodeCode: 'N1',
-        detail: JSON.stringify({ scenario: 'PASS' }),
+        version: 1,
+        status: 'SUPERSEDED',
+        snapshotJson: JSON.stringify({ ...fields, quantity: 8, deliveryDate: '2026-11-30' }),
       },
       {
         caseId: c.id,
-        actorId: complianceId,
-        action: 'KYC_SCREENED',
-        nodeCode: 'N1',
-        detail: JSON.stringify({ score: 0, riskLevel: 'LOW' }),
+        version: 2,
+        status: 'ACTIVE',
+        changeOrderId: change.id,
+        snapshotJson: JSON.stringify({ ...fields, quantity: 10, deliveryDate: '2026-11-30' }),
       },
-      {
-        caseId: c.id,
-        actorId: salesId,
-        action: 'NODE_ADVANCED',
-        nodeCode: 'N9',
-        detail: JSON.stringify({ decision: 'PASS' }),
-      },
+    ],
+  });
+  await prisma.auditLog.createMany({
+    data: [
+      { caseId: c.id, actorId: salesId, action: 'CASE_CREATED', nodeCode: 'N1', detail: JSON.stringify({ scenario: 'PASS' }) },
+      { caseId: c.id, actorId: complianceId, action: 'KYC_SCREENED', nodeCode: 'N1', detail: JSON.stringify({ score: 0, riskLevel: 'LOW' }) },
+      { caseId: c.id, actorId: salesId, action: 'QUOTE_VERSION_SAVED', nodeCode: 'N2', detail: JSON.stringify({ version: 2 }) },
+      { caseId: c.id, actorId: salesId, action: 'CHANGE_ORDER_APPLIED', nodeCode: 'N4', detail: JSON.stringify({ changeNo: 'CO-001', diffs: [{ field: 'quantity' }] }) },
+      { caseId: c.id, actorId: salesId, action: 'NODE_ADVANCED', nodeCode: 'N9', detail: JSON.stringify({ decision: 'PASS' }) },
     ],
   });
   return c;
@@ -213,9 +415,13 @@ async function seedPassCase(salesId: string, approverId: string, complianceId: s
 function passNodes() {
   return {
     N1: { status: 'PASSED', decision: 'PASS', summary: '当事方齐全，筛查未命中' },
+    N2: { status: 'PASSED', decision: 'PASS', summary: '报价 v2 价格基础/有效期/承担方齐全' },
     N3: { status: 'PASSED', decision: 'PASS', summary: '所有权保留与争议条款齐全' },
+    N4: { status: 'PASSED', decision: 'PASS', summary: 'CO-001 数量 8→10，客户与内部确认后生效' },
+    N5: { status: 'PASSED', decision: 'PASS', summary: '计划交期 2026-11-28 不晚于合同交期' },
     N6: { status: 'PASSED', decision: 'PASS', summary: '书面指示、内部审批、正本提单控制齐全' },
     N7: { status: 'PASSED', decision: 'PASS', summary: '终稿合同与单证字段一致' },
+    N8: { status: 'PASSED', decision: 'PASS', summary: 'HS 8458.11.00 申报要素与原产地证齐全，电子口岸已放行' },
     N9: { status: 'PASSED', decision: 'PASS', summary: '收汇硬闸门证据齐全并已放行' },
   };
 }
@@ -247,7 +453,27 @@ async function seedSoftCase(salesId: string, complianceId: string) {
             decision: 'SOFT_ALERT',
             summary: '低置信命中 ACME INDUSTRIES LIMITED，软提示不阻断',
           },
+          N2: {
+            status: 'PASSED',
+            decision: 'SOFT_ALERT',
+            summary: '单价较历史均价略有偏离，软提示；报价要素齐全',
+          },
         }),
+      },
+      quotes: {
+        create: {
+          version: 1,
+          status: 'ACTIVE',
+          priceBasis: 'EXCLUSIVE',
+          excludedItems: '海运费、保险、目的港费用',
+          validityUntil: new Date('2026-12-15'),
+          freightBearer: 'BUYER',
+          taxBearer: 'BUYER',
+          unitPriceFen: 360000,
+          quantity: 10,
+          amountFen: 3600000,
+          snapshotJson: JSON.stringify({ version: 1, unitPriceFen: 360000, priceBasis: 'EXCLUSIVE' }),
+        },
       },
     },
   });
@@ -277,27 +503,10 @@ async function seedSoftCase(salesId: string, complianceId: string) {
   });
   await prisma.auditLog.createMany({
     data: [
-      {
-        caseId: c.id,
-        actorId: salesId,
-        action: 'CASE_CREATED',
-        nodeCode: 'N1',
-        detail: JSON.stringify({ scenario: 'SOFT_ALERT' }),
-      },
-      {
-        caseId: c.id,
-        actorId: complianceId,
-        action: 'KYC_SCREENED',
-        nodeCode: 'N1',
-        detail: JSON.stringify({ decision: 'SOFT_ALERT', score: 28 }),
-      },
-      {
-        caseId: c.id,
-        actorId: salesId,
-        action: 'NODE_ADVANCED',
-        nodeCode: 'N1',
-        detail: JSON.stringify({ canProceed: true, decision: 'SOFT_ALERT' }),
-      },
+      { caseId: c.id, actorId: salesId, action: 'CASE_CREATED', nodeCode: 'N1', detail: JSON.stringify({ scenario: 'SOFT_ALERT' }) },
+      { caseId: c.id, actorId: complianceId, action: 'KYC_SCREENED', nodeCode: 'N1', detail: JSON.stringify({ decision: 'SOFT_ALERT', score: 28 }) },
+      { caseId: c.id, actorId: salesId, action: 'QUOTE_VERSION_SAVED', nodeCode: 'N2', detail: JSON.stringify({ version: 1 }) },
+      { caseId: c.id, actorId: salesId, action: 'NODE_ADVANCED', nodeCode: 'N2', detail: JSON.stringify({ canProceed: true, decision: 'SOFT_ALERT' }) },
     ],
   });
   return c;
@@ -360,27 +569,9 @@ async function seedBlockCase(salesId: string, complianceId: string) {
   });
   await prisma.auditLog.createMany({
     data: [
-      {
-        caseId: c.id,
-        actorId: salesId,
-        action: 'CASE_CREATED',
-        nodeCode: 'N1',
-        detail: JSON.stringify({ scenario: 'HARD_BLOCK' }),
-      },
-      {
-        caseId: c.id,
-        actorId: complianceId,
-        action: 'KYC_SCREENED',
-        nodeCode: 'N1',
-        detail: JSON.stringify({ decision: 'HARD_BLOCK', score: 98 }),
-      },
-      {
-        caseId: c.id,
-        actorId: complianceId,
-        action: 'GATE_REFUSED',
-        nodeCode: 'N1',
-        detail: JSON.stringify({ missing: ['N1_HIGH_CONFIDENCE_HIT'] }),
-      },
+      { caseId: c.id, actorId: salesId, action: 'CASE_CREATED', nodeCode: 'N1', detail: JSON.stringify({ scenario: 'HARD_BLOCK' }) },
+      { caseId: c.id, actorId: complianceId, action: 'KYC_SCREENED', nodeCode: 'N1', detail: JSON.stringify({ decision: 'HARD_BLOCK', score: 98 }) },
+      { caseId: c.id, actorId: complianceId, action: 'GATE_REFUSED', nodeCode: 'N1', detail: JSON.stringify({ missing: ['N1_HIGH_CONFIDENCE_HIT'] }) },
     ],
   });
   return c;
@@ -416,7 +607,10 @@ async function seedGateDemoCase(salesId: string) {
       nodes: {
         create: nodeCreates({
           N1: { status: 'PASSED', decision: 'PASS', summary: '筛查通过' },
+          N2: { status: 'PASSED', decision: 'PASS', summary: '报价要素齐全' },
           N3: { status: 'PASSED', decision: 'PASS', summary: '合同条款齐全' },
+          N4: { status: 'PASSED', decision: 'PASS', summary: '无待确认变更' },
+          N5: { status: 'PASSED', decision: 'PASS', summary: '计划交期不晚于合同交期' },
           N6: { status: 'IN_PROGRESS', decision: null, summary: '待补客户书面指示、内部审批、提单控制' },
         }),
       },
@@ -427,8 +621,33 @@ async function seedGateDemoCase(salesId: string) {
           hasRetentionOfTitle: true,
           hasDisputeClause: true,
           isFinal: false,
+          deliveryDate: new Date('2026-12-15'),
+          quantity: 6,
+          unit: '台',
           ...fields,
           destination: 'Singapore',
+        },
+      },
+      quotes: {
+        create: {
+          version: 1,
+          status: 'ACTIVE',
+          priceBasis: 'EXCLUSIVE',
+          excludedItems: '海运费、保险',
+          validityUntil: new Date('2026-12-31'),
+          freightBearer: 'BUYER',
+          taxBearer: 'BUYER',
+          unitPriceFen: 900000,
+          quantity: 6,
+          amountFen: 5400000,
+          snapshotJson: JSON.stringify({ version: 1, priceBasis: 'EXCLUSIVE' }),
+        },
+      },
+      productionPlan: {
+        create: {
+          plannedDelivery: new Date('2026-12-10'),
+          contractDelivery: new Date('2026-12-15'),
+          delayRegistered: false,
         },
       },
     },

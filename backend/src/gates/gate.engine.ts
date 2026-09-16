@@ -1,14 +1,31 @@
 import {
+  Bearer,
+  CHANGE_FIELDS,
   COMPARE_FIELDS,
+  ChangeStatus,
   Decision,
+  DelayTrigger,
   Disposition,
   DocType,
+  EportStatus,
   FieldLabel,
+  HISTORY_DEV_MEDIUM_PCT,
+  HISTORY_DEV_SOFT_PCT,
   NodeStatus,
   PartyRole,
   PartyRoleLabel,
+  PriceBasis,
+  QuoteStatus,
+  SENSITIVE_CHANGE_FIELDS,
+  VAGUE_PRICE_RE,
 } from '../common/constants';
-import { CaseSnapshot, GateResult } from '../common/types';
+import {
+  CaseSnapshot,
+  ChangeDiffSnap,
+  ChangeOrderSnap,
+  GateResult,
+  QuoteSnap,
+} from '../common/types';
 
 const HARD_GATES = new Set(['N6', 'N7', 'N9']);
 
@@ -27,22 +44,22 @@ export function evaluateNode(nodeCode: string, snap: CaseSnapshot): GateResult {
   switch (nodeCode) {
     case 'N1':
       return evaluateN1(snap);
+    case 'N2':
+      return evaluateN2(snap);
     case 'N3':
       return evaluateN3(snap);
+    case 'N4':
+      return evaluateN4(snap);
+    case 'N5':
+      return evaluateN5(snap);
     case 'N6':
       return evaluateN6(snap);
     case 'N7':
       return evaluateN7(snap);
+    case 'N8':
+      return evaluateN8(snap);
     case 'N9':
       return evaluateN9(snap);
-    case 'N2':
-    case 'N4':
-    case 'N5':
-    case 'N8':
-      return {
-        ...emptyResult(nodeCode),
-        alerts: [`节点${nodeCode}为后续版本占位，本 MVP 不执行闸门。`],
-      };
     default:
       return { ...emptyResult(nodeCode), canProceed: false, reasons: ['未知节点'] };
   }
@@ -100,6 +117,100 @@ export function evaluateN1(snap: CaseSnapshot): GateResult {
   return r;
 }
 
+export function evaluateN2(snap: CaseSnapshot): GateResult {
+  const r = emptyResult('N2');
+  const q = activeQuote(snap);
+  if (!q) {
+    r.missing.push('N2_QUOTE');
+    r.reasons.push('尚未录入有效报价');
+    return blockMissing(r);
+  }
+
+  const textBlob = [q.includedItems, q.excludedItems, q.notes, q.abnormalPriceNote]
+    .filter(Boolean)
+    .join(' ');
+  if (VAGUE_PRICE_RE.test(textBlob) || VAGUE_PRICE_RE.test(q.priceBasis || '')) {
+    r.missing.push('N2_VAGUE_PRICING');
+    r.reasons.push('报价含「价格待定/费用另议」等模糊用语，禁止推进');
+  }
+
+  if (!Object.values(PriceBasis).includes(q.priceBasis as (typeof PriceBasis)[keyof typeof PriceBasis])) {
+    r.missing.push('N2_PRICE_BASIS');
+    r.reasons.push('未明确价格基础（含项目 / 不含项目 / 部分含）');
+  } else if (q.priceBasis === PriceBasis.INCLUSIVE || q.priceBasis === PriceBasis.MIXED) {
+    if (!q.includedItems?.trim()) {
+      r.missing.push('N2_INCLUDED_ITEMS');
+      r.reasons.push('价格基础为含项目，须列明所含费用项目');
+    }
+  }
+  if (q.priceBasis === PriceBasis.EXCLUSIVE || q.priceBasis === PriceBasis.MIXED) {
+    if (!q.excludedItems?.trim()) {
+      r.missing.push('N2_EXCLUDED_ITEMS');
+      r.reasons.push('价格基础为不含项目，须列明未含费用项目');
+    }
+  }
+
+  if (!q.validityUntil) {
+    r.missing.push('N2_VALIDITY');
+    r.reasons.push('未填写报价有效期');
+  } else if (toDate(q.validityUntil).getTime() < toDate(snap.now ?? new Date()).getTime()) {
+    r.missing.push('N2_VALIDITY_EXPIRED');
+    r.reasons.push('报价有效期已过，须出具新版本报价');
+  }
+
+  if (!q.freightBearer || !isBearer(q.freightBearer)) {
+    r.missing.push('N2_FREIGHT_BEARER');
+    r.reasons.push('未明确运费承担方');
+  }
+  if (!q.taxBearer || !isBearer(q.taxBearer)) {
+    r.missing.push('N2_TAX_BEARER');
+    r.reasons.push('未明确税费承担方');
+  }
+  if (!q.unitPriceFen || q.unitPriceFen <= 0) {
+    r.missing.push('N2_UNIT_PRICE');
+    r.reasons.push('未填写有效单价');
+  }
+
+  if (r.missing.length) return blockMissing(r);
+
+  const price = q.unitPriceFen!;
+  if (snap.costFloorFen && price < snap.costFloorFen) {
+    const msg = `报价单价低于成本底线（底线 ${(snap.costFloorFen / 100).toFixed(2)}，报价 ${(price / 100).toFixed(2)}）`;
+    if (q.abnormalPriceNote?.trim()) {
+      r.alerts.push(`${msg}；已注明原因，软提示关注`);
+    } else {
+      r.decision = Decision.REVIEW;
+      r.canProceed = false;
+      r.missing.push('N2_BELOW_COST_FLOOR');
+      r.reasons.push(`${msg}，中风险，须填写异常说明后复核`);
+      return r;
+    }
+  }
+
+  if (snap.historyUnitPrices?.length) {
+    const avg = snap.historyUnitPrices.reduce((s, n) => s + n, 0) / snap.historyUnitPrices.length;
+    if (avg > 0) {
+      const pct = Math.abs(price - avg) / avg;
+      if (pct >= HISTORY_DEV_MEDIUM_PCT) {
+        r.alerts.push(
+          `单价较历史均价偏离 ${(pct * 100).toFixed(0)}%（均价 ${(avg / 100).toFixed(2)}），中度异常，软提示`,
+        );
+      } else if (pct >= HISTORY_DEV_SOFT_PCT) {
+        r.alerts.push(`单价较历史均价偏离 ${(pct * 100).toFixed(0)}%，软提示关注`);
+      }
+    }
+  }
+
+  if (r.alerts.length) {
+    r.decision = Decision.SOFT_ALERT;
+    r.canProceed = true;
+    r.reasons.push(`报价版本 v${q.version} 要素齐全，存在价格偏离提示`);
+    return r;
+  }
+  r.reasons.push(`报价版本 v${q.version} 价格基础、有效期与承担方齐全`);
+  return r;
+}
+
 export function evaluateN3(snap: CaseSnapshot): GateResult {
   const r = emptyResult('N3');
   const c = snap.contract;
@@ -141,6 +252,124 @@ export function evaluateN3(snap: CaseSnapshot): GateResult {
     return r;
   }
   r.reasons.push('所有权保留与争议条款齐全，贸易术语与付款条件已校验');
+  return r;
+}
+
+export function evaluateN4(snap: CaseSnapshot): GateResult {
+  const r = emptyResult('N4');
+  const open = (snap.changeOrders || []).filter(
+    (c) => c.status !== ChangeStatus.APPLIED && c.status !== ChangeStatus.SUPERSEDED,
+  );
+  if (!open.length && !(snap.changeOrders || []).length) {
+    r.reasons.push('无待确认变更，允许进入生产/备货排期');
+    return r;
+  }
+
+  for (const co of open) {
+    if (!co.diffs?.length) {
+      r.missing.push(`N4_DIFF_${co.changeNo}`);
+      r.reasons.push(`变更单 ${co.changeNo} 缺少字段 diff`);
+    }
+    if (!co.customerAck || !co.customerAckEvidenceId) {
+      r.missing.push(`N4_CUSTOMER_ACK_${co.changeNo}`);
+      r.reasons.push(`变更单 ${co.changeNo} 缺少客户确认（须可追溯证据编号）`);
+    }
+    if (!co.internalAck || !co.internalAckEvidenceId) {
+      r.missing.push(`N4_INTERNAL_ACK_${co.changeNo}`);
+      r.reasons.push(`变更单 ${co.changeNo} 缺少内部确认`);
+    }
+    if (co.isSensitive && (!co.approved || !co.approvalEvidenceId)) {
+      r.missing.push(`N4_APPROVAL_${co.changeNo}`);
+      r.reasons.push(`变更单 ${co.changeNo} 含敏感字段，须额外审批`);
+    }
+    if (co.status !== ChangeStatus.APPLIED && co.customerAck && co.internalAck && (!co.isSensitive || co.approved)) {
+      r.missing.push(`N4_NOT_APPLIED_${co.changeNo}`);
+      r.reasons.push(`变更单 ${co.changeNo} 已确认但尚未生效，须应用新版本`);
+    }
+  }
+
+  if (r.missing.length) return blockMissing(r);
+
+  const relevant = (snap.changeOrders || []).filter((c) => c.status !== ChangeStatus.SUPERSEDED);
+  for (const co of relevant) {
+    const retrigger = retriggerRelated(snap, co);
+    if (retrigger) {
+      r.missing.push(...retrigger.missing.map((m) => `N4_RETRIGGER_${co.changeNo}_${m}`));
+      r.reasons.push(
+        `变更单 ${co.changeNo} 触发关联节点复核未通过：${retrigger.reasons.join('；')}`,
+      );
+      r.alerts.push(...retrigger.alerts);
+      if (retrigger.decision === Decision.HARD_BLOCK || retrigger.decision === Decision.REVIEW) {
+        r.decision = retrigger.decision;
+        r.canProceed = false;
+        return r;
+      }
+    }
+  }
+
+  if (r.missing.length) return blockMissing(r);
+  if (r.alerts.length) {
+    r.decision = Decision.SOFT_ALERT;
+    r.canProceed = true;
+    r.reasons.push('变更均已确认生效，关联节点复核仅软提示');
+    return r;
+  }
+  r.reasons.push('变更单证据链完整（diff → 客户/内部确认 → 新版本），允许进入排期');
+  return r;
+}
+
+export function evaluateN5(snap: CaseSnapshot): GateResult {
+  const r = emptyResult('N5');
+  if (hasPendingChanges(snap)) {
+    r.missing.push('N5_PENDING_CHANGE');
+    r.reasons.push('存在未生效变更单，须先完成变更管理（客户确认 + 内部确认）');
+    return blockMissing(r);
+  }
+  const plan = snap.productionPlan;
+  if (!plan) {
+    r.missing.push('N5_PLAN');
+    r.reasons.push('尚未录入生产/备货排期');
+    return blockMissing(r);
+  }
+  if (!plan.plannedDelivery) {
+    r.missing.push('N5_PLANNED_DELIVERY');
+    r.reasons.push('未填写计划交期');
+  }
+  const contractDelivery = plan.contractDelivery || snap.contract?.deliveryDate;
+  if (!contractDelivery) {
+    r.missing.push('N5_CONTRACT_DELIVERY');
+    r.reasons.push('缺少合同交货期，无法核对排期');
+  }
+  if (r.missing.length) return blockMissing(r);
+
+  const planned = startOfDay(toDate(plan.plannedDelivery as string | Date));
+  const contracted = startOfDay(toDate(contractDelivery as string | Date));
+  if (planned.getTime() <= contracted.getTime()) {
+    r.reasons.push('计划交期不晚于合同交货期');
+    return r;
+  }
+
+  if (!plan.delayRegistered) {
+    r.missing.push('N5_DELAY_NOT_REGISTERED');
+    r.reasons.push('计划交期晚于合同交货期，须登记延期');
+  }
+  const validTrigger =
+    !!plan.delayTriggerCode &&
+    Object.values(DelayTrigger).includes(plan.delayTriggerCode as (typeof DelayTrigger)[keyof typeof DelayTrigger]);
+  if (!validTrigger && !plan.delayTriggerRef?.trim()) {
+    r.missing.push('N5_DELAY_TRIGGER');
+    r.reasons.push('延期触发条件须选择结构化原因或填写依据编号');
+  }
+  if (r.missing.length) return blockMissing(r);
+
+  if (!plan.customerConsent || !plan.customerConsentEvidenceId) {
+    r.decision = Decision.REVIEW;
+    r.canProceed = false;
+    r.missing.push('N5_DELAY_WITHOUT_CONSENT');
+    r.reasons.push('延期未经客户同意（缺少可追溯证据编号），中风险，禁止推进');
+    return r;
+  }
+  r.reasons.push('已登记结构化延期且客户同意证据可追溯');
   return r;
 }
 
@@ -212,6 +441,70 @@ export function evaluateN7(snap: CaseSnapshot): GateResult {
   return finalizeHard(r);
 }
 
+export function evaluateN8(snap: CaseSnapshot): GateResult {
+  const r = emptyResult('N8');
+  const c = snap.customs;
+  if (!c) {
+    r.missing.push('N8_CUSTOMS');
+    r.reasons.push('尚未录入报关信息');
+    return blockMissing(r);
+  }
+  if (!c.hsCode?.trim()) {
+    r.missing.push('N8_HS_CODE');
+    r.reasons.push('未填写 HS 编码');
+  }
+  if (!c.productName?.trim()) {
+    r.missing.push('N8_PRODUCT_NAME');
+    r.reasons.push('未填写报关品名');
+  }
+  const tpl = snap.hsTemplate;
+  if (c.hsCode?.trim() && !tpl) {
+    r.missing.push('N8_HS_TEMPLATE');
+    r.reasons.push(`HS ${c.hsCode} 无申报要素模板，禁止申报`);
+  }
+  if (tpl) {
+    const elements = c.declareElements || {};
+    const missingEls = tpl.requiredElements.filter((el) => !String(elements[el] ?? '').trim());
+    if (missingEls.length) {
+      r.missing.push('N8_DECLARE_ELEMENTS');
+      r.reasons.push(`申报要素不完整，缺：${missingEls.join('、')}`);
+    }
+    if (c.productName?.trim() && !namesLooseMatch(c.productName, tpl.productName)) {
+      r.missing.push('N8_HS_PRODUCT_MISMATCH');
+      r.reasons.push(`品名「${c.productName}」与 HS 模板「${tpl.productName}」严重不符，禁止申报`);
+    }
+    if (c.unit?.trim() && normalize(c.unit) !== normalize(tpl.unit)) {
+      r.alerts.push(`计量单位「${c.unit}」与税则单位「${tpl.unit}」不一致，软提示`);
+    }
+    if (c.exportTaxName?.trim() && normalize(c.exportTaxName) !== normalize(tpl.exportTaxName)) {
+      r.alerts.push(`出口税则品名「${c.exportTaxName}」与模板「${tpl.exportTaxName}」不一致，软提示`);
+    }
+  }
+  if (!c.originEvidenceType || !c.originEvidenceRef) {
+    r.missing.push('N8_ORIGIN_EVIDENCE');
+    r.reasons.push('缺少原产地证据（类型 + 编号）');
+  }
+  if (c.eportStatus === EportStatus.HELD) {
+    r.missing.push('N8_EPORT_HELD');
+    r.reasons.push('电子口岸状态为扣留/退单，禁止放行');
+  }
+
+  if (r.missing.length) return blockMissing(r);
+
+  if (!c.eportStatus || c.eportStatus === EportStatus.NOT_SYNCED) {
+    r.alerts.push('电子口岸尚未同步，可先模拟同步后再推进');
+  }
+
+  if (r.alerts.length) {
+    r.decision = Decision.SOFT_ALERT;
+    r.canProceed = true;
+    r.reasons.push('HS 与申报要素齐全，存在税则品名/单位或口岸状态软提示');
+    return r;
+  }
+  r.reasons.push('HS 编码、申报要素与原产地证据齐全，允许报关放行');
+  return r;
+}
+
 export function evaluateN9(snap: CaseSnapshot): GateResult {
   const r = emptyResult('N9');
   const n7 = snap.nodes.find((n) => n.code === 'N7');
@@ -264,9 +557,106 @@ function finalizeHard(r: GateResult): GateResult {
   return r;
 }
 
-export function nextMvpNode(current: string): string | null {
+function blockMissing(r: GateResult): GateResult {
+  r.decision = Decision.HARD_BLOCK;
+  r.canProceed = false;
+  return r;
+}
+
+function activeQuote(snap: CaseSnapshot): QuoteSnap | undefined {
+  return (snap.quotes || []).find((q) => q.status === QuoteStatus.ACTIVE) || snap.quotes?.[0];
+}
+
+function isBearer(v: string) {
+  return v === Bearer.SELLER || v === Bearer.BUYER;
+}
+
+function toDate(v: string | Date): Date {
+  return v instanceof Date ? v : new Date(v);
+}
+
+function startOfDay(d: Date): Date {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+}
+
+function normalize(s: string) {
+  return s.replace(/\s+/g, '').toLowerCase();
+}
+
+function namesLooseMatch(a: string, b: string) {
+  const na = normalize(a);
+  const nb = normalize(b);
+  return na.includes(nb) || nb.includes(na);
+}
+
+function retriggerRelated(snap: CaseSnapshot, co: ChangeOrderSnap): GateResult | null {
+  const fields = new Set(co.diffs.map((d) => d.field));
+  const hypothetical = applyDiffsToSnap(snap, co.diffs);
+  if (fields.has('consigneeName') || fields.has('buyerName') || fields.has('payerName')) {
+    const n1 = evaluateN1(hypothetical);
+    if (!n1.canProceed) return n1;
+  }
+  if (fields.has('paymentTerms')) {
+    const n3 = evaluateN3(hypothetical);
+    if (!n3.canProceed) return n3;
+  }
+  return null;
+}
+
+export function applyDiffsToSnap(snap: CaseSnapshot, diffs: ChangeDiffSnap[]): CaseSnapshot {
+  const next: CaseSnapshot = JSON.parse(JSON.stringify(snap));
+  next.contract = next.contract || {
+    hasRetentionOfTitle: false,
+    hasDisputeClause: false,
+    isFinal: false,
+  };
+  for (const d of diffs) {
+    if (d.field === 'deliveryDate') next.contract.deliveryDate = d.newValue;
+    if (d.field === 'quantity') next.contract.quantity = Number(d.newValue);
+    if (d.field === 'consigneeName') {
+      next.contract.consigneeName = d.newValue;
+      upsertPartySnap(next, PartyRole.CONSIGNEE, d.newValue);
+    }
+    if (d.field === 'paymentTerms') next.contract.paymentTerms = d.newValue;
+    if (d.field === 'buyerName') {
+      next.contract.buyerName = d.newValue;
+      upsertPartySnap(next, PartyRole.BUYER, d.newValue);
+    }
+    if (d.field === 'payerName') upsertPartySnap(next, PartyRole.PAYER, d.newValue);
+  }
+  return next;
+}
+
+function upsertPartySnap(snap: CaseSnapshot, role: string, name: string) {
+  const existing = snap.parties.find((p) => p.role === role);
+  if (existing) existing.name = name;
+  else snap.parties.push({ role, name, isSameAsBuyer: role === PartyRole.BUYER });
+}
+
+export function hasPendingChanges(snap: CaseSnapshot): boolean {
+  return (snap.changeOrders || []).some(
+    (c) => c.status !== ChangeStatus.APPLIED && c.status !== ChangeStatus.SUPERSEDED,
+  );
+}
+
+/** 流程 1→2→3→4(按需)→5→6→7→8→9。N3 之后若无变更单则跳过 N4。 */
+export function nextNode(current: string, snap?: CaseSnapshot): string | null {
   const order = ['N1', 'N2', 'N3', 'N4', 'N5', 'N6', 'N7', 'N8', 'N9'];
   const i = order.indexOf(current);
   if (i < 0 || i === order.length - 1) return null;
+  if (current === 'N3' && snap && !(snap.changeOrders || []).length) return 'N5';
   return order[i + 1];
+}
+
+/** @deprecated 使用 nextNode */
+export function nextMvpNode(current: string, snap?: CaseSnapshot): string | null {
+  return nextNode(current, snap);
+}
+
+export function isChangeField(field: string): field is (typeof CHANGE_FIELDS)[number] {
+  return (CHANGE_FIELDS as readonly string[]).includes(field);
+}
+
+export function isSensitiveChange(fields: string[]): boolean {
+  return fields.some((f) => SENSITIVE_CHANGE_FIELDS.has(f));
 }

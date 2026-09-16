@@ -1,7 +1,7 @@
 {
   "name": "export-risk-guard",
   "private": true,
-  "description": "国企跨境出口贸易风控（询盘→收汇）微信小程序 + 后端 MVP",
+  "description": "国企跨境出口贸易风控（询盘→收汇）微信小程序 + 后端",
   "scripts": {
     "bootstrap": "npm --prefix backend install && npm --prefix miniapp install",
     "backend": "npm --prefix backend run start:dev",

@@ -92,7 +92,9 @@ page {
   color: #0b3a5b;
   border-radius: 8rpx;
   margin-right: 10rpx;
+  margin-bottom: 8rpx;
 }
+.chip-on { background: #0b3a5b; color: #fff; }
 .err {
   background: #fde8e6;
   color: #7a1d16;

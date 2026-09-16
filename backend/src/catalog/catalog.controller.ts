@@ -1,11 +1,18 @@
 import { Controller, Get } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import {
+  BearerLabel,
   BlControlLabel,
+  ChangeFieldLabel,
+  ChangeStatusLabel,
   DecisionLabel,
+  DelayTriggerLabel,
+  EportStatusLabel,
   ListCodeLabel,
   NODE_CATALOG,
+  OriginEvidenceLabel,
   PartyRoleLabel,
+  PriceBasisLabel,
   RiskLevelLabel,
   WorkbenchActionLabel,
 } from '../common/constants';
@@ -16,11 +23,15 @@ export class CatalogController {
 
   @Get('health')
   health() {
-    return { ok: true, name: 'export-risk-guard', scope: 'MVP-1-3-6-7-9' };
+    return { ok: true, name: 'export-risk-guard', scope: 'N1-N9' };
   }
 
   @Get('catalog')
-  catalog() {
+  async catalog() {
+    const [hsTemplates, costFloors] = await Promise.all([
+      this.prisma.hsTemplate.findMany({ orderBy: { hsCode: 'asc' } }),
+      this.prisma.costFloor.findMany(),
+    ]);
     return {
       nodes: NODE_CATALOG,
       partyRoles: PartyRoleLabel,
@@ -29,7 +40,19 @@ export class CatalogController {
       risks: RiskLevelLabel,
       blControl: BlControlLabel,
       workbench: WorkbenchActionLabel,
-      note: '筛查接口仅为本地模拟，不含真实制裁 API Key。',
+      priceBasis: PriceBasisLabel,
+      bearers: BearerLabel,
+      changeFields: ChangeFieldLabel,
+      changeStatus: ChangeStatusLabel,
+      delayTriggers: DelayTriggerLabel,
+      originEvidence: OriginEvidenceLabel,
+      eportStatus: EportStatusLabel,
+      hsTemplates: hsTemplates.map((h) => ({
+        ...h,
+        requiredElements: JSON.parse(h.requiredElementsJson),
+      })),
+      costFloors,
+      note: '筛查接口仅为本地模拟，不含真实制裁 API Key。电子口岸同步为模拟状态。',
     };
   }
 

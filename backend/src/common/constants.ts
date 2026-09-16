@@ -1,4 +1,4 @@
-/** 节点目录：MVP 仅实现 1/3/6/7/9，其余为后续 TODO 占位 */
+/** 节点目录：询盘 → 收汇 九节点全量。N4 无待确认变更时可直接过闸。 */
 export const NODE_CATALOG = [
   {
     code: 'N1',
@@ -10,11 +10,11 @@ export const NODE_CATALOG = [
   },
   {
     code: 'N2',
-    name: '信用证/信用险',
-    mvp: false,
+    name: '报价环节',
+    mvp: true,
     isHardGate: false,
-    isStub: true,
-    summary: 'TODO：开证行/保兑行筛查、软条款与信用险承保范围（后续版本）。',
+    isStub: false,
+    summary: '价格基础（含/不含项目）、有效期、运费/税费承担方必填；模糊报价不得推进；异常偏离成本底线/历史价软提示或中风险。',
   },
   {
     code: 'N3',
@@ -26,19 +26,19 @@ export const NODE_CATALOG = [
   },
   {
     code: 'N4',
-    name: '生产备货/质检',
-    mvp: false,
+    name: '变更管理',
+    mvp: true,
     isHardGate: false,
-    isStub: true,
-    summary: 'TODO：货物与合同一致性、出口管制物项核对（后续版本）。',
+    isStub: false,
+    summary: '交货期/数量/收货人/付款条件变更须出变更单（含 diff），客户与内部确认后生效；旧版 SUPERSEDED，禁止硬删除。',
   },
   {
     code: 'N5',
-    name: '报关出口',
-    mvp: false,
+    name: '生产/备货排期',
+    mvp: true,
     isHardGate: false,
-    isStub: true,
-    summary: 'TODO：报关单与合同/发票核对、口岸与目的国合规（后续版本）。',
+    isStub: false,
+    summary: '计划交期不得晚于合同交期，除非已登记结构化延期并保留客户同意证据。',
   },
   {
     code: 'N6',
@@ -58,11 +58,11 @@ export const NODE_CATALOG = [
   },
   {
     code: 'N8',
-    name: '交单/议付',
-    mvp: false,
+    name: '报关放行',
+    mvp: true,
     isHardGate: false,
-    isStub: true,
-    summary: 'TODO：交单路径、不符点与银行筛查（后续版本）。',
+    isStub: false,
+    summary: 'HS 编码与申报要素模板核对、原产地证据；税则品名/计量单位不符软提示；严重缺项禁止申报。',
   },
   {
     code: 'N9',
@@ -230,3 +230,140 @@ export const FieldLabel: Record<string, string> = {
   currency: '币种',
   incoterms: '国际贸易术语',
 };
+
+export const PriceBasis = {
+  INCLUSIVE: 'INCLUSIVE',
+  EXCLUSIVE: 'EXCLUSIVE',
+  MIXED: 'MIXED',
+} as const;
+
+export const PriceBasisLabel: Record<string, string> = {
+  INCLUSIVE: '含项目（列明包含）',
+  EXCLUSIVE: '不含项目（列明排除）',
+  MIXED: '部分含/不含',
+};
+
+export const Bearer = {
+  SELLER: 'SELLER',
+  BUYER: 'BUYER',
+} as const;
+
+export const BearerLabel: Record<string, string> = {
+  SELLER: '卖方承担',
+  BUYER: '买方承担',
+};
+
+export const QuoteStatus = {
+  DRAFT: 'DRAFT',
+  ACTIVE: 'ACTIVE',
+  SUPERSEDED: 'SUPERSEDED',
+} as const;
+
+export const VersionStatus = {
+  ACTIVE: 'ACTIVE',
+  SUPERSEDED: 'SUPERSEDED',
+} as const;
+
+export const ChangeStatus = {
+  DRAFT: 'DRAFT',
+  PENDING_ACK: 'PENDING_ACK',
+  PENDING_APPROVAL: 'PENDING_APPROVAL',
+  APPLIED: 'APPLIED',
+  SUPERSEDED: 'SUPERSEDED',
+} as const;
+
+export const ChangeStatusLabel: Record<string, string> = {
+  DRAFT: '草稿',
+  PENDING_ACK: '待确认',
+  PENDING_APPROVAL: '待审批',
+  APPLIED: '已生效',
+  SUPERSEDED: '已废止',
+};
+
+export const CHANGE_FIELDS = [
+  'deliveryDate',
+  'quantity',
+  'consigneeName',
+  'paymentTerms',
+  'payerName',
+  'buyerName',
+] as const;
+
+export const ChangeFieldLabel: Record<string, string> = {
+  deliveryDate: '交货期',
+  quantity: '数量',
+  consigneeName: '收货人',
+  paymentTerms: '付款条件',
+  payerName: '付款人',
+  buyerName: '买方',
+};
+
+export const SENSITIVE_CHANGE_FIELDS = new Set([
+  'consigneeName',
+  'paymentTerms',
+  'payerName',
+  'buyerName',
+]);
+
+export const DelayTrigger = {
+  FORCE_MAJEURE: 'FORCE_MAJEURE',
+  PORT_CONGESTION: 'PORT_CONGESTION',
+  MATERIAL_SHORTAGE: 'MATERIAL_SHORTAGE',
+  CAPACITY: 'CAPACITY',
+  CUSTOMER_REQUEST: 'CUSTOMER_REQUEST',
+  LOGISTICS: 'LOGISTICS',
+} as const;
+
+export const DelayTriggerLabel: Record<string, string> = {
+  FORCE_MAJEURE: '不可抗力',
+  PORT_CONGESTION: '港口拥堵',
+  MATERIAL_SHORTAGE: '原料短缺',
+  CAPACITY: '产能不足',
+  CUSTOMER_REQUEST: '客户要求变更交期',
+  LOGISTICS: '物流运力不足',
+};
+
+export const OriginEvidenceType = {
+  CO: 'CO',
+  FORM_E: 'FORM_E',
+  FORM_A: 'FORM_A',
+  DECLARATION: 'DECLARATION',
+} as const;
+
+export const OriginEvidenceLabel: Record<string, string> = {
+  CO: '原产地证书 CO',
+  FORM_E: 'FORM E',
+  FORM_A: 'FORM A',
+  DECLARATION: '原产地声明',
+};
+
+export const EportStatus = {
+  NOT_SYNCED: 'NOT_SYNCED',
+  DECLARED: 'DECLARED',
+  RELEASED: 'RELEASED',
+  HELD: 'HELD',
+} as const;
+
+export const EportStatusLabel: Record<string, string> = {
+  NOT_SYNCED: '未同步',
+  DECLARED: '已申报',
+  RELEASED: '已放行',
+  HELD: '海关扣留/退单',
+};
+
+export const EvidenceKind = {
+  QUOTE_SNAPSHOT: 'QUOTE_SNAPSHOT',
+  CUSTOMER_ACK: 'CUSTOMER_ACK',
+  INTERNAL_ACK: 'INTERNAL_ACK',
+  CHANGE_APPROVAL: 'CHANGE_APPROVAL',
+  DELAY_CONSENT: 'DELAY_CONSENT',
+  ORIGIN_CERT: 'ORIGIN_CERT',
+  EPORT_SYNC: 'EPORT_SYNC',
+} as const;
+
+/** 模糊报价用语：命中则禁止推进 */
+export const VAGUE_PRICE_RE =
+  /价格待定|费用另议|价格另议|费用待定|面议|价格未定|待确认价格|TBD|to\s*be\s*determined|price\s*tbd/i;
+
+export const HISTORY_DEV_SOFT_PCT = 0.15;
+export const HISTORY_DEV_MEDIUM_PCT = 0.3;
