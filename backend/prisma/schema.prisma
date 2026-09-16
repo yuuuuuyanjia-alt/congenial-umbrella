@@ -1,0 +1,242 @@
+// SQLite 用于本地演示；字段类型刻意保持 MySQL 可迁移（无 SQLite 专有类型）。
+// 切换 MySQL：把 provider 改为 "mysql"，DATABASE_URL 指向 MySQL，再执行 prisma migrate。
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  name      String
+  role      String
+  createdAt DateTime @default(now())
+
+  auditLogs        AuditLog[]
+  workbenchActions WorkbenchAction[]
+  approvals        Shipment[]        @relation("ShipmentApprover")
+}
+
+/// 出口案件（询盘→收汇全流程载体）
+model TradeCase {
+  id          String   @id @default(cuid())
+  caseNo      String   @unique
+  title       String
+  scenario    String
+  status      String
+  currentNode String
+  overallRisk String
+  goodsDesc   String
+  destination String
+  amountFen   Int
+  currency    String   @default("USD")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  parties       Party[]
+  nodes         CaseNode[]
+  hits          ScreeningHit[]
+  kycReports    KycReport[]
+  contract      Contract?
+  shipment      Shipment?
+  documents     TradeDocument[]
+  mismatchFixes DocMismatchFix[]
+  settlement    Settlement?
+  auditLogs     AuditLog[]
+  workbench     WorkbenchAction[]
+  gateChecks    GateCheck[]
+}
+
+model Party {
+  id               String  @id @default(cuid())
+  caseId           String
+  role             String
+  name             String
+  nameEn           String?
+  country          String?
+  address          String?
+  registrationNo   String?
+  isSameAsBuyer    Boolean @default(true)
+  relationNote     String?
+  case             TradeCase      @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  hits             ScreeningHit[]
+
+  @@index([caseId, role])
+}
+
+model CaseNode {
+  id           String    @id @default(cuid())
+  caseId       String
+  code         String
+  name         String
+  status       String
+  decision     String?
+  isStub       Boolean   @default(false)
+  isHardGate   Boolean   @default(false)
+  summary      String?
+  startedAt    DateTime?
+  completedAt  DateTime?
+  case         TradeCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+
+  @@unique([caseId, code])
+}
+
+model BlacklistEntry {
+  id       String  @id @default(cuid())
+  listCode String
+  name     String
+  country  String?
+  aliases  String
+  note     String?
+}
+
+model ScreeningHit {
+  id          String   @id @default(cuid())
+  caseId      String
+  partyId     String
+  listCode    String
+  listedName  String
+  matchedName String
+  confidence  String
+  riskLevel   String
+  disposition String   @default("OPEN")
+  score       Int
+  rawJson     String
+  createdAt   DateTime @default(now())
+  case        TradeCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  party       Party     @relation(fields: [partyId], references: [id], onDelete: Cascade)
+  actions     WorkbenchAction[]
+
+  @@index([caseId, disposition])
+}
+
+model KycReport {
+  id        String   @id @default(cuid())
+  caseId    String
+  score     Int
+  riskLevel String
+  summary   String
+  payload   String
+  createdAt DateTime @default(now())
+  case      TradeCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+}
+
+model Contract {
+  id                    String    @id @default(cuid())
+  caseId                String    @unique
+  counterparty          String
+  incoterms             String?
+  paymentTerms          String?
+  hasRetentionOfTitle   Boolean   @default(false)
+  hasDisputeClause      Boolean   @default(false)
+  isFinal               Boolean   @default(false)
+  goodsDesc             String?
+  amountFen             Int?
+  currency              String    @default("USD")
+  destination           String?
+  buyerName             String?
+  consigneeName         String?
+  updatedAt             DateTime  @updatedAt
+  case                  TradeCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+}
+
+model Shipment {
+  id                            String    @id @default(cuid())
+  caseId                        String    @unique
+  hasCustomerWrittenInstruction Boolean   @default(false)
+  instructionRef                String?
+  hasInternalApproval           Boolean   @default(false)
+  approverId                    String?
+  blControl                     String?
+  blNo                          String?
+  vessel                        String?
+  consigneeOnBl                 String?
+  updatedAt                     DateTime  @updatedAt
+  case                          TradeCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  approver                      User?     @relation("ShipmentApprover", fields: [approverId], references: [id])
+}
+
+model TradeDocument {
+  id        String   @id @default(cuid())
+  caseId    String
+  type      String
+  isFinal   Boolean  @default(false)
+  fieldsJson String
+  createdAt DateTime @default(now())
+  case      TradeCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+
+  @@index([caseId, type])
+}
+
+model DocMismatchFix {
+  id        String   @id @default(cuid())
+  caseId    String
+  field     String
+  fromValue String
+  toValue   String
+  reason    String
+  createdAt DateTime @default(now())
+  case      TradeCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+}
+
+model Settlement {
+  id                       String   @id @default(cuid())
+  caseId                   String   @unique
+  payerName                String
+  buyerName                String
+  isThirdParty             Boolean  @default(false)
+  hasThirdPartyProof       Boolean  @default(false)
+  thirdPartyProofRef       String?
+  hasRemittanceMemo        Boolean  @default(false)
+  remittanceMemoRef        String?
+  hasDocConsistencyProof   Boolean  @default(false)
+  hasReleaseApproval       Boolean  @default(false)
+  amountFen                Int?
+  updatedAt                DateTime @updatedAt
+  case                     TradeCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+}
+
+/// 案例工作台处置（误报排除 / 确认真实 / 补充信息 / 持续监控）
+model WorkbenchAction {
+  id        String   @id @default(cuid())
+  caseId    String
+  hitId     String?
+  actorId   String?
+  action    String
+  comment   String?
+  createdAt DateTime @default(now())
+  case      TradeCase     @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  hit       ScreeningHit? @relation(fields: [hitId], references: [id], onDelete: SetNull)
+  actor     User?         @relation(fields: [actorId], references: [id], onDelete: SetNull)
+}
+
+/// 仅追加审计日志：禁止更新/删除接口
+model AuditLog {
+  id        String   @id @default(cuid())
+  caseId    String?
+  actorId   String?
+  action    String
+  nodeCode  String?
+  detail    String
+  createdAt DateTime @default(now())
+  case      TradeCase? @relation(fields: [caseId], references: [id], onDelete: SetNull)
+  actor     User?      @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([caseId, createdAt])
+}
+
+model GateCheck {
+  id          String   @id @default(cuid())
+  caseId      String
+  nodeCode    String
+  decision    String
+  canProceed  Boolean
+  missingJson String
+  reasonsJson String
+  createdAt   DateTime @default(now())
+  case        TradeCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+}

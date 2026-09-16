@@ -1,0 +1,15 @@
+node_modules/
+dist/
+unpackage/
+.DS_Store
+*.log
+.env
+*.db
+*.db-journal
+.idea/
+.vscode/
+coverage/
+backend/dist/
+miniapp/dist/
+miniapp/node_modules/
+backend/node_modules/
