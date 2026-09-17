@@ -22,7 +22,7 @@ export const NODE_CATALOG = [
     mvp: true,
     isHardGate: false,
     isStub: false,
-    summary: '所有权保留与争议解决条款必填；须上传中信保保单并登记投保限额；按买方占用测算（未履行完毕未回款+已履行完毕未回款+新签合同），超额分档提示或拦截。',
+    summary: '所有权保留与争议解决条款必填；中信保限额未登记不得签订合同；须上传保单并登记投保限额；按买方占用测算（未履行完毕未回款+已履行完毕未回款+新签合同），超额分档提示或拦截。',
   },
   {
     code: 'N4',
@@ -405,6 +405,9 @@ export const EvidenceKind = {
 /** 模糊报价用语：命中则禁止推进 */
 export const VAGUE_PRICE_RE =
   /价格待定|费用另议|价格另议|费用待定|面议|价格未定|待确认价格|TBD|to\s*be\s*determined|price\s*tbd/i;
+
+/** N3 硬规则：买方/案件未登记中信保投保限额时，不得保存或推进合同 */
+export const N3_SINOSURE_UNREGISTERED_REASON = '尚未登记中信保限额，不得签订合同';
 
 export const HISTORY_DEV_SOFT_PCT = 0.15;
 export const HISTORY_DEV_MEDIUM_PCT = 0.3;

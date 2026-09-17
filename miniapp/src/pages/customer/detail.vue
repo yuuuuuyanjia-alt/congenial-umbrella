@@ -26,7 +26,7 @@
           最新保单 {{ c.sinosureLimit.evidenceRef || '—' }} · 来自案件 {{ c.sinosureLimit.caseNo }}
         </view>
       </view>
-      <view class="muted" v-else>尚未登记中信保保单或投保限额。</view>
+      <view class="muted" v-else>尚未登记中信保限额，不得签订合同。请先在合同确认节点登记投保限额。</view>
       <SinosureExposure :exposure="c.exposure" :show-new="false" />
     </view>
 
