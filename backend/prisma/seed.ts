@@ -2,6 +2,7 @@ import { PrismaClient } from '@prisma/client';
 import { NODE_CATALOG } from '../src/common/constants';
 import { enrollBuyerForCase } from '../src/customers/customer-enroll';
 import { derivePaymentDueAt } from '../src/customers/remittance';
+import { PaymentMode, resolveSchedule, rollupPaymentFields } from '../src/suppliers/payment-schedule';
 
 const prisma = new PrismaClient();
 
@@ -85,12 +86,46 @@ function goodsKey(desc: string) {
   return desc.replace(/\s+/g, '').toLowerCase();
 }
 
+function paymentSchedule(
+  planAmountFen: number,
+  items: Array<{
+    label?: string;
+    percent?: number;
+    conditionText?: string;
+    dueAt?: Date;
+    paidFen?: number;
+    paidAt?: Date;
+  }>,
+) {
+  const resolved = resolveSchedule(planAmountFen, items);
+  const rollup = rollupPaymentFields(resolved);
+  return {
+    paymentMode: resolved.length > 1 ? PaymentMode.STAGED : PaymentMode.FULL,
+    paidFen: rollup.paidFen,
+    paymentDueAt: rollup.paymentDueAt,
+    paidAt: rollup.paidAt,
+    installments: {
+      create: resolved.map((item) => ({
+        seq: item.seq,
+        label: item.label,
+        percentBps: item.percentBps,
+        amountFen: item.amountFen,
+        conditionText: item.conditionText,
+        dueAt: item.dueAt ? new Date(item.dueAt) : null,
+        paidFen: item.paidFen,
+        paidAt: item.paidAt ? new Date(item.paidAt) : null,
+      })),
+    },
+  };
+}
+
 async function main() {
   await prisma.changeDiff.deleteMany();
   await prisma.sinosurePolicy.deleteMany();
   await prisma.changeOrder.deleteMany();
   await prisma.contractVersion.deleteMany();
   await prisma.quote.deleteMany();
+  await prisma.procurementPaymentInstallment.deleteMany();
   await prisma.procurementPlan.deleteMany();
   await prisma.customsDeclaration.deleteMany();
   await prisma.evidence.deleteMany();
@@ -351,9 +386,16 @@ async function seedPassCase(salesId: string, approverId: string, complianceId: s
           delayRegistered: false,
           amountFen: 82000000,
           currency: 'CNY',
-          paidFen: 82000000,
-          paymentDueAt: new Date('2026-09-01T00:00:00.000Z'),
-          paidAt: new Date('2026-08-20T00:00:00.000Z'),
+          ...paymentSchedule(82000000, [
+            {
+              percent: 100,
+              label: '一次性付清',
+              conditionText: '一次性付清',
+              dueAt: new Date('2026-09-01T00:00:00.000Z'),
+              paidFen: 82000000,
+              paidAt: new Date('2026-08-20T00:00:00.000Z'),
+            },
+          ]),
         },
       },
       customs: {
@@ -764,8 +806,15 @@ async function seedGateDemoCase(salesId: string) {
           delayRegistered: false,
           amountFen: 35000000,
           currency: 'CNY',
-          paidFen: 0,
-          paymentDueAt: new Date('2026-12-31T00:00:00.000Z'),
+          ...paymentSchedule(35000000, [
+            {
+              percent: 100,
+              label: '一次性付清',
+              conditionText: '一次性付清',
+              dueAt: new Date('2026-12-31T00:00:00.000Z'),
+              paidFen: 0,
+            },
+          ]),
         },
       },
     },
@@ -914,9 +963,16 @@ async function seedFobNoBlCase(salesId: string, approverId: string) {
           delayRegistered: false,
           amountFen: 21000000,
           currency: 'CNY',
-          paidFen: 21000000,
-          paymentDueAt: new Date('2026-12-01T00:00:00.000Z'),
-          paidAt: new Date('2026-09-01T00:00:00.000Z'),
+          ...paymentSchedule(21000000, [
+            {
+              percent: 100,
+              label: '一次性付清',
+              conditionText: '一次性付清',
+              dueAt: new Date('2026-12-01T00:00:00.000Z'),
+              paidFen: 21000000,
+              paidAt: new Date('2026-09-01T00:00:00.000Z'),
+            },
+          ]),
         },
       },
     },
@@ -1171,8 +1227,15 @@ async function seedSupplierBlockCase(salesId: string) {
           delayRegistered: false,
           amountFen: 60000000,
           currency: 'CNY',
-          paidFen: 0,
-          paymentDueAt: new Date('2026-06-01T00:00:00.000Z'),
+          ...paymentSchedule(60000000, [
+            {
+              percent: 100,
+              label: '一次性付清',
+              conditionText: '一次性付清',
+              dueAt: new Date('2026-06-01T00:00:00.000Z'),
+              paidFen: 0,
+            },
+          ]),
         },
       },
     },
@@ -1337,9 +1400,23 @@ async function seedNordlichtLateCase(salesId: string, approverId: string) {
           delayReason: '供应商交期不足，实际到货晚于计划',
           amountFen: 28000000,
           currency: 'CNY',
-          paidFen: 10000000,
-          paymentDueAt: new Date('2026-04-30T00:00:00.000Z'),
-          paidAt: new Date('2026-05-10T00:00:00.000Z'),
+          ...paymentSchedule(28000000, [
+            {
+              percent: 90,
+              label: '到货付款',
+              conditionText: '货物到达交付地点之后支付',
+              dueAt: new Date('2026-03-25T00:00:00.000Z'),
+              paidFen: 25200000,
+              paidAt: new Date('2026-05-10T00:00:00.000Z'),
+            },
+            {
+              percent: 10,
+              label: '尾款',
+              conditionText: '验收合格并开具发票后支付',
+              dueAt: new Date('2026-04-30T00:00:00.000Z'),
+              paidFen: 0,
+            },
+          ]),
         },
       },
       kycReports: {
@@ -1468,8 +1545,15 @@ async function seedNordlichtOpenCase(salesId: string, approverId: string) {
           delayRegistered: false,
           amountFen: 46000000,
           currency: 'CNY',
-          paidFen: 0,
-          paymentDueAt: new Date('2026-12-20T00:00:00.000Z'),
+          ...paymentSchedule(46000000, [
+            {
+              percent: 100,
+              label: '一次性付清',
+              conditionText: '一次性付清',
+              dueAt: new Date('2026-12-20T00:00:00.000Z'),
+              paidFen: 0,
+            },
+          ]),
         },
       },
       kycReports: {

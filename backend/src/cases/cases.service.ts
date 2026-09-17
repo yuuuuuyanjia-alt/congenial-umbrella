@@ -40,6 +40,7 @@ import { GateResult } from '../common/types';
 import { CustomersService } from '../customers/customers.service';
 import { derivePaymentDueAt } from '../customers/remittance';
 import { SuppliersService } from '../suppliers/suppliers.service';
+import { buildInstallmentRecords, presentPlanPayment } from '../suppliers/payment-schedule';
 
 @Injectable()
 export class CasesService {
@@ -80,13 +81,14 @@ export class CasesService {
         quotes: { orderBy: { version: 'desc' } },
         changeOrders: { include: { diffs: true }, orderBy: { createdAt: 'asc' } },
         contractVersions: { orderBy: { version: 'desc' } },
-        procurementPlan: true,
+        procurementPlan: { include: { installments: { orderBy: { seq: 'asc' } } } },
         customs: true,
         evidences: { orderBy: { createdAt: 'asc' } },
         sinosurePolicies: { orderBy: { createdAt: 'asc' } },
       },
     });
     if (!c) throw new NotFoundException('案件不存在');
+    const planPayment = c.procurementPlan ? presentPlanPayment(c.procurementPlan) : null;
     return {
       ...c,
       catalog: NODE_CATALOG,
@@ -103,6 +105,16 @@ export class CasesService {
         ? { ...c.customs, declareElements: safeJson(c.customs.declareElementsJson) }
         : null,
       evidences: c.evidences.map((e) => ({ ...e, payload: e.payload ? safeJson(e.payload) : null })),
+      procurementPlan: c.procurementPlan
+        ? {
+            ...c.procurementPlan,
+            paymentMode: planPayment?.paymentMode ?? c.procurementPlan.paymentMode,
+            paymentModeLabel: planPayment?.paymentModeLabel,
+            installments: planPayment?.installments ?? [],
+            scheduleWording: planPayment?.wording,
+            unpaidFen: planPayment?.unpaidFen,
+          }
+        : null,
     };
   }
 
@@ -633,7 +645,27 @@ export class CasesService {
         poEvidenceId = ev.id;
       }
     }
-    const existingPlan = await this.prisma.procurementPlan.findUnique({ where: { caseId } });
+    const existingPlan = await this.prisma.procurementPlan.findUnique({
+      where: { caseId },
+      include: { installments: { orderBy: { seq: 'asc' } } },
+    });
+    const amountFen = dto.amountFen ?? existingPlan?.amountFen ?? null;
+    const schedule = buildInstallmentRecords(
+      {
+        paymentMode: dto.paymentMode,
+        paymentConditionText: dto.paymentConditionText,
+        amountFen,
+        paidFen: dto.paidFen,
+        paymentDueAt: parseDate(dto.paymentDueAt) ?? existingPlan?.paymentDueAt ?? null,
+        paidAt: parseDate(dto.paidAt) ?? existingPlan?.paidAt ?? null,
+        installments: dto.installments?.map((item) => ({
+          ...item,
+          dueAt: parseDate(item.dueAt),
+          paidAt: parseDate(item.paidAt),
+        })),
+      },
+      existingPlan,
+    );
     const data = {
       poNo: dto.poNo || null,
       plannedArrival: parseDate(dto.plannedArrival || dto.plannedDelivery),
@@ -647,16 +679,39 @@ export class CasesService {
       customerConsent: dto.customerConsent ?? false,
       customerConsentEvidenceId: consentId || existingPlan?.customerConsentEvidenceId || null,
       actualArrival: parseDate(dto.actualArrival) ?? existingPlan?.actualArrival ?? null,
-      amountFen: dto.amountFen ?? existingPlan?.amountFen ?? null,
+      amountFen,
       currency: dto.currency || existingPlan?.currency || 'CNY',
-      paidFen: dto.paidFen ?? existingPlan?.paidFen ?? 0,
-      paymentDueAt: parseDate(dto.paymentDueAt) ?? existingPlan?.paymentDueAt ?? null,
-      paidAt: parseDate(dto.paidAt) ?? existingPlan?.paidAt ?? null,
+      paidFen: schedule.rollup.paidFen,
+      paymentDueAt: schedule.rollup.paymentDueAt,
+      paidAt: schedule.rollup.paidAt,
+      paymentMode: schedule.paymentMode,
     };
-    const row = await this.prisma.procurementPlan.upsert({
-      where: { caseId },
-      create: { caseId, ...data },
-      update: data,
+    const row = await this.prisma.$transaction(async (tx) => {
+      const plan = await tx.procurementPlan.upsert({
+        where: { caseId },
+        create: { caseId, ...data },
+        update: data,
+      });
+      await tx.procurementPaymentInstallment.deleteMany({ where: { planId: plan.id } });
+      if (schedule.resolved.length) {
+        await tx.procurementPaymentInstallment.createMany({
+          data: schedule.resolved.map((item) => ({
+            planId: plan.id,
+            seq: item.seq,
+            label: item.label,
+            percentBps: item.percentBps,
+            amountFen: item.amountFen,
+            conditionText: item.conditionText,
+            dueAt: parseDate(item.dueAt),
+            paidFen: item.paidFen,
+            paidAt: parseDate(item.paidAt),
+          })),
+        });
+      }
+      return tx.procurementPlan.findUniqueOrThrow({
+        where: { id: plan.id },
+        include: { installments: { orderBy: { seq: 'asc' } } },
+      });
     });
     await this.touchNode(caseId, 'N5', NodeStatus.IN_PROGRESS);
     await this.audit.append({
@@ -664,9 +719,16 @@ export class CasesService {
       actorId,
       action: 'PROCUREMENT_PLAN_SAVED',
       nodeCode: 'N5',
-      detail: { ...dto, customerConsentEvidenceId: consentId, poEvidenceId },
+      detail: { ...dto, customerConsentEvidenceId: consentId, poEvidenceId, paymentMode: schedule.paymentMode },
     });
-    return row;
+    const presented = presentPlanPayment(row);
+    return {
+      ...row,
+      paymentModeLabel: presented.paymentModeLabel,
+      installments: presented.installments,
+      scheduleWording: presented.wording,
+      unpaidFen: presented.unpaidFen,
+    };
   }
 
   async saveCustoms(caseId: string, dto: SaveCustomsDto, actorId?: string) {

@@ -429,10 +429,37 @@ model ProcurementPlan {
   paidFen                   Int       @default(0)
   /// 约定向供应商付款日
   paymentDueAt              DateTime?
-  /// 付清或最近一次付款日
+  /// 付清或最近一次付款日（分期时为最晚一期付款日）
   paidAt                    DateTime?
+  /// FULL 一次性付清 / STAGED 分期付款
+  paymentMode               String    @default("FULL")
   updatedAt                 DateTime  @updatedAt
   case                      TradeCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  installments              ProcurementPaymentInstallment[]
+}
+
+/// N5 采购货款分期：每一期独立比例/金额、触发条件与约定付款日
+model ProcurementPaymentInstallment {
+  id            String          @id @default(cuid())
+  planId        String
+  seq           Int
+  /// 到货付款 / 尾款 / 一次性付清
+  label         String?
+  /// 基点，9000 = 90.00%
+  percentBps    Int?
+  /// 本期应付金额（分）；可与比例并存，保存时按比例或尾款轧差解析
+  amountFen     Int?
+  /// 付款条件/触发，如「货物到达交付地点之后支付」
+  conditionText String?
+  dueAt         DateTime?
+  paidFen       Int             @default(0)
+  paidAt        DateTime?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  plan          ProcurementPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@unique([planId, seq])
+  @@index([planId])
 }
 
 /// HS 申报要素模板（演示用）
