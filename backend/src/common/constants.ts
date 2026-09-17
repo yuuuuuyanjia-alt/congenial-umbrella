@@ -22,7 +22,7 @@ export const NODE_CATALOG = [
     mvp: true,
     isHardGate: false,
     isStub: false,
-    summary: '所有权保留与争议解决条款必填；须上传中信保保单并登记投保限额，合同总金额不得超过限额。',
+    summary: '所有权保留与争议解决条款必填；须上传中信保保单并登记投保限额；按买方占用测算（未履行完毕未回款+已履行完毕未回款+新签合同），超额分档提示或拦截。',
   },
   {
     code: 'N4',
@@ -30,7 +30,7 @@ export const NODE_CATALOG = [
     mvp: true,
     isHardGate: false,
     isStub: false,
-    summary: '交货期/数量/收货人/付款条件变更须出变更单（含 diff），客户与内部确认后生效；进入变更时须再次确认中信保限额（对照变更后金额）。',
+    summary: '交货期/数量/收货人/付款条件变更须出变更单（含 diff），客户与内部确认后生效；进入变更时须再次确认中信保，并按变更后金额重算买方占用。',
   },
   {
     code: 'N5',

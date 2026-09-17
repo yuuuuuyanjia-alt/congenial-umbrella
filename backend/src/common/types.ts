@@ -139,6 +139,32 @@ export interface SinosurePolicySnap {
   confirmedExisting?: boolean;
 }
 
+export interface SinosureOccupancySnap {
+  openUnpaidFen: number;
+  fulfilledUnpaidFen: number;
+}
+
+export interface SinosureExposureSnap {
+  currency: string;
+  limitCurrency: string | null;
+  insuredLimitFen: number | null;
+  openUnpaidFen: number;
+  fulfilledUnpaidFen: number;
+  newContractFen: number;
+  occupancyFen: number;
+  remainingFen: number;
+  excessFen: number;
+  band: string | null;
+  bandLabel: string;
+  gateDecision: string | null;
+  gateLabel: string;
+  usdBandsApply: boolean;
+  currencyOk: boolean;
+  formula: string;
+  summary: string;
+  notes: string[];
+}
+
 export interface ProcurementPlanSnap {
   poNo?: string | null;
   plannedArrival?: string | Date | null;
@@ -203,6 +229,8 @@ export interface CaseSnapshot {
   caseAmountFen?: number | null;
   caseCurrency?: string | null;
   sinosurePolicies: SinosurePolicySnap[];
+  /** 买方其余合同未回款（不含本笔新签金额） */
+  sinosureOccupancy?: SinosureOccupancySnap | null;
 }
 
 export interface GateResult {
@@ -212,4 +240,5 @@ export interface GateResult {
   missing: string[];
   reasons: string[];
   alerts: string[];
+  exposure?: SinosureExposureSnap;
 }

@@ -65,7 +65,21 @@ const paths = [
     title: '中信保超额',
     tag: 'GATE REFUSED',
     cls: 'badge-block',
-    desc: '合同金额超过中信保投保限额，合同确认节点拒绝推进。',
+    desc: '占用测算超额 50,000 USD（满 5 万），超高风险，合同确认硬拦截。',
+  },
+  {
+    caseNo: 'DEMO-LIMIT-MED',
+    title: '中信保中风险',
+    tag: 'SOFT ALERT',
+    cls: 'badge-soft',
+    desc: 'Helios 未履行/已履行未回款加新签，超额约 1.3 万美元，中风险软提示，可推进。',
+  },
+  {
+    caseNo: 'DEMO-LIMIT-HIGH',
+    title: '中信保高风险',
+    tag: 'REVIEW',
+    cls: 'badge-review',
+    desc: '新签使占用超额 2.5 万美元，高风险进入审核队列，N3 不得直接推进。',
   },
   {
     caseNo: 'DEMO-SUPPLIER',

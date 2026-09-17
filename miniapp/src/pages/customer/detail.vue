@@ -17,7 +17,7 @@
     </view>
 
     <view class="card">
-      <view class="h2">中信保限额</view>
+      <view class="h2">中信保限额与占用</view>
       <view v-if="c.sinosureLimit">
         <view class="h1" style="font-size: 36rpx">
           {{ money(c.sinosureLimit.insuredLimitFen, c.sinosureLimit.currency) }}
@@ -27,6 +27,7 @@
         </view>
       </view>
       <view class="muted" v-else>尚未登记中信保保单或投保限额。</view>
+      <SinosureExposure :exposure="c.exposure" :show-new="false" />
     </view>
 
     <view class="card">
@@ -82,7 +83,8 @@
         </view>
       </view>
       <view class="muted" style="margin-top: 10rpx">
-        合同金额 {{ money(t.amountFen, t.currency) }} · 已收汇 {{ money(t.receivedFen, t.currency) }} · 未收汇 {{ money(t.unpaidFen, t.currency) }}
+        {{ t.fulfillment === 'OPEN' ? '未履行完毕' : t.fulfillment === 'FULFILLED' ? '已履行完毕' : '合同' }}
+        · 合同金额 {{ money(t.amountFen, t.currency) }} · 已收汇 {{ money(t.receivedFen, t.currency) }} · 未收汇 {{ money(t.unpaidFen, t.currency) }}
       </view>
       <view class="muted">
         付款条件 {{ t.paymentTerms || '未填' }} · 约定收款日 {{ t.paymentDueAt || '—' }} · 到账 {{ t.receivedAt || '—' }}
@@ -116,6 +118,7 @@
 import { onLoad } from '@dcloudio/uni-app';
 import { ref } from 'vue';
 import { api, money, remittanceClass, remittanceText } from '../../api';
+import SinosureExposure from '../../components/SinosureExposure.vue';
 
 const id = ref('');
 const c = ref<any>(null);

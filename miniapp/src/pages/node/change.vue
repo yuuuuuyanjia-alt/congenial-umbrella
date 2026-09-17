@@ -2,7 +2,7 @@
   <view class="wrap" v-if="c">
     <view class="card">
       <view class="h2">变更管理</view>
-      <view class="muted">交货期 / 数量 / 收货人 / 付款条件变更必须出变更单。客户确认 + 内部确认后生效。进入本节点时须再次确认中信保：变更后合同金额仍不得超过投保限额。无变更单时可直接推进，无需重复登记中信保。</view>
+      <view class="muted">交货期 / 数量 / 收货人 / 付款条件变更必须出变更单。客户确认 + 内部确认后生效。进入本节点时须再次确认中信保：按变更后金额重算占用（未履行完毕未回款 + 已履行完毕未回款 + 本笔合同金额）。无变更单时可直接推进，无需重复登记中信保。</view>
     </view>
     <view class="card">
       <view class="label">变更字段</view>
@@ -34,7 +34,8 @@
 
     <view class="card" v-if="(c.changeOrders || []).length">
       <view class="h2">中信保（变更后核对）</view>
-      <view class="muted">有变更单时须再次上传保单，或确认沿用当前保单，并按变更后合同金额核对限额。</view>
+      <view class="muted">有变更单时须再次上传保单，或确认沿用当前保单，并按变更后合同金额重算买方占用。</view>
+      <SinosureExposure :exposure="c.sinosureExposure" :show-new="true" />
       <view class="muted" v-if="n3Hint">合同环节：{{ n3Hint }}</view>
       <view class="muted" v-if="n4Hint">本节点已登记：{{ n4Hint }}</view>
       <view class="label">处理方式</view>
@@ -73,6 +74,7 @@
 import { onLoad } from '@dcloudio/uni-app';
 import { computed, reactive, ref } from 'vue';
 import { api, fenToYuan, latestSinosure, yuanToFen } from '../../api';
+import SinosureExposure from '../../components/SinosureExposure.vue';
 
 const id = ref('');
 const c = ref<any>(null);

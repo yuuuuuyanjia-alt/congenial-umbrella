@@ -307,7 +307,9 @@ describe('闸门引擎 MVP 节点', () => {
     expect(r.canProceed).toBe(false);
     expect(r.decision).toBe(Decision.HARD_BLOCK);
     expect(r.missing).toContain('N3_SINOSURE_OVER_LIMIT');
+    expect(r.missing).toContain('N3_SINOSURE_EXPOSURE_ULTRA');
     expect(r.reasons.join('')).toContain('投保限额');
+    expect(r.exposure?.band).toBe('ULTRA_HIGH');
   });
 
   it('N3 限额币种与合同不一致拒绝', () => {
@@ -330,6 +332,84 @@ describe('闸门引擎 MVP 节点', () => {
 
   it('N3 条款与中信保限额齐全可通过', () => {
     expect(evaluateN3(baseSnap()).canProceed).toBe(true);
+  });
+
+  it('N3 超额 1–2 万美元为中风险软提示，可推进', () => {
+    const r = evaluateN3(
+      baseSnap({
+        sinosurePolicies: [
+          {
+            nodeCode: 'N3',
+            evidenceRef: 'SIN-MED',
+            evidenceId: 'ev-sin-med',
+            insuredLimitFen: 11_500_000,
+            currency: 'USD',
+          },
+        ],
+      }),
+    );
+    expect(r.canProceed).toBe(true);
+    expect(r.decision).toBe(Decision.SOFT_ALERT);
+    expect(r.exposure?.band).toBe('MEDIUM');
+    expect(r.exposure?.excessFen).toBe(1_300_000);
+    expect(r.alerts.join('')).toContain('中风险');
+  });
+
+  it('N3 超额 2–5 万美元为高风险审核队列', () => {
+    const r = evaluateN3(
+      baseSnap({
+        sinosurePolicies: [
+          {
+            nodeCode: 'N3',
+            evidenceRef: 'SIN-HIGH',
+            evidenceId: 'ev-sin-high',
+            insuredLimitFen: 10_000_000,
+            currency: 'USD',
+          },
+        ],
+      }),
+    );
+    expect(r.canProceed).toBe(false);
+    expect(r.decision).toBe(Decision.REVIEW);
+    expect(r.missing).toContain('N3_SINOSURE_EXPOSURE_HIGH');
+    expect(r.exposure?.band).toBe('HIGH');
+    expect(r.exposure?.excessFen).toBe(2_800_000);
+  });
+
+  it('N3 买方占用含未履行/已履行未回款 + 新签，超额满 5 万硬拦截', () => {
+    const r = evaluateN3(
+      baseSnap({
+        sinosureOccupancy: { openUnpaidFen: 800_000, fulfilledUnpaidFen: 2_000_000 },
+        sinosurePolicies: [
+          {
+            nodeCode: 'N3',
+            evidenceRef: 'SIN-OCC',
+            evidenceId: 'ev-sin-occ',
+            insuredLimitFen: 10_000_000,
+            currency: 'USD',
+          },
+        ],
+      }),
+    );
+    // 新签 128,000 + 8,000 + 20,000 = 156,000，限额 100,000，超额 56,000
+    expect(r.exposure?.occupancyFen).toBe(15_600_000);
+    expect(r.exposure?.excessFen).toBe(5_600_000);
+    expect(r.canProceed).toBe(false);
+    expect(r.decision).toBe(Decision.HARD_BLOCK);
+    expect(r.missing).toContain('N3_SINOSURE_OVER_LIMIT');
+  });
+
+  it('N3 占用未超限额时展示剩余额度', () => {
+    const r = evaluateN3(
+      baseSnap({
+        sinosureOccupancy: { openUnpaidFen: 1_800_000, fulfilledUnpaidFen: 2_500_000 },
+      }),
+    );
+    expect(r.canProceed).toBe(true);
+    expect(r.exposure?.occupancyFen).toBe(17_100_000);
+    expect(r.exposure?.remainingFen).toBe(32_900_000);
+    expect(r.exposure?.band).toBe('WITHIN_LIMIT');
+    expect(r.reasons.join('')).toContain('剩余额度');
   });
 
   it('N6 缺少书面指示/审批/提单控制拒绝推进', () => {
@@ -844,7 +924,7 @@ describe('闸门引擎 N4 变更管理', () => {
     expect(r.missing).toEqual(expect.arrayContaining(['N4_SINOSURE_EVIDENCE', 'N4_SINOSURE_LIMIT']));
   });
 
-  it('变更后金额超过投保限额拒绝', () => {
+  it('变更后金额超过投保限额按超额分档：不足 1 万美元软提示', () => {
     const r = evaluateN4(
       baseSnap({
         quotes: [{ ...baseSnap().quotes[0], unitPriceFen: 1280000, quantity: 10, amountFen: 12800000 }],
@@ -878,8 +958,11 @@ describe('闸门引擎 N4 变更管理', () => {
         ],
       }),
     );
-    expect(r.canProceed).toBe(false);
-    expect(r.missing).toContain('N4_SINOSURE_OVER_LIMIT');
+    expect(r.canProceed).toBe(true);
+    expect(r.decision).toBe(Decision.SOFT_ALERT);
+    expect(r.exposure?.band).toBe('BELOW_MEDIUM');
+    expect(r.exposure?.excessFen).toBe(800_000);
+    expect(r.alerts.join('')).toContain('超额');
   });
 
   it('无变更单可直接过闸且不要求 N4 中信保', () => {

@@ -2,7 +2,7 @@
   <view class="wrap">
     <view class="h1" style="margin-bottom: 8rpx">客户管理</view>
     <view class="muted" style="margin-bottom: 16rpx">
-      仅收录已到达合同确认（N3）的买方。同一客户的多笔订单会合并到同一档案。询盘/报价阶段不录入。
+      仅收录已到达合同确认（N3）的买方。同一客户的多笔订单会合并到同一档案。询盘/报价阶段不录入。可查看中信保限额与占用、合同、已收汇/未收汇，以及约定收款日是否按期。
     </view>
     <view class="card" v-for="c in list" :key="c.id" @click="open(c.id)">
       <view class="row">
@@ -18,6 +18,11 @@
       </view>
       <view class="muted" style="margin-top: 12rpx">
         中信保限额 {{ c.sinosureLimit ? money(c.sinosureLimit.insuredLimitFen, c.sinosureLimit.currency) : '未登记' }}
+        <text v-if="c.exposure?.insuredLimitFen != null">
+          · 占用 {{ money(c.exposure.occupancyFen, c.exposure.currency) }}
+          <text v-if="c.exposure.excessFen > 0"> · 超额 {{ money(c.exposure.excessFen, c.exposure.currency) }}（{{ c.exposure.bandLabel }}）</text>
+          <text v-else> · 剩余 {{ money(c.exposure.remainingFen, c.exposure.currency) }}</text>
+        </text>
       </view>
       <view class="muted" v-for="b in c.receivable || []" :key="b.currency">
         已收汇 {{ money(b.settledFen, b.currency) }} · 未收汇 {{ money(b.openFen, b.currency) }}

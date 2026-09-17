@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Headers, Param, Post } from '@nestjs/common';
+import { Body, Controller, Get, Headers, Param, Post, Query } from '@nestjs/common';
 import { CasesService } from './cases.service';
 import { AuditService } from '../audit/audit.service';
 import {
@@ -32,6 +32,19 @@ export class CasesController {
   @Get(':id')
   get(@Param('id') id: string) {
     return this.cases.get(id);
+  }
+
+  @Get(':id/sinosure-exposure')
+  exposure(
+    @Param('id') id: string,
+    @Query('newAmountFen') newAmountFen?: string,
+    @Query('currency') currency?: string,
+  ) {
+    const amount = newAmountFen != null && newAmountFen !== '' ? Number(newAmountFen) : undefined;
+    return this.cases.exposurePreview(id, {
+      newAmountFen: Number.isFinite(amount as number) ? amount : undefined,
+      newCurrency: currency,
+    });
   }
 
   @Get(':id/audit')

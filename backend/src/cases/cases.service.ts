@@ -89,9 +89,11 @@ export class CasesService {
     });
     if (!c) throw new NotFoundException('案件不存在');
     const planPayment = c.procurementPlan ? presentPlanPayment(c.procurementPlan) : null;
+    const sinosureExposure = await this.customers.occupancyForCase(id);
     return {
       ...c,
       catalog: NODE_CATALOG,
+      sinosureExposure,
       kycReports: c.kycReports.map((k) => ({ ...k, payload: safeJson(k.payload) })),
       documents: c.documents.map((d) => ({ ...d, fields: safeJson(d.fieldsJson) })),
       gateChecks: c.gateChecks.map((g) => ({
@@ -228,7 +230,11 @@ export class CasesService {
       nodeCode: 'N3',
       detail: dto,
     });
-    return row;
+    const sinosureExposure = await this.customers.occupancyForCase(caseId, {
+      newAmountFen: dto.amountFen ?? undefined,
+      newCurrency: dto.currency,
+    });
+    return { ...row, sinosureExposure };
   }
 
   async saveSinosure(caseId: string, nodeCode: string, dto: SaveSinosureDto, actorId?: string) {
@@ -321,7 +327,10 @@ export class CasesService {
         confirmedExisting,
       },
     });
-    return row;
+    const sinosureExposure = await this.customers.occupancyForCase(caseId, {
+      newCurrency: currency,
+    });
+    return { ...row, sinosureExposure };
   }
 
   async saveQuote(caseId: string, dto: SaveQuoteDto, actorId?: string) {
@@ -897,6 +906,14 @@ export class CasesService {
   async previewGate(caseId: string, nodeCode: string) {
     await this.ensureCase(caseId);
     return this.gates.evaluateAndPersist(caseId, nodeCode);
+  }
+
+  async exposurePreview(
+    caseId: string,
+    override?: { newAmountFen?: number; newCurrency?: string },
+  ) {
+    await this.ensureCase(caseId);
+    return this.customers.occupancyForCase(caseId, override);
   }
 
   async advance(caseId: string, nodeCode: string, actorId?: string) {

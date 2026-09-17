@@ -186,6 +186,9 @@ async function main() {
   const gate = await seedGateDemoCase(sales.id);
   const fob = await seedFobNoBlCase(sales.id, approver.id);
   const limit = await seedSinosureOverLimitCase(sales.id);
+  const nordWip = await seedNordlichtWipCase(sales.id);
+  const helios = await seedHeliosMediumBundle(sales.id, approver.id);
+  const high = await seedSinosureHighCase(sales.id);
   const supplierBlock = await seedSupplierBlockCase(sales.id);
 
   await attachBuyersToCustomers();
@@ -199,11 +202,14 @@ async function main() {
   console.log('  PASS      ', pass.caseNo, pass.id);
   console.log('  NORD_LATE ', nordLate.caseNo, nordLate.id, '（Nordlicht 逾期收汇）');
   console.log('  NORD_OPEN ', nordOpen.caseNo, nordOpen.id, '（Nordlicht 收汇未到期）');
+  console.log('  NORD_WIP  ', nordWip.caseNo, nordWip.id, '（Nordlicht 未履行完毕未回款）');
   console.log('  SOFT_ALERT', soft.caseNo, soft.id);
   console.log('  HARD_BLOCK', block.caseNo, block.id);
   console.log('  GATE_DEMO ', gate.caseNo, gate.id, '（N6 缺证据，用于闸门拒绝演示）');
   console.log('  FOB_NO_BL ', fob.caseNo, fob.id, '（FOB 无提单路径已过 N6）');
-  console.log('  SINOSURE  ', limit.caseNo, limit.id, '（合同金额超过中信保限额，N3 拒绝）');
+  console.log('  SINOSURE  ', limit.caseNo, limit.id, '（超额 50,000 USD 超高风险，N3 硬拦截）');
+  console.log('  LIMIT_MED ', helios.n3.caseNo, helios.n3.id, '（Helios 占用超额 13,000，中风险软提示）');
+  console.log('  LIMIT_HIGH', high.caseNo, high.id, '（超额 25,000 USD 高风险，N3 审核）');
   console.log('  SUPPLIER  ', supplierBlock.caseNo, supplierBlock.id, '（国内供应商命中不可靠实体，N5 硬拦截）');
   console.log(`客户管理：${customerCount} 个客户，${enrolledBuyers} 个已达 N3 的买方已挂档（询盘未达 N3 的如 DEMO-BLOCK 不录入）`);
 }
@@ -1599,6 +1605,291 @@ async function seedNordlichtOpenCase(salesId: string, approverId: string) {
     },
   });
   return c;
+}
+
+async function seedBareExport(opts: {
+  caseNo: string;
+  title: string;
+  scenario: string;
+  status: string;
+  currentNode: string;
+  overallRisk?: string;
+  buyer: string;
+  country: string;
+  goodsDesc: string;
+  destination: string;
+  amountFen: number;
+  currency?: string;
+  incoterms?: string;
+  paymentTerms?: string;
+  receivedFen?: number;
+  receivedAt?: Date | null;
+  shipment?: boolean;
+  limitFen?: number;
+  limitRef?: string;
+  fileName?: string;
+  nodeOverrides: Record<string, Partial<{ status: string; decision: string | null; summary: string }>>;
+  salesId: string;
+  approverId?: string;
+  deliveryDate?: Date;
+  quantity?: number;
+  unit?: string;
+}) {
+  const currency = opts.currency || 'USD';
+  const incoterms = opts.incoterms || 'CIF';
+  const c = await prisma.tradeCase.create({
+    data: {
+      caseNo: opts.caseNo,
+      title: opts.title,
+      scenario: opts.scenario,
+      status: opts.status,
+      currentNode: opts.currentNode,
+      overallRisk: opts.overallRisk || 'LOW',
+      goodsDesc: opts.goodsDesc,
+      destination: opts.destination,
+      amountFen: opts.amountFen,
+      currency,
+      parties: {
+        create: [
+          { role: 'BUYER', name: opts.buyer, country: opts.country, isSameAsBuyer: true },
+          { role: 'PAYER', name: opts.buyer, country: opts.country, isSameAsBuyer: true },
+          { role: 'CONSIGNEE', name: opts.buyer, country: opts.country, isSameAsBuyer: true },
+        ],
+      },
+      nodes: { create: nodeCreates(opts.nodeOverrides) },
+      contract: {
+        create: {
+          counterparty: opts.buyer,
+          buyerName: opts.buyer,
+          consigneeName: opts.buyer,
+          goodsDesc: opts.goodsDesc,
+          amountFen: opts.amountFen,
+          currency,
+          incoterms,
+          paymentTerms: opts.paymentTerms || 'T/T 30 days',
+          hasRetentionOfTitle: true,
+          hasDisputeClause: true,
+          isFinal: opts.currentNode !== 'N3',
+          deliveryDate: opts.deliveryDate || new Date('2026-12-15T00:00:00.000Z'),
+          quantity: opts.quantity ?? 2,
+          unit: opts.unit || '套',
+          destination: opts.destination,
+        },
+      },
+    },
+  });
+  await prisma.kycReport.create({
+    data: {
+      caseId: c.id,
+      score: 0,
+      riskLevel: 'LOW',
+      summary: '未命中模拟清单。',
+      payload: JSON.stringify({ hits: [], disclaimer: 'mock' }),
+    },
+  });
+  if (opts.shipment && opts.approverId) {
+    await prisma.shipment.create({
+      data: {
+        caseId: c.id,
+        hasCustomerWrittenInstruction: true,
+        instructionRef: `INST-${opts.caseNo}`,
+        hasInternalApproval: true,
+        approverId: opts.approverId,
+        blControl: 'ORIGINAL',
+        blNo: `BL-${opts.caseNo}`,
+        vessel: 'EVER GOODS',
+        consigneeOnBl: opts.buyer,
+      },
+    });
+  }
+  if (opts.receivedFen != null || opts.receivedAt) {
+    await prisma.settlement.create({
+      data: {
+        caseId: c.id,
+        payerName: opts.buyer,
+        buyerName: opts.buyer,
+        isThirdParty: false,
+        hasRemittanceMemo: true,
+        remittanceMemoRef: `SWIFT-${opts.caseNo}`,
+        hasDocConsistencyProof: true,
+        hasReleaseApproval: true,
+        amountFen: opts.receivedFen ?? 0,
+        receivedAt: opts.receivedAt ?? null,
+      },
+    });
+  }
+  if (opts.limitFen && opts.limitFen > 0) {
+    const evSin = await prisma.evidence.create({
+      data: {
+        caseId: c.id,
+        nodeCode: 'N3',
+        kind: 'SINOSURE_POLICY',
+        ref: opts.limitRef || `SIN-${opts.caseNo}`,
+        note: '中信保保单/限额批注',
+        payload: JSON.stringify({ insuredLimitFen: opts.limitFen, currency }),
+      },
+    });
+    await prisma.sinosurePolicy.create({
+      data: {
+        caseId: c.id,
+        nodeCode: 'N3',
+        evidenceId: evSin.id,
+        evidenceRef: opts.limitRef || `SIN-${opts.caseNo}`,
+        fileName: opts.fileName || `中信保限额批注-${opts.buyer.replace(/\s+/g, '')}.pdf`,
+        insuredLimitFen: opts.limitFen,
+        currency,
+      },
+    });
+  }
+  await prisma.auditLog.create({
+    data: {
+      caseId: c.id,
+      actorId: opts.salesId,
+      action: 'CASE_CREATED',
+      nodeCode: 'N1',
+      detail: JSON.stringify({ scenario: opts.scenario }),
+    },
+  });
+  return c;
+}
+
+async function seedNordlichtWipCase(salesId: string) {
+  return seedBareExport({
+    caseNo: 'DEMO-NORD-WIP',
+    title: '北海机电出口德国 Nordlicht（在手未装运，未履行完毕）',
+    scenario: 'OPEN_UNFULFILLED',
+    status: 'IN_PROGRESS',
+    currentNode: 'N5',
+    buyer: 'Nordlicht GmbH',
+    country: 'DE',
+    goodsDesc: '数控机床配件',
+    destination: 'Hamburg, DE',
+    amountFen: 1_800_000,
+    limitFen: 15_000_000,
+    limitRef: 'SIN-NL-2026',
+    fileName: '中信保限额批注-Nordlicht.pdf',
+    salesId,
+    nodeOverrides: {
+      N1: { status: 'PASSED', decision: 'PASS', summary: '当事方齐全，筛查未命中' },
+      N2: { status: 'PASSED', decision: 'PASS', summary: '报价要素齐全' },
+      N3: { status: 'PASSED', decision: 'PASS', summary: '条款齐全，中信保限额覆盖合同金额' },
+      N4: { status: 'PASSED', decision: 'PASS', summary: '无待确认变更' },
+      N5: { status: 'IN_PROGRESS', decision: null, summary: '国内采购备货中，合同尚未履行完毕' },
+    },
+  });
+}
+
+async function seedHeliosMediumBundle(salesId: string, approverId: string) {
+  const buyer = 'Helios Marine Ltd';
+  const limitFen = 4_000_000;
+  const done = await seedBareExport({
+    caseNo: 'DEMO-HELIOS-DONE',
+    title: '闽南泵业出口 Helios（已履行完毕，尚有未回款）',
+    scenario: 'EXPOSURE_FULFILLED_UNPAID',
+    status: 'COMPLETED',
+    currentNode: 'N9',
+    buyer,
+    country: 'GR',
+    goodsDesc: '工业泵',
+    destination: 'Piraeus, GR',
+    amountFen: 2_500_000,
+    receivedFen: 500_000,
+    receivedAt: new Date('2026-08-01T00:00:00.000Z'),
+    shipment: true,
+    approverId,
+    limitFen,
+    limitRef: 'SIN-HELIOS-2026',
+    fileName: '中信保限额批注-Helios.pdf',
+    salesId,
+    deliveryDate: new Date('2026-06-01T00:00:00.000Z'),
+    nodeOverrides: {
+      ...Object.fromEntries(
+        ['N1', 'N2', 'N3', 'N4', 'N5', 'N6', 'N7', 'N8', 'N9'].map((code) => [
+          code,
+          { status: 'PASSED', decision: 'PASS', summary: '已履行完毕，部分收汇' },
+        ]),
+      ),
+    },
+  });
+  const wip = await seedBareExport({
+    caseNo: 'DEMO-HELIOS-WIP',
+    title: '闽南泵业出口 Helios（未履行完毕未回款）',
+    scenario: 'EXPOSURE_OPEN_UNPAID',
+    status: 'IN_PROGRESS',
+    currentNode: 'N5',
+    buyer,
+    country: 'GR',
+    goodsDesc: '工业泵',
+    destination: 'Piraeus, GR',
+    amountFen: 800_000,
+    limitFen,
+    limitRef: 'SIN-HELIOS-2026',
+    fileName: '中信保限额批注-Helios.pdf',
+    salesId,
+    nodeOverrides: {
+      N1: { status: 'PASSED', decision: 'PASS', summary: '筛查通过' },
+      N2: { status: 'PASSED', decision: 'PASS', summary: '报价要素齐全' },
+      N3: { status: 'PASSED', decision: 'PASS', summary: '条款与中信保限额齐全' },
+      N4: { status: 'PASSED', decision: 'PASS', summary: '无待确认变更' },
+      N5: { status: 'IN_PROGRESS', decision: null, summary: '采购备货中，尚未装运' },
+    },
+  });
+  const n3 = await seedBareExport({
+    caseNo: 'DEMO-LIMIT-MED',
+    title: '闽南泵业出口 Helios（占用超额中风险）',
+    scenario: 'SINOSURE_EXPOSURE_MEDIUM',
+    status: 'IN_PROGRESS',
+    currentNode: 'N3',
+    buyer,
+    country: 'GR',
+    goodsDesc: '工业泵',
+    destination: 'Piraeus, GR',
+    amountFen: 2_500_000,
+    limitFen,
+    limitRef: 'SIN-HELIOS-2026',
+    fileName: '中信保限额批注-Helios.pdf',
+    salesId,
+    quantity: 5,
+    nodeOverrides: {
+      N1: { status: 'PASSED', decision: 'PASS', summary: '筛查通过' },
+      N2: { status: 'PASSED', decision: 'PASS', summary: '报价要素齐全' },
+      N3: {
+        status: 'IN_PROGRESS',
+        decision: null,
+        summary: '新签将使占用超额约 1.3 万美元，中风险软提示，可推进',
+      },
+    },
+  });
+  return { done, wip, n3 };
+}
+
+async function seedSinosureHighCase(salesId: string) {
+  return seedBareExport({
+    caseNo: 'DEMO-LIMIT-HIGH',
+    title: '闽南泵业出口 Caspian Spare（占用超额高风险）',
+    scenario: 'SINOSURE_EXPOSURE_HIGH',
+    status: 'IN_PROGRESS',
+    currentNode: 'N3',
+    buyer: 'Caspian Spare Ltd',
+    country: 'KZ',
+    goodsDesc: '工业泵',
+    destination: 'Aktau, KZ',
+    amountFen: 7_500_000,
+    limitFen: 5_000_000,
+    limitRef: 'SIN-CASPIAN-2026',
+    fileName: '中信保限额批注-Caspian.pdf',
+    salesId,
+    quantity: 8,
+    nodeOverrides: {
+      N1: { status: 'PASSED', decision: 'PASS', summary: '筛查通过' },
+      N2: { status: 'PASSED', decision: 'PASS', summary: '报价要素齐全' },
+      N3: {
+        status: 'IN_PROGRESS',
+        decision: null,
+        summary: '新签使占用超额 2.5 万美元，高风险须审核',
+      },
+    },
+  });
 }
 
 async function attachBuyersToCustomers() {
