@@ -2,7 +2,8 @@
   <view class="wrap" v-if="c">
     <view class="card">
       <view class="h2">合同 / 订单确认</view>
-      <view class="muted">所有权保留、争议解决条款为必填。须上传中信保保单并登记投保限额。占用 = 未履行完毕合同未回款 + 已履行完毕合同未回款 + 新签订合同金额；超额将按分档提示或拦截。保存合同或推进本节点后，本案买方将自动录入或合并至客户管理。</view>
+      <view class="muted">硬规则：中信保限额未登记，不得签订合同。请先登记投保限额，再保存合同要素。所有权保留、争议解决条款为必填。占用 = 未履行完毕合同未回款 + 已履行完毕合同未回款 + 新签订合同金额；超额将按分档提示或拦截。保存合同或推进本节点后，本案买方将自动录入或合并至客户管理。</view>
+      <view class="err" v-if="!hasLimit" style="margin-top: 12rpx">尚未登记中信保限额，不得签订合同。</view>
     </view>
     <view class="card">
       <view class="label">相对方</view>
@@ -26,11 +27,12 @@
       <view class="label">争议解决条款</view>
       <switch :checked="form.hasDisputeClause" @change="(e: any) => (form.hasDisputeClause = e.detail.value)" />
       <view class="btn" @click="save">保存合同要素</view>
+      <view class="muted" v-if="!hasLimit" style="margin-top: 8rpx">须先保存中信保限额，否则保存合同将被拒绝。</view>
     </view>
 
     <view class="card">
       <view class="h2">中信保</view>
-      <view class="muted">请上传出口信用保险保单或限额批注，并填写投保限额。保存或推进时自动测算占用；超高风险禁止推进，高风险须审核，中风险软提示。</view>
+      <view class="muted">须先登记投保限额，否则不得保存或推进合同。请上传出口信用保险保单或限额批注。保存或推进时自动测算占用；超高风险禁止推进，高风险须审核，中风险软提示。</view>
       <SinosureExposure :exposure="exposureView" :show-new="true" />
       <view class="muted" v-if="sinosureHint" style="margin-top: 8rpx">{{ sinosureHint }}</view>
       <view class="label">保单编号 / 附件编号</view>
@@ -79,9 +81,14 @@ const sino = reactive({
   currency: 'USD',
 });
 
+const hasLimit = computed(() => {
+  const p = latestSinosure(c.value?.sinosurePolicies, 'N3');
+  return !!(p && p.insuredLimitFen > 0);
+});
+
 const sinosureHint = computed(() => {
   const p = latestSinosure(c.value?.sinosurePolicies, 'N3');
-  if (!p) return '';
+  if (!p || !(p.insuredLimitFen > 0)) return '';
   const limit = fenToYuan(p.insuredLimitFen);
   return `已登记：限额 ${p.currency} ${limit} · ${p.fileName || p.evidenceRef || '已留存附件'}`;
 });
@@ -124,21 +131,34 @@ function stubUpload() {
   ok.value = '已生成模拟保单附件编号（演示环境，非真实上传）';
 }
 
+function gateMessage(e: any) {
+  if (Array.isArray(e?.reasons) && e.reasons.length) return e.reasons.join('；');
+  return e?.message || '闸门拒绝';
+}
+
 async function save() {
-  await api.saveContract(id.value, {
-    counterparty: form.counterparty,
-    incoterms: form.incoterms,
-    paymentTerms: form.paymentTerms,
-    hasRetentionOfTitle: form.hasRetentionOfTitle,
-    hasDisputeClause: form.hasDisputeClause,
-    deliveryDate: form.deliveryDate,
-    quantity: Number(form.quantity),
-    unit: form.unit,
-    amountFen: yuanToFen(form.amountYuan),
-    currency: form.currency,
-  });
-  c.value = await api.case(id.value);
-  ok.value = '合同要素已保存，已按当前金额测算占用；买方已录入或合并至客户管理';
+  err.value = '';
+  ok.value = '';
+  try {
+    await api.saveContract(id.value, {
+      counterparty: form.counterparty,
+      incoterms: form.incoterms,
+      paymentTerms: form.paymentTerms,
+      hasRetentionOfTitle: form.hasRetentionOfTitle,
+      hasDisputeClause: form.hasDisputeClause,
+      deliveryDate: form.deliveryDate,
+      quantity: Number(form.quantity),
+      unit: form.unit,
+      amountFen: yuanToFen(form.amountYuan),
+      currency: form.currency,
+    });
+    c.value = await api.case(id.value);
+    ok.value = '合同要素已保存，已按当前金额测算占用；买方已录入或合并至客户管理';
+    return true;
+  } catch (e: any) {
+    err.value = gateMessage(e);
+    return false;
+  }
 }
 
 async function saveSino() {
@@ -156,13 +176,15 @@ async function saveSino() {
 
 async function tryAdvance() {
   err.value = '';
+  ok.value = '';
   try {
-    await save();
     await saveSino();
+    const saved = await save();
+    if (!saved) return;
     const r = await api.advance(id.value, 'N3');
     ok.value = `已推进至 ${r.nextNode}`;
   } catch (e: any) {
-    err.value = (e?.reasons || []).join('；') || e?.message || '闸门拒绝';
+    err.value = gateMessage(e);
   }
 }
 </script>

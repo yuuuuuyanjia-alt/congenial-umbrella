@@ -82,6 +82,13 @@ const paths = [
     desc: '新签使占用超额 2.5 万美元，高风险进入审核队列，N3 不得直接推进。',
   },
   {
+    caseNo: 'DEMO-NOLIMIT',
+    title: '中信保未登记',
+    tag: 'GATE REFUSED',
+    cls: 'badge-block',
+    desc: '买方尚未登记中信保限额，合同确认节点拒绝保存与推进。',
+  },
+  {
     caseNo: 'DEMO-SUPPLIER',
     title: '供应商硬拦截',
     tag: 'N5 BLOCK',

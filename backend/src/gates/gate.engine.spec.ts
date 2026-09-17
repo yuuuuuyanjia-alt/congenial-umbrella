@@ -1,9 +1,10 @@
-import { Decision } from '../common/constants';
+import { Decision, N3_SINOSURE_UNREGISTERED_REASON } from '../common/constants';
 import { CaseSnapshot } from '../common/types';
 import {
   evaluateN1,
   evaluateN2,
   evaluateN3,
+  evaluateN3ContractSave,
   evaluateN4,
   evaluateN5,
   evaluateN6,
@@ -283,11 +284,60 @@ describe('闸门引擎 MVP 节点', () => {
     expect(r.missing).toEqual(expect.arrayContaining(['N3_RETENTION_OF_TITLE', 'N3_DISPUTE_CLAUSE']));
   });
 
-  it('N3 未上传中信保保单拒绝', () => {
+  it('N3 未登记中信保限额拒绝签订合同', () => {
     const r = evaluateN3(baseSnap({ sinosurePolicies: [] }));
     expect(r.canProceed).toBe(false);
     expect(r.decision).toBe(Decision.HARD_BLOCK);
     expect(r.missing).toEqual(expect.arrayContaining(['N3_SINOSURE_EVIDENCE', 'N3_SINOSURE_LIMIT']));
+    expect(r.reasons).toContain(N3_SINOSURE_UNREGISTERED_REASON);
+  });
+
+  it('N3 限额为 0 视为未登记，不得签订合同', () => {
+    const r = evaluateN3(
+      baseSnap({
+        sinosurePolicies: [
+          {
+            nodeCode: 'N3',
+            evidenceRef: 'SIN-ZERO',
+            evidenceId: 'ev-sin-zero',
+            fileName: '空限额.pdf',
+            insuredLimitFen: 0,
+            currency: 'USD',
+          },
+        ],
+      }),
+    );
+    expect(r.canProceed).toBe(false);
+    expect(r.decision).toBe(Decision.HARD_BLOCK);
+    expect(r.missing).toContain('N3_SINOSURE_LIMIT');
+    expect(r.reasons).toContain(N3_SINOSURE_UNREGISTERED_REASON);
+  });
+
+  it('N3 未登记限额时即使尚无合同也 HARD_BLOCK', () => {
+    const r = evaluateN3(baseSnap({ contract: null, sinosurePolicies: [] }));
+    expect(r.canProceed).toBe(false);
+    expect(r.decision).toBe(Decision.HARD_BLOCK);
+    expect(r.missing).toContain('N3_SINOSURE_LIMIT');
+    expect(r.missing).not.toContain('N3_CONTRACT');
+    expect(r.reasons).toContain(N3_SINOSURE_UNREGISTERED_REASON);
+  });
+
+  it('N3 保存合同：未登记限额 GATE 拒绝，已登记可通过', () => {
+    const blocked = evaluateN3ContractSave(baseSnap({ sinosurePolicies: [] }));
+    expect(blocked.canProceed).toBe(false);
+    expect(blocked.decision).toBe(Decision.HARD_BLOCK);
+    expect(blocked.reasons).toContain(N3_SINOSURE_UNREGISTERED_REASON);
+
+    const allowed = evaluateN3ContractSave(baseSnap({ contract: null }));
+    expect(allowed.canProceed).toBe(true);
+    expect(allowed.decision).toBe(Decision.PASS);
+  });
+
+  it('N3 限额已登记但无合同时报缺合同', () => {
+    const r = evaluateN3(baseSnap({ contract: null }));
+    expect(r.canProceed).toBe(false);
+    expect(r.missing).toContain('N3_CONTRACT');
+    expect(r.missing).not.toContain('N3_SINOSURE_LIMIT');
   });
 
   it('N3 合同金额超过投保限额拒绝', () => {

@@ -20,7 +20,7 @@
 | --- | --- | --- |
 | N1 | 询盘/客户KYC | 买方 / 付款人 / 收货人关系；模拟筛查 OFAC、UN、EU、UK、中国不可靠实体清单；KYC 报告 + 风险评分；高置信命中硬拦截 |
 | N2 | 报价环节 | 价格基础（含/不含项目）、有效期、运费/税费承担方必填；「价格待定/费用另议」禁止推进；相对成本底线/历史价异常偏离软提示或中风险；报价版本 + 字段快照入审计 |
-| N3 | 合同/订单确认 | **所有权保留**、**争议解决**条款必填；校验 Incoterms 与付款条件；记录交货期与数量；**须上传中信保保单并登记投保限额**；按买方占用测算，超额分档提示或拦截 |
+| N3 | 合同/订单确认 | **所有权保留**、**争议解决**条款必填；校验 Incoterms 与付款条件；记录交货期与数量；**中信保限额未登记，不得签订合同**；须上传中信保保单并登记投保限额；按买方占用测算，超额分档提示或拦截 |
 | N4 | 变更管理 | 交货期 / 数量 / 收货人 / 付款条件变更须出变更单（含 diff）；客户确认 + 内部确认；敏感变更须审批；旧版 `SUPERSEDED`；当事方/付款/收货人变更会重跑关联节点闸门；**进入变更时须再次确认中信保并按变更后金额重算占用** |
 | N5 | 国内采购/备货 | 登记国内供应商、采购合同/PO 与计划到货；供应商过 OFAC/UN/EU/UK 与中国不可靠实体模拟筛查（高置信硬拦截、中置信审核队列、低置信软提示）；计划到货 ≤ 客户合同交期，否则须登记**结构化延期触发条件**；客户同意延期须有可追溯证据编号；无同意则中风险不得推进 |
 | N6 | 装运/提单指示 | **硬闸门**：客户书面指示 + 内部审批；CIF/CFR 等须 **正本或电放其一**；FOB/EXW/FAS/FCA 可走 **无提单**（须记录依据） |
@@ -67,7 +67,7 @@ npm run bootstrap
 # npm --prefix backend install
 # npm --prefix miniapp install
 
-# 2. 迁移 + 种子（演示路径含绿灯 / 软提示 / 硬拦截 / 闸门拒绝 / FOB 无提单 / 中信保占用分档 / 客户按期与逾期收汇）
+# 2. 迁移 + 种子（演示路径含绿灯 / 软提示 / 硬拦截 / 闸门拒绝 / FOB 无提单 / 中信保占用分档与未登记 / 客户按期与逾期收汇）
 cd backend
 cp -n .env.example .env 2>/dev/null || true
 npx prisma migrate deploy
@@ -87,7 +87,7 @@ npm run miniapp
 
 ## 演示环境部署
 
-克隆后一条命令拉起 **API + 已构建 H5**（同一主机、同源 `/api`），SQLite 写入 `DEMO-PASS` / `DEMO-NORD-LATE` / `DEMO-NORD-OPEN` / `DEMO-NORD-WIP` / `DEMO-SOFT` / `DEMO-BLOCK` / `DEMO-GATE` / `DEMO-FOB` / `DEMO-LIMIT` / `DEMO-LIMIT-MED` / `DEMO-LIMIT-HIGH` / `DEMO-SUPPLIER`。制裁筛查仍为本地模拟名单，**不需要、也不读取真实 OFAC/UN 等 API Key**。
+克隆后一条命令拉起 **API + 已构建 H5**（同一主机、同源 `/api`），SQLite 写入 `DEMO-PASS` / `DEMO-NORD-LATE` / `DEMO-NORD-OPEN` / `DEMO-NORD-WIP` / `DEMO-SOFT` / `DEMO-BLOCK` / `DEMO-GATE` / `DEMO-FOB` / `DEMO-LIMIT` / `DEMO-LIMIT-MED` / `DEMO-LIMIT-HIGH` / `DEMO-NOLIMIT` / `DEMO-SUPPLIER`。制裁筛查仍为本地模拟名单，**不需要、也不读取真实 OFAC/UN 等 API Key**。
 
 需要本机已安装 Docker 与 Docker Compose v2。
 
@@ -136,7 +136,7 @@ DEMO_FORCE_SEED=1 docker compose up -d --force-recreate api
 npm test
 ```
 
-覆盖：N1 高置信硬拦截 / 低置信软提示；N2 模糊报价拒绝与成本底线偏离；N3 缺条款拒绝、**中信保缺保单/占用超高风险拒绝、高风险审核、中风险软提示**；N4 变更确认链、**变更后占用复核**、无变更跳过且不要求 N4 中信保；N5 供应商高置信硬拦截、采购到货延期无同意中风险；**N6 正本/电放二选一、FOB 无提单路径、缺证据拒绝**；N7 / N9 缺证据拒绝推进；N8 HS/申报要素缺口禁止申报；**采购货款分期金额轧差与按期次逾期**。
+覆盖：N1 高置信硬拦截 / 低置信软提示；N2 模糊报价拒绝与成本底线偏离；N3 缺条款拒绝、**中信保限额未登记不得签订合同 / 缺保单/占用超高风险拒绝、高风险审核、中风险软提示**；N4 变更确认链、**变更后占用复核**、无变更跳过且不要求 N4 中信保；N5 供应商高置信硬拦截、采购到货延期无同意中风险；**N6 正本/电放二选一、FOB 无提单路径、缺证据拒绝**；N7 / N9 缺证据拒绝推进；N8 HS/申报要素缺口禁止申报；**采购货款分期金额轧差与按期次逾期**。
 
 ## 种子案件
 
@@ -145,13 +145,14 @@ npm test
 | 案件号 | 路径 | 说明 |
 | --- | --- | --- |
 | `DEMO-PASS` | 绿灯通过 | Nordlicht GmbH，清单未命中；国内供应商苏州精工机械筛查通过；CIF **正本提单**过 N6；报价 v1 废止 / v2 生效；中信保限额 150,000 USD；变更单 CO-001 数量 8→10 已确认生效并再次核对占用；采购到货未延期；HS 要素与原产地证齐全并模拟放行 |
-| `DEMO-SOFT` | 软提示 | `Acme Industrial Co` 低置信近似命中，不阻断；N2 报价已过，**已到达 N3**（尚无合同，客户管理会录入） |
+| `DEMO-SOFT` | 软提示 | `Acme Industrial Co` 低置信近似命中，不阻断；N2 报价已过，**已到达 N3**（尚无合同、中信保未登记，客户管理会录入；保存合同应 **409 GATE_REFUSED**） |
 | `DEMO-BLOCK` | 硬拦截 | `Banned Trading LLC` 高置信命中模拟 OFAC，N1 拒绝；**未到达 N3，不进入客户管理** |
 | `DEMO-GATE` | 闸门演示 | 已过 KYC / 报价 / 合同（FOB，含中信保）/ **无变更故跳过 N4** / 国内采购备货，停在 N6，书面指示与无提单依据为空 |
 | `DEMO-FOB` | FOB 无提单 | Pacific Tools，FOB 买方订舱；N6 走「无提单」路径（书面指示 + 内部审批 + 装船通知依据），已过闸停在 N7 |
 | `DEMO-LIMIT` | 中信保超高风险 | Pacific Gear Ltd，新签 80,000 USD，限额 30,000 USD，超额正好 50,000 USD → **超高风险硬拦截**，停在 N3；推进应 **409 GATE_REFUSED**，`missing` 含 `N3_SINOSURE_OVER_LIMIT` |
 | `DEMO-LIMIT-MED` | 中信保中风险 | Helios Marine Ltd：已履行未回款 20,000 + 未履行未回款 8,000 + 新签 25,000 = 占用 53,000，限额 40,000，超额 13,000 → **中风险软提示，可推进** |
 | `DEMO-LIMIT-HIGH` | 中信保高风险 | Caspian Spare Ltd，新签 75,000 USD，限额 50,000 USD，超额 25,000 → **高风险审核队列**，N3 不得直接推进 |
+| `DEMO-NOLIMIT` | 中信保未登记 | Cedar Trade Ltd，已到 N3 尚无合同、未登记限额；保存合同或推进应 **409 GATE_REFUSED**，文案「尚未登记中信保限额，不得签订合同」 |
 | `DEMO-SUPPLIER` | 供应商硬拦截 | 国外买方 Rhein Parts 筛查通过；国内供应商「某不可靠实体贸易有限公司」高置信命中模拟不可靠实体清单，N5 拒绝 |
 | `DEMO-NORD-LATE` | 逾期收汇 | 同为 Nordlicht 历史订单，约定到期 2026-04-14，到账 2026-05-20，**逾期** |
 | `DEMO-NORD-OPEN` | 收汇未到期 | Nordlicht 在手已装运订单，已过报关，约定到期 2026-12-31，尚无到账，**未到期** |
@@ -174,7 +175,7 @@ npm test
 
 便于业务人员查看：
 
-1. **中信保限额与占用**：最新保单投保限额；占用 = 未履行完毕合同未回款 + 已履行完毕合同未回款（客户页无新签项）。超额自动测算并分档；额度内显示剩余额度
+1. **中信保限额与占用**：最新保单投保限额（无保单则显示未登记；未登记不得在 N3 签订合同）；占用 = 未履行完毕合同未回款 + 已履行完毕合同未回款（客户页无新签项）。超额自动测算并分档；额度内显示剩余额度
 2. **签过哪些合同**：已登记出口合同的案件（相对方、金额、付款条件、约定收款日、是否已履行完毕）
 3. **已收汇 / 未收汇**：合同金额与 N9 到账金额之差（支持部分收汇）
 4. **约定收款日**：每笔及总体为 **按期 / 逾期 / 未到期 / 无收款约定**（即是否按期回款）
@@ -188,7 +189,7 @@ npm test
 - 未收齐且到期日已过 → 逾期；已收齐且到账不晚于到期日 → 按期；未到期则未到期
 - 客户总体：任一笔逾期则为逾期
 
-演示客户 **Nordlicht GmbH**：多笔已达 N3 的订单（`DEMO-PASS` / `DEMO-NORD-LATE` / `DEMO-NORD-OPEN` / `DEMO-NORD-WIP`）按名称+国家合并为同一档案；中信保限额 150,000 USD。占用口径：`DEMO-NORD-WIP` 未履行完毕未回款 18,000；`DEMO-NORD-LATE` 已履行未回款 25,000 + `DEMO-NORD-OPEN` 已履行未回款 72,000；`DEMO-PASS` 已收齐不占用。合计占用 115,000，剩余额度 35,000。Acme（`DEMO-SOFT`）已达 N3、尚无合同，为无收款约定。Banned Trading（`DEMO-BLOCK`）未达 N3，不出现。
+演示客户 **Nordlicht GmbH**：多笔已达 N3 的订单（`DEMO-PASS` / `DEMO-NORD-LATE` / `DEMO-NORD-OPEN` / `DEMO-NORD-WIP`）按名称+国家合并为同一档案；中信保限额 150,000 USD。占用口径：`DEMO-NORD-WIP` 未履行完毕未回款 18,000；`DEMO-NORD-LATE` 已履行未回款 25,000 + `DEMO-NORD-OPEN` 已履行未回款 72,000；`DEMO-PASS` 已收齐不占用。合计占用 115,000，剩余额度 35,000。Acme（`DEMO-SOFT`）与 Cedar Trade（`DEMO-NOLIMIT`）已达 N3、尚无合同、限额未登记。Banned Trading（`DEMO-BLOCK`）未达 N3，不出现。
 
 ```bash
 curl -s http://127.0.0.1:3000/api/customers | python -c "import json,sys; [print(c['name'], c['collection']['label'], c.get('receivable')) for c in json.load(sys.stdin)]"
@@ -201,7 +202,7 @@ curl -s http://127.0.0.1:3000/api/customers | python -c "import json,sys; [print
 1. **每一笔采购合同/采购单**：PO 号、关联出口案件、计划/实际到货、客户合同交期
 2. **是否按期交货**：实际到货对照计划到货（无计划则对照客户合同交期）→ 按期 / 逾期 / 未到期 / 无交货记录
 3. **货款支付计划**：一次性付清，或分期（每期独立的比例/金额、付款条件/触发、可选约定付款日）
-4. **每期已付 / 未付**：登记本期实付后，未付清且已过该期约定付款日即为该期逾期；任一期逾期则该 PO 与供应商总体为逾期
+4. **每期已付 / 未付款**：登记本期实付后，未付清且已过该期约定付款日即为该期逾期；任一期逾期则该 PO 与供应商总体为逾期
 5. **状态**：未到期 / 按期 / 逾期 / 已付清（已付清仍保留是否晚于约定日）
 
 一次性付清不必拆期。分期示例口径：「货物到达交付地点之后支付（ ）%货款，剩余尾款（具体金额）于（填写条件）支付」。比例可改，如 90% + 10%。
@@ -227,6 +228,15 @@ curl -s http://127.0.0.1:3000/api/cases | python -c "import json,sys; d=json.loa
 curl -s -X POST http://127.0.0.1:3000/api/cases/<DEMO-GATE的id>/nodes/N6/advance
 ```
 
+对 `DEMO-NOLIMIT`（中信保限额未登记）保存合同或推进 N3，返回 **409**，`message` / `reasons` 为「尚未登记中信保限额，不得签订合同」，`missing` 含 `N3_SINOSURE_LIMIT`：
+
+```bash
+curl -s -X POST http://127.0.0.1:3000/api/cases/<DEMO-NOLIMIT的id>/nodes/N3/contract \
+  -H 'Content-Type: application/json' \
+  -d '{"counterparty":"Cedar Trade Ltd","incoterms":"CIF","paymentTerms":"T/T 30 days","hasRetentionOfTitle":true,"hasDisputeClause":true,"amountFen":4200000,"currency":"USD"}'
+curl -s -X POST http://127.0.0.1:3000/api/cases/<DEMO-NOLIMIT的id>/nodes/N3/advance
+```
+
 对 `DEMO-LIMIT`（占用超额满 5 万美元，超高风险）推进 N3，同样返回 **409**，`missing` 含 `N3_SINOSURE_OVER_LIMIT`：
 
 ```bash
@@ -240,7 +250,7 @@ curl -s -X POST http://127.0.0.1:3000/api/cases/<DEMO-LIMIT的id>/nodes/N3/advan
 - `GET /api/catalog` 节点、HS 模板、延期原因、价格基础等
 - `POST /api/cases/:id/nodes/N1/screen` 模拟筛查
 - `POST /api/cases/:id/nodes/N2/quotes` 保存报价新版本
-- `POST /api/cases/:id/nodes/N3/contract` 保存合同要素
+- `POST /api/cases/:id/nodes/N3/contract` 保存合同要素（未登记中信保限额则 **409 GATE_REFUSED**）
 - `POST /api/cases/:id/nodes/N3/sinosure` 登记中信保保单与投保限额
 - `GET /api/cases/:id/sinosure-exposure?newAmountFen=&currency=` 按买方测算占用（可传入拟新签金额）
 - `POST /api/cases/:id/nodes/N4/changes` 创建变更单
@@ -272,6 +282,7 @@ curl -s -X POST http://127.0.0.1:3000/api/cases/<DEMO-LIMIT的id>/nodes/N3/advan
 - **无提单路径**：FOB / EXW / FAS / FCA 等买方安排运输时，不要求提单号与正本/电放；须选择「无提单」并记录装船通知 / 订舱 / 买方运输安排。CIF/CFR 等卖方出单仍须正本或电放。合同术语由 N3 带入 N6，可在 N6 手工改术语后过闸。
 - **工作台动作**：误报排除、确认真实、补充信息、持续监控
 - **硬闸门**：N6 / N7 / N9，证据缺失即拒绝推进
+- **中信保限额**：限额未登记不得签订合同
 - **中信保占用**：占用 = **未履行完毕合同未回款**（已签但尚未装运/N6 未过）+ **已履行完毕合同未回款**（已装运或案件已完成，仍有应收）+ **新签订合同金额**（N3/N4 本笔）。客户详情不计入「新签」项，在手 N3 合同计入未履行完毕。
 - **超额分档（美元，左闭右开）**：[10,000, 20,000) 中风险软提示可推进（`SOFT_ALERT`）；[20,000, 50,000) 高风险审核队列（`REVIEW`，N3 不得直接推进）；[50,000, ∞) 超高风险硬拦截（`HARD_BLOCK`，`N3_SINOSURE_OVER_LIMIT`）。正好 1 万→中，正好 2 万→高，正好 5 万→超高。超额不足 1 万美元仍显示超额，按软提示。额度内显示剩余额度。
 - **币种**：演示环境占用与分档 **只按美元加总**，沿用 `SinosurePolicy.currency`；非美元不自动换算，超额一律按超高风险硬拦截。限额币种须与合同一致。

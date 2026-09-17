@@ -15,6 +15,7 @@ import {
   HISTORY_DEV_SOFT_PCT,
   NodeStatus,
   CUSTOMER_PARTY_ROLES,
+  N3_SINOSURE_UNREGISTERED_REASON,
   PartyRole,
   PartyRoleLabel,
   PriceBasis,
@@ -229,6 +230,9 @@ export function evaluateN2(snap: CaseSnapshot): GateResult {
 
 export function evaluateN3(snap: CaseSnapshot): GateResult {
   const r = emptyResult('N3');
+  if (!hasRegisteredSinosureLimit(snap, 'N3')) {
+    return blockN3SinosureUnregistered(r, snap);
+  }
   const c = snap.contract;
   if (!c) {
     r.missing.push('N3_CONTRACT');
@@ -846,6 +850,34 @@ export function hasSinosureEvidence(p?: SinosurePolicySnap | null): boolean {
   return !!(p && (p.evidenceId || p.evidenceRef || p.fileName));
 }
 
+/** 本案 N3/N4 是否已登记有效投保限额（与客户管理「未登记」同一口径）。 */
+export function hasRegisteredSinosureLimit(snap: CaseSnapshot, nodeCode: string): boolean {
+  const pol = latestSinosure(snap, nodeCode);
+  return !!(pol && pol.insuredLimitFen > 0);
+}
+
+/** N3 保存合同：未登记限额即 HARD_BLOCK，不要求合同要素已填。 */
+export function evaluateN3ContractSave(snap: CaseSnapshot): GateResult {
+  const r = emptyResult('N3');
+  if (!hasRegisteredSinosureLimit(snap, 'N3')) {
+    return blockN3SinosureUnregistered(r, snap);
+  }
+  r.reasons.push('中信保限额已登记，允许保存合同');
+  return r;
+}
+
+function blockN3SinosureUnregistered(r: GateResult, snap: CaseSnapshot): GateResult {
+  const pol = latestSinosure(snap, 'N3');
+  r.missing.push('N3_SINOSURE_LIMIT');
+  if (!hasSinosureEvidence(pol)) {
+    r.missing.push('N3_SINOSURE_EVIDENCE');
+  }
+  r.reasons.push(N3_SINOSURE_UNREGISTERED_REASON);
+  r.decision = Decision.HARD_BLOCK;
+  r.canProceed = false;
+  return r;
+}
+
 export function contractCurrency(snap: CaseSnapshot): string {
   return snap.contract?.currency || snap.caseCurrency || 'USD';
 }
@@ -877,17 +909,23 @@ function applySinosureGate(
   currency: string,
 ) {
   const pol = latestSinosure(snap, nodeCode);
+  if (nodeCode === 'N3' && !hasRegisteredSinosureLimit(snap, 'N3')) {
+    blockN3SinosureUnregistered(r, snap);
+    return;
+  }
   if (!hasSinosureEvidence(pol)) {
     r.missing.push(`${nodeCode}_SINOSURE_EVIDENCE`);
     r.reasons.push(
       nodeCode === 'N3'
-        ? '尚未上传中信保保单或限额批注'
+        ? N3_SINOSURE_UNREGISTERED_REASON
         : '进入变更后须再次上传或确认中信保保单',
     );
   }
   if (!pol || !pol.insuredLimitFen || pol.insuredLimitFen <= 0) {
     r.missing.push(`${nodeCode}_SINOSURE_LIMIT`);
-    r.reasons.push(nodeCode === 'N3' ? '未填写中信保投保限额' : '变更后须重新登记中信保投保限额');
+    r.reasons.push(
+      nodeCode === 'N3' ? N3_SINOSURE_UNREGISTERED_REASON : '变更后须重新登记中信保投保限额',
+    );
   }
   if (pol?.currency && currency && pol.currency.toUpperCase() !== currency.toUpperCase()) {
     r.missing.push(`${nodeCode}_SINOSURE_CURRENCY`);

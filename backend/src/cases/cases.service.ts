@@ -12,6 +12,7 @@ import {
   Disposition,
   EportStatus,
   EvidenceKind,
+  N3_SINOSURE_UNREGISTERED_REASON,
   NODE_CATALOG,
   NodeStatus,
   PartyRole,
@@ -20,7 +21,7 @@ import {
   RiskLevel,
   VersionStatus,
 } from '../common/constants';
-import { isChangeField, isSensitiveChange, nextNode } from '../gates/gate.engine';
+import { evaluateN3ContractSave, isChangeField, isSensitiveChange, nextNode } from '../gates/gate.engine';
 import {
   AckChangeDto,
   CreateCaseDto,
@@ -199,6 +200,19 @@ export class CasesService {
 
   async saveContract(caseId: string, dto: SaveContractDto, actorId?: string) {
     await this.ensureCase(caseId);
+    const snap = await this.gates.snapshot(caseId);
+    const limitGate = evaluateN3ContractSave(snap);
+    if (!limitGate.canProceed) {
+      await this.persistGateCheck(caseId, limitGate);
+      await this.audit.append({
+        caseId,
+        actorId,
+        action: 'GATE_REFUSED',
+        nodeCode: 'N3',
+        detail: limitGate,
+      });
+      this.throwGateRefused(limitGate, N3_SINOSURE_UNREGISTERED_REASON);
+    }
     const { deliveryDate, paymentDueAt, ...rest } = dto;
     const parsedDelivery = parseDate(deliveryDate);
     const data = {
@@ -951,14 +965,7 @@ export class CasesService {
           },
         });
       }
-      throw new HttpException(
-        {
-          code: 'GATE_REFUSED',
-          message: '闸门拒绝推进：证据不足或命中硬拦截',
-          ...result,
-        },
-        HttpStatus.CONFLICT,
-      );
+      this.throwGateRefused(result);
     }
 
     await this.prisma.caseNode.update({
@@ -1136,6 +1143,37 @@ export class CasesService {
       nodeCode: 'N3',
       detail: { customerId: enrolled.id, name: enrolled.name, created: enrolled.created, merged: enrolled.merged },
     });
+  }
+
+  private async persistGateCheck(caseId: string, result: GateResult) {
+    await this.prisma.gateCheck.create({
+      data: {
+        caseId,
+        nodeCode: result.nodeCode,
+        decision: result.decision,
+        canProceed: result.canProceed,
+        missingJson: JSON.stringify(result.missing),
+        reasonsJson: JSON.stringify(result.reasons),
+      },
+    });
+  }
+
+  private throwGateRefused(result: GateResult, message?: string): never {
+    const unregistered =
+      result.missing.includes('N3_SINOSURE_LIMIT') &&
+      result.reasons.includes(N3_SINOSURE_UNREGISTERED_REASON);
+    throw new HttpException(
+      {
+        code: 'GATE_REFUSED',
+        message:
+          message ||
+          (unregistered
+            ? N3_SINOSURE_UNREGISTERED_REASON
+            : '闸门拒绝推进：证据不足或命中硬拦截'),
+        ...result,
+      },
+      HttpStatus.CONFLICT,
+    );
   }
 
   private async ensureCase(id: string) {

@@ -21,7 +21,7 @@
         <view class="chip" v-if="s.hasStaged">含分期付款</view>
       </view>
       <view class="muted" v-for="b in s.payable || []" :key="b.currency" style="margin-top: 8rpx">
-        已付款 {{ money(b.settledFen, b.currency) }} · 还没付款 {{ money(b.openFen, b.currency) }}
+        已付款 {{ money(b.settledFen, b.currency) }} · 未付款 {{ money(b.openFen, b.currency) }}
       </view>
     </view>
     <view class="muted" v-if="!list.length">暂无国内供应商。请先启动后端并写入种子数据。</view>

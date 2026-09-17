@@ -14,7 +14,7 @@
     </view>
 
     <view class="card">
-      <view class="h2">货款已付款 / 还没付款</view>
+      <view class="h2">货款已付款 / 未付款</view>
       <view v-for="b in s.payable || []" :key="b.currency" style="margin-top: 12rpx">
         <view class="row">
           <view>
@@ -22,7 +22,7 @@
             <view class="stat-n">{{ money(b.settledFen, b.currency) }}</view>
           </view>
           <view>
-            <view class="muted">还没付款</view>
+            <view class="muted">未付款</view>
             <view class="stat-n over">{{ money(b.openFen, b.currency) }}</view>
           </view>
         </view>

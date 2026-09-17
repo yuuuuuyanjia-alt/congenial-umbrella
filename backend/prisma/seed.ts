@@ -186,6 +186,7 @@ async function main() {
   const gate = await seedGateDemoCase(sales.id);
   const fob = await seedFobNoBlCase(sales.id, approver.id);
   const limit = await seedSinosureOverLimitCase(sales.id);
+  const noLimit = await seedSinosureUnregisteredCase(sales.id);
   const nordWip = await seedNordlichtWipCase(sales.id);
   const helios = await seedHeliosMediumBundle(sales.id, approver.id);
   const high = await seedSinosureHighCase(sales.id);
@@ -208,6 +209,7 @@ async function main() {
   console.log('  GATE_DEMO ', gate.caseNo, gate.id, '（N6 缺证据，用于闸门拒绝演示）');
   console.log('  FOB_NO_BL ', fob.caseNo, fob.id, '（FOB 无提单路径已过 N6）');
   console.log('  SINOSURE  ', limit.caseNo, limit.id, '（超额 50,000 USD 超高风险，N3 硬拦截）');
+  console.log('  NOLIMIT   ', noLimit.caseNo, noLimit.id, '（中信保限额未登记，不得签订合同）');
   console.log('  LIMIT_MED ', helios.n3.caseNo, helios.n3.id, '（Helios 占用超额 13,000，中风险软提示）');
   console.log('  LIMIT_HIGH', high.caseNo, high.id, '（超额 25,000 USD 高风险，N3 审核）');
   console.log('  SUPPLIER  ', supplierBlock.caseNo, supplierBlock.id, '（国内供应商命中不可靠实体，N5 硬拦截）');
@@ -1140,6 +1142,90 @@ async function seedSinosureOverLimitCase(salesId: string) {
         action: 'SINOSURE_SAVED',
         nodeCode: 'N3',
         detail: JSON.stringify({ evidenceRef: 'SIN-PG-LOW', insuredLimitFen: 3000000, contractAmountFen: 8000000 }),
+      },
+    ],
+  });
+  return c;
+}
+
+async function seedSinosureUnregisteredCase(salesId: string) {
+  const buyer = 'Cedar Trade Ltd';
+  const c = await prisma.tradeCase.create({
+    data: {
+      caseNo: 'DEMO-NOLIMIT',
+      title: '闽南工具出口 Cedar Trade（中信保限额未登记）',
+      scenario: 'SINOSURE_UNREGISTERED',
+      status: 'IN_PROGRESS',
+      currentNode: 'N3',
+      overallRisk: 'LOW',
+      goodsDesc: '手工具套装',
+      destination: 'Vancouver, CA',
+      amountFen: 4200000,
+      currency: 'USD',
+      parties: {
+        create: [
+          { role: 'BUYER', name: buyer, country: 'CA', isSameAsBuyer: true },
+          { role: 'PAYER', name: buyer, country: 'CA', isSameAsBuyer: true },
+          { role: 'CONSIGNEE', name: buyer, country: 'CA', isSameAsBuyer: true },
+        ],
+      },
+      nodes: {
+        create: nodeCreates({
+          N1: { status: 'PASSED', decision: 'PASS', summary: '筛查通过' },
+          N2: { status: 'PASSED', decision: 'PASS', summary: '报价要素齐全' },
+          N3: {
+            status: 'IN_PROGRESS',
+            decision: null,
+            summary: '尚未登记中信保限额，不得签订合同',
+          },
+        }),
+      },
+      quotes: {
+        create: {
+          version: 1,
+          status: 'ACTIVE',
+          priceBasis: 'EXCLUSIVE',
+          excludedItems: '海运费、保险、目的港费用',
+          validityUntil: new Date('2026-12-31'),
+          freightBearer: 'BUYER',
+          taxBearer: 'BUYER',
+          unitPriceFen: 420000,
+          quantity: 10,
+          amountFen: 4200000,
+          snapshotJson: JSON.stringify({ version: 1, priceBasis: 'EXCLUSIVE', amountFen: 4200000 }),
+        },
+      },
+    },
+  });
+  await prisma.kycReport.create({
+    data: {
+      caseId: c.id,
+      score: 0,
+      riskLevel: 'LOW',
+      summary: '未命中模拟清单。',
+      payload: JSON.stringify({ hits: [] }),
+    },
+  });
+  await prisma.auditLog.createMany({
+    data: [
+      {
+        caseId: c.id,
+        actorId: salesId,
+        action: 'CASE_CREATED',
+        nodeCode: 'N1',
+        detail: JSON.stringify({ scenario: 'SINOSURE_UNREGISTERED' }),
+      },
+      {
+        caseId: c.id,
+        actorId: salesId,
+        action: 'GATE_REFUSED',
+        nodeCode: 'N3',
+        detail: JSON.stringify({
+          decision: 'HARD_BLOCK',
+          canProceed: false,
+          missing: ['N3_SINOSURE_LIMIT', 'N3_SINOSURE_EVIDENCE'],
+          reasons: ['尚未登记中信保限额，不得签订合同'],
+        }),
       },
     ],
   });
