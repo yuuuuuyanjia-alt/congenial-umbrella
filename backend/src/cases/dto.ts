@@ -1,4 +1,4 @@
-import { Allow, IsArray, IsBoolean, IsInt, IsObject, IsOptional, IsString, ValidateNested } from 'class-validator';
+import { Allow, IsArray, IsBoolean, IsIn, IsInt, IsNumber, IsObject, IsOptional, IsString, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class CreateCaseDto {
@@ -124,6 +124,18 @@ export class AckChangeDto {
   @IsOptional() @IsString() note?: string;
 }
 
+export class SavePlanInstallmentDto {
+  @IsOptional() @IsInt() seq?: number;
+  @IsOptional() @IsString() label?: string;
+  @IsOptional() @IsInt() percentBps?: number;
+  @IsOptional() @IsNumber() percent?: number;
+  @IsOptional() @IsInt() amountFen?: number;
+  @IsOptional() @IsString() conditionText?: string;
+  @IsOptional() @IsString() dueAt?: string;
+  @IsOptional() @IsInt() paidFen?: number;
+  @IsOptional() @IsString() paidAt?: string;
+}
+
 export class SavePlanDto {
   @IsOptional() @IsString() supplierName?: string;
   @IsOptional() @IsString() supplierNameEn?: string;
@@ -148,6 +160,13 @@ export class SavePlanDto {
   @IsOptional() @IsInt() paidFen?: number;
   @IsOptional() @IsString() paymentDueAt?: string;
   @IsOptional() @IsString() paidAt?: string;
+  @IsOptional() @IsIn(['FULL', 'STAGED']) paymentMode?: string;
+  @IsOptional() @IsString() paymentConditionText?: string;
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => SavePlanInstallmentDto)
+  installments?: SavePlanInstallmentDto[];
 }
 
 export class SaveCustomsDto {

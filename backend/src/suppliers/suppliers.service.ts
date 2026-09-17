@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PartyRole } from '../common/constants';
 import { evaluateRemittance, moneyBuckets, summarizeRemittance } from '../customers/remittance';
 import { PrismaService } from '../prisma/prisma.service';
+import { presentPlanPayment } from './payment-schedule';
 
 @Injectable()
 export class SuppliersService {
@@ -55,7 +56,7 @@ export class SuppliersService {
             case: {
               include: {
                 contract: true,
-                procurementPlan: true,
+                procurementPlan: { include: { installments: { orderBy: { seq: 'asc' } } } },
               },
             },
           },
@@ -78,9 +79,10 @@ export class SuppliersService {
 
   private purchaseOf(c: ReturnType<SuppliersService['casesOf']>[number]) {
     const plan = c.procurementPlan;
-    const amountFen = plan?.amountFen ?? 0;
-    const paidFen = plan?.paidFen ?? 0;
-    const unpaidFen = Math.max(0, amountFen - paidFen);
+    const schedule = presentPlanPayment(plan);
+    const amountFen = schedule.amountFen;
+    const paidFen = schedule.paidFen;
+    const unpaidFen = schedule.unpaidFen;
     const currency = plan?.currency || 'CNY';
     const dueForDelivery = plan?.plannedArrival ?? plan?.contractDelivery ?? null;
     const delivery = evaluateRemittance({
@@ -88,12 +90,7 @@ export class SuppliersService {
       paymentDueAt: dueForDelivery,
       receivedAt: plan?.actualArrival ?? null,
     });
-    const payment = evaluateRemittance({
-      kind: 'payment',
-      paymentDueAt: plan?.paymentDueAt ?? null,
-      receivedAt: plan?.paidAt ?? null,
-      remainingFen: amountFen || plan?.paymentDueAt ? unpaidFen : null,
-    });
+    const payment = schedule.payment;
     return {
       id: c.id,
       caseNo: c.caseNo,
@@ -110,8 +107,12 @@ export class SuppliersService {
       currency,
       paidFen,
       unpaidFen,
-      paymentDueAt: payment.paymentDueAt,
-      paidAt: payment.receivedAt,
+      paymentDueAt: schedule.paymentDueAt,
+      paidAt: schedule.paidAt,
+      paymentMode: schedule.paymentMode,
+      paymentModeLabel: schedule.paymentModeLabel,
+      scheduleWording: schedule.wording,
+      installments: schedule.installments,
       delivery,
       payment,
       hasPo: !!(plan?.poNo || plan?.amountFen || plan),
@@ -135,6 +136,7 @@ export class SuppliersService {
       payable,
       delivery: summarizeRemittance(purchases.map((p) => p.delivery), '无交货记录'),
       payment: summarizeRemittance(purchases.map((p) => p.payment), '无付款约定'),
+      hasStaged: purchases.some((p) => p.paymentMode === 'STAGED'),
     };
   }
 
@@ -156,6 +158,7 @@ export class SuppliersService {
       ),
       delivery: summarizeRemittance(purchases.map((p) => p.delivery), '无交货记录'),
       payment: summarizeRemittance(purchases.map((p) => p.payment), '无付款约定'),
+      hasStaged: purchases.some((p) => p.paymentMode === 'STAGED'),
       purchases,
     };
   }

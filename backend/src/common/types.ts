@@ -157,6 +157,7 @@ export interface ProcurementPlanSnap {
   paidFen?: number | null;
   paymentDueAt?: string | Date | null;
   paidAt?: string | Date | null;
+  paymentMode?: string | null;
 }
 
 export interface HsTemplateSnap {

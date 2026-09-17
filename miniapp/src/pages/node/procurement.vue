@@ -3,7 +3,7 @@
     <view class="card">
       <view class="h2">国内采购 / 备货</view>
       <view class="muted">
-        公司无自有产线，签约后向国内供应商采购。须登记供应商、采购合同/PO 与计划到货日，并对供应商做制裁/不可靠实体筛查。计划到货不得晚于客户合同交货期；若延期须登记结构化原因并保留客户同意证据。
+        公司无自有产线，签约后向国内供应商采购。须登记供应商、采购合同/PO、计划到货日与货款支付计划（一次性付清或分期），并对供应商做制裁/不可靠实体筛查。计划到货不得晚于客户合同交货期；若延期须登记结构化原因并保留客户同意证据。
       </view>
     </view>
 
@@ -32,15 +32,55 @@
       <view class="label">实际到货日期</view>
       <input class="input" v-model="form.actualArrival" placeholder="YYYY-MM-DD，用于判断是否按期交货" />
       <view class="label">采购金额（元）</view>
-      <input class="input" type="digit" v-model="form.amountYuan" placeholder="采购合同/PO 金额" />
+      <input class="input" type="digit" v-model="form.amountYuan" placeholder="采购合同/PO 金额" @blur="syncAmountsFromPercent" />
       <view class="label">币种</view>
       <input class="input" v-model="form.currency" placeholder="CNY" />
-      <view class="label">已付货款（元）</view>
-      <input class="input" type="digit" v-model="form.paidYuan" placeholder="已付给供应商的金额" />
-      <view class="label">约定付款日期</view>
-      <input class="input" v-model="form.paymentDueAt" placeholder="YYYY-MM-DD" />
-      <view class="label">付款日期（付清或最近一次）</view>
-      <input class="input" v-model="form.paidAt" placeholder="YYYY-MM-DD" />
+      <view class="label">货款怎么付</view>
+      <view class="choice-row">
+        <view class="choice-btn" :class="{ 'choice-btn-on': form.paymentMode === 'FULL' }" @click="setMode('FULL')">一次性付清</view>
+        <view class="choice-btn" :class="{ 'choice-btn-on': form.paymentMode === 'STAGED' }" @click="setMode('STAGED')">分期付款</view>
+      </view>
+      <view class="muted" style="margin-top: 12rpx">
+        一次付清不必拆期。分期可按「货物到达交付地点之后支付（ ）%货款，剩余尾款（具体金额）于（填写条件）支付」登记，每期有自己的条件和约定付款日。
+      </view>
+      <view class="muted" v-if="scheduleWording" style="margin-top: 8rpx">当前：{{ scheduleWording }}</view>
+
+      <view v-if="form.paymentMode === 'FULL'">
+        <view class="label">付款条件（可选）</view>
+        <input class="input" v-model="form.paymentConditionText" placeholder="一次性付清" />
+        <view class="label">已付货款（元）</view>
+        <input class="input" type="digit" v-model="form.paidYuan" placeholder="已付给供应商的金额" />
+        <view class="label">约定付款日期</view>
+        <input class="input" v-model="form.paymentDueAt" placeholder="YYYY-MM-DD" />
+        <view class="label">付款日期（付清日）</view>
+        <input class="input" v-model="form.paidAt" placeholder="YYYY-MM-DD" />
+      </view>
+
+      <view v-else>
+        <view class="btn btn-ghost" @click="apply90_10">填入 90% 到货 + 10% 尾款</view>
+        <view class="inst" v-for="(row, idx) in form.installments" :key="idx">
+          <view class="row">
+            <view class="h2" style="margin: 0">第 {{ idx + 1 }} 期 · {{ row.label || defaultInstLabel(idx) }}</view>
+            <view class="chip" @click="removeInst(idx)" v-if="form.installments.length > 1">删除本期</view>
+          </view>
+          <view class="label">期次名称</view>
+          <input class="input" v-model="row.label" :placeholder="defaultInstLabel(idx)" />
+          <view class="label">本期比例（%）</view>
+          <input class="input" type="digit" v-model="row.percent" placeholder="如 90" @blur="onPercent(idx)" />
+          <view class="label">本期金额（元）</view>
+          <input class="input" type="digit" v-model="row.amountYuan" placeholder="可按比例自动带出" @blur="onAmount(idx)" />
+          <view class="label">付款条件 / 触发</view>
+          <input class="input" v-model="row.conditionText" :placeholder="idx === 0 ? '货物到达交付地点之后支付' : '填写尾款支付条件'" />
+          <view class="label">约定付款日（可选）</view>
+          <input class="input" v-model="row.dueAt" placeholder="YYYY-MM-DD，过此日未付清即逾期" />
+          <view class="label">本期已付（元）</view>
+          <input class="input" type="digit" v-model="row.paidYuan" placeholder="登记本期实付" />
+          <view class="label">本期付款日</view>
+          <input class="input" v-model="row.paidAt" placeholder="YYYY-MM-DD" />
+          <view class="btn btn-ghost" @click="markInstPaid(idx)">本期记为付清（今天）</view>
+        </view>
+        <view class="btn btn-ghost" @click="addInst">再加一期</view>
+      </view>
       <view class="label">采购合同/PO 附件（可选，模拟上传）</view>
       <input class="input" v-model="form.poEvidenceStub" placeholder="如 PO-2026-011.pdf" />
       <view class="btn btn-ghost" @click="stubUpload">模拟上传采购合同</view>
@@ -105,6 +145,17 @@ const triggers = [
   { key: 'CUSTOMER_REQUEST', label: '客户要求' },
   { key: 'LOGISTICS', label: '物流运力' },
 ];
+function emptyInst(seq: number) {
+  return {
+    label: seq === 1 ? '到货付款' : '尾款',
+    percent: '',
+    amountYuan: '',
+    conditionText: seq === 1 ? '货物到达交付地点之后支付' : '',
+    dueAt: '',
+    paidYuan: '',
+    paidAt: '',
+  };
+}
 const form = reactive({
   supplierName: '',
   supplierNameEn: '',
@@ -120,6 +171,9 @@ const form = reactive({
   paidYuan: '',
   paymentDueAt: '',
   paidAt: '',
+  paymentMode: 'FULL' as 'FULL' | 'STAGED',
+  paymentConditionText: '一次性付清',
+  installments: [emptyInst(1), emptyInst(2)],
   poEvidenceStub: '',
   delayRegistered: false,
   delayTriggerCode: '',
@@ -135,11 +189,134 @@ const supplierReport = computed(() =>
 const supplierHits = computed(() =>
   (c.value?.hits || []).filter((h: any) => h.nodeCode === 'N5' || h.party?.role === 'SUPPLIER'),
 );
+const scheduleWording = computed(() => {
+  if (form.paymentMode !== 'STAGED' || form.installments.length < 2) return '';
+  const first = form.installments[0];
+  const last = form.installments[form.installments.length - 1];
+  const pct = first.percent || ' ';
+  const residual = last.amountYuan || '具体金额';
+  const cond = last.conditionText || '填写条件';
+  return `货物到达交付地点之后支付（${pct}）%货款，剩余尾款（${residual}）于（${cond}）支付`;
+});
 
 onLoad(async (q) => {
   id.value = q?.id || '';
   await reload();
 });
+
+function defaultInstLabel(idx: number) {
+  if (form.installments.length <= 1) return '一次性付清';
+  if (idx === 0) return '到货付款';
+  if (idx === form.installments.length - 1) return '尾款';
+  return `第${idx + 1}期`;
+}
+
+function planFen() {
+  return form.amountYuan === '' ? 0 : yuanToFen(form.amountYuan);
+}
+
+function syncAmountsFromPercent() {
+  const plan = planFen();
+  if (!plan || form.paymentMode !== 'STAGED') return;
+  form.installments.forEach((row, i) => {
+    const pct = Number(row.percent);
+    if (!Number.isFinite(pct)) return;
+    if (i === form.installments.length - 1) {
+      const prev = form.installments.slice(0, i).reduce((s, r) => s + (r.amountYuan === '' ? 0 : yuanToFen(r.amountYuan)), 0);
+      row.amountYuan = fenToYuan(Math.max(0, plan - prev));
+    } else {
+      row.amountYuan = fenToYuan(Math.round((plan * pct) / 100));
+    }
+  });
+}
+
+function onPercent(idx: number) {
+  syncAmountsFromPercent();
+  const plan = planFen();
+  const row = form.installments[idx];
+  if (plan && row.amountYuan !== '') {
+    const pct = Number(row.percent);
+    if (Number.isFinite(pct) && idx !== form.installments.length - 1) {
+      row.amountYuan = fenToYuan(Math.round((plan * pct) / 100));
+    }
+  }
+}
+
+function onAmount(idx: number) {
+  const plan = planFen();
+  const row = form.installments[idx];
+  if (!plan || row.amountYuan === '') return;
+  row.percent = ((yuanToFen(row.amountYuan) * 100) / plan).toFixed(2).replace(/\.00$/, '');
+  if (idx !== form.installments.length - 1) syncAmountsFromPercent();
+}
+
+function setMode(mode: 'FULL' | 'STAGED') {
+  form.paymentMode = mode;
+  if (mode === 'STAGED' && form.installments.length < 2) apply90_10();
+}
+
+function apply90_10() {
+  form.paymentMode = 'STAGED';
+  form.installments = [
+    {
+      label: '到货付款',
+      percent: '90',
+      amountYuan: '',
+      conditionText: '货物到达交付地点之后支付',
+      dueAt: form.actualArrival || form.plannedArrival || '',
+      paidYuan: '',
+      paidAt: '',
+    },
+    {
+      label: '尾款',
+      percent: '10',
+      amountYuan: '',
+      conditionText: '验收合格后支付',
+      dueAt: '',
+      paidYuan: '',
+      paidAt: '',
+    },
+  ];
+  syncAmountsFromPercent();
+}
+
+function addInst() {
+  form.installments.push(emptyInst(form.installments.length + 1));
+}
+
+function removeInst(idx: number) {
+  if (form.installments.length <= 1) return;
+  form.installments.splice(idx, 1);
+  syncAmountsFromPercent();
+}
+
+function markInstPaid(idx: number) {
+  const row = form.installments[idx];
+  row.paidYuan = row.amountYuan || row.paidYuan;
+  if (!row.paidAt) row.paidAt = new Date().toISOString().slice(0, 10);
+}
+
+function instFromPlan(p: any) {
+  const list = p.installments || [];
+  if (!list.length) {
+    return {
+      paymentMode: (p.paymentMode as 'FULL' | 'STAGED') || 'FULL',
+      installments: [emptyInst(1), emptyInst(2)],
+    };
+  }
+  return {
+    paymentMode: list.length > 1 ? 'STAGED' : (p.paymentMode as 'FULL' | 'STAGED') || 'FULL',
+    installments: list.map((item: any, i: number) => ({
+      label: item.label || defaultInstLabel(i),
+      percent: item.percent != null ? String(item.percent).replace(/\.0$/, '') : '',
+      amountYuan: fenToYuan(item.amountFen),
+      conditionText: item.conditionText || '',
+      dueAt: String(item.dueAt || '').slice(0, 10),
+      paidYuan: fenToYuan(item.paidFen),
+      paidAt: String(item.paidAt || '').slice(0, 10),
+    })),
+  };
+}
 
 async function reload() {
   c.value = await api.case(id.value);
@@ -170,6 +347,10 @@ async function reload() {
     form.delayTriggerRef = p.delayTriggerRef || '';
     form.delayReason = p.delayReason || '';
     form.customerConsent = !!p.customerConsent;
+    const loaded = instFromPlan(p);
+    form.paymentMode = loaded.paymentMode;
+    form.installments = loaded.installments;
+    form.paymentConditionText = loaded.installments[0]?.conditionText || p.installments?.[0]?.conditionText || '一次性付清';
   }
 }
 
@@ -181,14 +362,31 @@ function stubUpload() {
 
 async function save(silent = false) {
   err.value = '';
-  await api.savePlan(id.value, {
+  const payload: any = {
     ...form,
     amountFen: form.amountYuan === '' ? undefined : yuanToFen(form.amountYuan),
     paidFen: form.paidYuan === '' ? undefined : yuanToFen(form.paidYuan),
     actualArrival: form.actualArrival || undefined,
     paymentDueAt: form.paymentDueAt || undefined,
     paidAt: form.paidAt || undefined,
-  });
+    paymentMode: form.paymentMode,
+    paymentConditionText: form.paymentConditionText || undefined,
+  };
+  if (form.paymentMode === 'STAGED') {
+    payload.installments = form.installments.map((row, i) => ({
+      seq: i + 1,
+      label: row.label || defaultInstLabel(i),
+      percent: row.percent === '' ? undefined : Number(row.percent),
+      amountFen: row.amountYuan === '' ? undefined : yuanToFen(row.amountYuan),
+      conditionText: row.conditionText || undefined,
+      dueAt: row.dueAt || undefined,
+      paidFen: row.paidYuan === '' ? undefined : yuanToFen(row.paidYuan),
+      paidAt: row.paidAt || undefined,
+    }));
+  } else {
+    payload.installments = undefined;
+  }
+  await api.savePlan(id.value, payload);
   await reload();
   if (!silent) ok.value = '采购/备货已保存';
 }
@@ -220,3 +418,13 @@ async function tryAdvance() {
   }
 }
 </script>
+
+<style scoped>
+.inst {
+  border: 2rpx solid #e8eef3;
+  border-radius: 12rpx;
+  padding: 16rpx 16rpx 20rpx;
+  margin-top: 16rpx;
+  background: #fbfaf7;
+}
+</style>

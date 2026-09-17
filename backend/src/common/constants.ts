@@ -365,6 +365,30 @@ export const EportStatusLabel: Record<string, string> = {
   HELD: '海关扣留/退单',
 };
 
+export const PaymentMode = {
+  FULL: 'FULL',
+  STAGED: 'STAGED',
+} as const;
+
+export const PaymentModeLabel: Record<string, string> = {
+  FULL: '一次性付清',
+  STAGED: '分期付款',
+};
+
+export const InstallmentStatus = {
+  PAID: 'PAID',
+  ON_TIME: 'ON_TIME',
+  OVERDUE: 'OVERDUE',
+  NOT_DUE: 'NOT_DUE',
+} as const;
+
+export const InstallmentStatusLabel: Record<string, string> = {
+  PAID: '已付清',
+  ON_TIME: '按期',
+  OVERDUE: '逾期',
+  NOT_DUE: '未到期',
+};
+
 export const EvidenceKind = {
   QUOTE_SNAPSHOT: 'QUOTE_SNAPSHOT',
   CUSTOMER_ACK: 'CUSTOMER_ACK',

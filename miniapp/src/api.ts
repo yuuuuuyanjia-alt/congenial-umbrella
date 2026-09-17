@@ -111,7 +111,7 @@ export function nodePage(code: string) {
 
 export function remittanceClass(code?: string | null) {
   if (code === 'OVERDUE') return 'badge-block';
-  if (code === 'ON_TIME') return 'badge-pass';
+  if (code === 'ON_TIME' || code === 'PAID') return 'badge-pass';
   if (code === 'NOT_DUE') return 'badge-soft';
   return 'badge-stub';
 }
@@ -122,6 +122,7 @@ export function remittanceText(code?: string | null) {
     OVERDUE: '逾期',
     NOT_DUE: '未到期',
     NO_RECORD: '无记录',
+    PAID: '已付清',
   };
   return (code && map[code]) || '无记录';
 }
