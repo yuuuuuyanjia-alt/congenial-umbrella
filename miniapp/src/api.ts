@@ -57,15 +57,22 @@ export const api = {
   workbench: (caseId: string, body: unknown) => request('POST', `/workbench/${caseId}/action`, body),
   customers: () => request('GET', '/customers'),
   customer: (id: string) => request('GET', `/customers/${id}`),
+  sinosureExposure: (id: string, q?: { newAmountFen?: number; currency?: string }) => {
+    const p = new URLSearchParams();
+    if (q?.newAmountFen != null) p.set('newAmountFen', String(q.newAmountFen));
+    if (q?.currency) p.set('currency', q.currency);
+    const qs = p.toString();
+    return request('GET', `/cases/${id}/sinosure-exposure${qs ? `?${qs}` : ''}`);
+  },
   suppliers: () => request('GET', '/suppliers'),
   supplier: (id: string) => request('GET', `/suppliers/${id}`),
 };
 
 export function decisionClass(d?: string | null) {
-  if (d === 'HARD_BLOCK' || d === 'BLOCKED' || d === 'HIGH') return 'badge-block';
+  if (d === 'HARD_BLOCK' || d === 'BLOCKED' || d === 'HIGH' || d === 'ULTRA_HIGH') return 'badge-block';
   if (d === 'REVIEW' || d === 'MEDIUM') return 'badge-review';
-  if (d === 'SOFT_ALERT' || d === 'LOW') return 'badge-soft';
-  if (d === 'PASS' || d === 'PASSED' || d === 'COMPLETED') return 'badge-pass';
+  if (d === 'SOFT_ALERT' || d === 'LOW' || d === 'BELOW_MEDIUM') return 'badge-soft';
+  if (d === 'PASS' || d === 'PASSED' || d === 'COMPLETED' || d === 'WITHIN_LIMIT') return 'badge-pass';
   if (d === 'STUB_TODO') return 'badge-stub';
   return 'badge-stub';
 }
@@ -92,6 +99,11 @@ export function decisionText(d?: string | null) {
     MONITORING: '持续监控',
     OVERDUE_SETTLEMENT: '逾期收汇',
     OPEN_SETTLEMENT: '收汇未到期',
+    WITHIN_LIMIT: '额度内',
+    BELOW_MEDIUM: '超额（不足1万）',
+    MEDIUM: '中风险',
+    HIGH: '高风险',
+    ULTRA_HIGH: '超高风险',
   };
   return (d && map[d]) || d || '-';
 }
@@ -151,4 +163,75 @@ export function fenToYuan(fen?: number | null) {
 export function latestSinosure(list: any[] | undefined, nodeCode: string) {
   const rows = (list || []).filter((p) => p.nodeCode === nodeCode);
   return rows.length ? rows[rows.length - 1] : null;
+}
+
+export function exposureClass(band?: string | null) {
+  if (band === 'ULTRA_HIGH') return 'badge-block';
+  if (band === 'HIGH') return 'badge-review';
+  if (band === 'MEDIUM' || band === 'BELOW_MEDIUM') return 'badge-soft';
+  if (band === 'WITHIN_LIMIT') return 'badge-pass';
+  return 'badge-stub';
+}
+
+const BAND_FEN = { MEDIUM_MIN: 1_000_000, HIGH_MIN: 2_000_000, ULTRA_MIN: 5_000_000 };
+
+export function bandOfExcessFen(excessFen: number) {
+  const excess = Math.max(0, Number(excessFen) || 0);
+  if (excess <= 0) return 'WITHIN_LIMIT';
+  if (excess < BAND_FEN.MEDIUM_MIN) return 'BELOW_MEDIUM';
+  if (excess < BAND_FEN.HIGH_MIN) return 'MEDIUM';
+  if (excess < BAND_FEN.ULTRA_MIN) return 'HIGH';
+  return 'ULTRA_HIGH';
+}
+
+export function previewExposure(base: any, newAmountFen: number) {
+  if (!base) return null;
+  const openUnpaidFen = Number(base.openUnpaidFen) || 0;
+  const fulfilledUnpaidFen = Number(base.fulfilledUnpaidFen) || 0;
+  const newFen = Math.max(0, Number(newAmountFen) || 0);
+  const occupancyFen = openUnpaidFen + fulfilledUnpaidFen + newFen;
+  const insuredLimitFen = base.insuredLimitFen != null ? Number(base.insuredLimitFen) : null;
+  const remainingFen = insuredLimitFen != null ? Math.max(0, insuredLimitFen - occupancyFen) : 0;
+  const excessFen = insuredLimitFen != null ? Math.max(0, occupancyFen - insuredLimitFen) : 0;
+  const band = insuredLimitFen == null ? null : bandOfExcessFen(excessFen);
+  const bandLabel =
+    band === 'WITHIN_LIMIT'
+      ? '额度内'
+      : band === 'BELOW_MEDIUM'
+        ? '超额（不足1万美元）'
+        : band === 'MEDIUM'
+          ? '中风险'
+          : band === 'HIGH'
+            ? '高风险'
+            : band === 'ULTRA_HIGH'
+              ? '超高风险'
+              : '未测算';
+  const gateDecision =
+    band === 'WITHIN_LIMIT'
+      ? 'PASS'
+      : band === 'HIGH'
+        ? 'REVIEW'
+        : band === 'ULTRA_HIGH'
+          ? 'HARD_BLOCK'
+          : band
+            ? 'SOFT_ALERT'
+            : null;
+  const currency = base.currency || 'USD';
+  return {
+    ...base,
+    newContractFen: newFen,
+    occupancyFen,
+    remainingFen,
+    excessFen,
+    band,
+    bandLabel,
+    gateDecision,
+    currency,
+    summary:
+      insuredLimitFen == null
+        ? '尚未登记投保限额。'
+        : excessFen > 0
+          ? `占用 ${money(occupancyFen, currency)}，限额 ${money(insuredLimitFen, currency)}，超额 ${money(excessFen, currency)}（${bandLabel}）`
+          : `占用 ${money(occupancyFen, currency)}，限额 ${money(insuredLimitFen, currency)}，剩余额度 ${money(remainingFen, currency)}`,
+  };
 }

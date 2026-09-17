@@ -9,6 +9,12 @@ import {
   moneyBuckets,
   summarizeRemittance,
 } from './remittance';
+import {
+  ExposureContractInput,
+  evaluateBuyerOccupancy,
+  isExportFulfilled,
+  receivedFenOf,
+} from './sinosure-exposure';
 
 @Injectable()
 export class CustomersService {
@@ -44,7 +50,7 @@ export class CustomersService {
                 contract: true,
                 settlement: true,
                 sinosurePolicies: { orderBy: { createdAt: 'desc' } },
-                nodes: { where: { code: { in: ['N3', 'N9'] } } },
+                nodes: true,
               },
             },
           },
@@ -94,12 +100,109 @@ export class CustomersService {
   private moneyOf(c: ReturnType<CustomersService['casesOf']>[number]) {
     const amountFen = c.contract?.amountFen ?? (c.contract ? c.amountFen : 0);
     const currency = c.contract?.currency || c.currency || 'USD';
-    const receivedFen =
-      c.settlement?.receivedAt || c.settlement?.hasRemittanceMemo
-        ? (c.settlement?.amountFen ?? (c.settlement?.receivedAt ? amountFen : 0))
-        : 0;
+    const receivedFen = receivedFenOf(c.settlement, amountFen);
     const unpaidFen = Math.max(0, amountFen - receivedFen);
     return { amountFen, currency, receivedFen, unpaidFen };
+  }
+
+  private toExposureRow(c: ReturnType<CustomersService['casesOf']>[number]): ExposureContractInput {
+    const money = this.moneyOf(c);
+    return {
+      id: c.id,
+      caseNo: c.caseNo,
+      title: c.title,
+      hasContract: !!c.contract,
+      amountFen: money.amountFen,
+      currency: money.currency,
+      receivedFen: money.receivedFen,
+      status: c.status,
+      currentNode: c.currentNode,
+      nodes: c.nodes.map((n) => ({ code: n.code, status: n.status })),
+    };
+  }
+
+  occupancyFromCases(
+    cases: ReturnType<CustomersService['casesOf']>,
+    opts?: {
+      newCaseId?: string | null;
+      newAmountFen?: number | null;
+      newCurrency?: string | null;
+    },
+  ) {
+    const sino = this.latestSinosure(cases);
+    return evaluateBuyerOccupancy(
+      cases.map((c) => this.toExposureRow(c)),
+      {
+        insuredLimitFen: sino?.insuredLimitFen ?? null,
+        limitCurrency: sino?.currency ?? null,
+        newCaseId: opts?.newCaseId ?? null,
+        newAmountFen: opts?.newAmountFen ?? 0,
+        newCurrency: opts?.newCurrency || sino?.currency || 'USD',
+      },
+    );
+  }
+
+  async occupancyForCase(
+    caseId: string,
+    override?: { newAmountFen?: number | null; newCurrency?: string | null },
+  ) {
+    const party = await this.prisma.party.findFirst({
+      where: { caseId, role: PartyRole.BUYER },
+      include: { customer: true },
+    });
+    const self = await this.prisma.tradeCase.findUnique({
+      where: { id: caseId },
+      include: {
+        contract: true,
+        settlement: true,
+        sinosurePolicies: { orderBy: { createdAt: 'desc' } },
+        nodes: true,
+      },
+    });
+    if (!self) throw new NotFoundException('案件不存在');
+
+    const customerId = party?.customerId ?? null;
+    const buyerName = party?.name?.trim();
+    const relatedParties = await this.prisma.party.findMany({
+      where: {
+        role: PartyRole.BUYER,
+        ...(customerId
+          ? { customerId }
+          : buyerName
+            ? { name: buyerName }
+            : { caseId }),
+      },
+      include: {
+        case: {
+          include: {
+            contract: true,
+            settlement: true,
+            sinosurePolicies: { orderBy: { createdAt: 'desc' } },
+            nodes: true,
+          },
+        },
+      },
+    });
+    const seen = new Set<string>();
+    const cases: typeof self[] = [];
+    for (const p of relatedParties) {
+      if (seen.has(p.caseId)) continue;
+      seen.add(p.caseId);
+      cases.push(p.case);
+    }
+    if (!seen.has(self.id)) cases.push(self);
+
+    const treatAsNew = self.currentNode === 'N3' || self.currentNode === 'N4';
+    const amountFen =
+      override?.newAmountFen != null
+        ? override.newAmountFen
+        : self.contract?.amountFen ?? self.amountFen;
+    const currency = override?.newCurrency || self.contract?.currency || self.currency || 'USD';
+    return this.occupancyFromCases(cases as unknown as ReturnType<CustomersService['casesOf']>, {
+      newCaseId: treatAsNew ? self.id : null,
+      newAmountFen: treatAsNew ? amountFen : 0,
+      newCurrency: currency,
+    });
   }
 
   private caseRemittance(c: ReturnType<CustomersService['casesOf']>[number]) {
@@ -126,6 +229,7 @@ export class CustomersService {
     const receivable = moneyBuckets(
       remits.map((r) => ({ currency: r.currency, amountFen: r.amountFen, receivedOrPaidFen: r.receivedFen })),
     );
+    const exposure = this.occupancyFromCases(cases);
     return {
       id: customer.id,
       name: customer.name,
@@ -141,6 +245,17 @@ export class CustomersService {
             caseNo: sino.caseNo,
           }
         : null,
+      exposure: {
+        occupancyFen: exposure.occupancyFen,
+        insuredLimitFen: exposure.insuredLimitFen,
+        remainingFen: exposure.remainingFen,
+        excessFen: exposure.excessFen,
+        band: exposure.band,
+        bandLabel: exposure.bandLabel,
+        gateDecision: exposure.gateDecision,
+        currency: exposure.currency,
+        summary: exposure.summary,
+      },
       receivable,
       remittance: summary,
       collection: summary,
@@ -174,6 +289,11 @@ export class CustomersService {
         remittance,
         collection: remittance,
         hasContract: !!c.contract,
+        fulfillment: c.contract
+          ? isExportFulfilled({ status: c.status, currentNode: c.currentNode, nodes: c.nodes })
+            ? 'FULFILLED'
+            : 'OPEN'
+          : 'NONE',
         contract: c.contract
           ? {
               counterparty: c.contract.counterparty,
@@ -199,6 +319,7 @@ export class CustomersService {
     });
     const remittance = summarizeRemittance(transactions.map((t) => t.remittance), '无收款约定');
     const contracts = transactions.filter((t) => t.hasContract);
+    const exposure = this.occupancyFromCases(cases);
     return {
       id: customer.id,
       name: customer.name,
@@ -210,6 +331,7 @@ export class CustomersService {
       caseCount: transactions.length,
       contractCount: contracts.length,
       sinosureLimit: this.latestSinosure(cases),
+      exposure,
       receivable: moneyBuckets(
         transactions.map((t) => ({
           currency: t.currency,

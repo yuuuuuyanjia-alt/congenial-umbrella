@@ -32,6 +32,11 @@ import {
   ShipmentSnap,
   SinosurePolicySnap,
 } from '../common/types';
+import {
+  ExposureBand,
+  evaluateOccupancy,
+  moneyLabel,
+} from '../customers/sinosure-exposure';
 
 const HARD_GATES = new Set(['N6', 'N7', 'N9']);
 
@@ -261,18 +266,12 @@ export function evaluateN3(snap: CaseSnapshot): GateResult {
   }
   applySinosureGate(r, snap, 'N3', total, ccy);
 
-  if (r.missing.length) {
+  if (hardMissing(r).length) {
     r.decision = Decision.HARD_BLOCK;
     r.canProceed = false;
     return r;
   }
-  if (r.alerts.length) {
-    r.decision = Decision.SOFT_ALERT;
-    r.canProceed = true;
-    return r;
-  }
-  r.reasons.push('所有权保留与争议条款齐全，贸易术语、付款条件与中信保限额已校验');
-  return r;
+  return finalizeExposureDecision(r, '所有权保留与争议条款齐全，贸易术语、付款条件与中信保占用已校验');
 }
 
 export function evaluateN4(snap: CaseSnapshot): GateResult {
@@ -313,7 +312,7 @@ export function evaluateN4(snap: CaseSnapshot): GateResult {
   const ccy = contractCurrency(post);
   applySinosureGate(r, snap, 'N4', total, ccy);
 
-  if (r.missing.length) return blockMissing(r);
+  if (hardMissing(r).length) return blockMissing(r);
 
   const relevant = (snap.changeOrders || []).filter((c) => c.status !== ChangeStatus.SUPERSEDED);
   for (const co of relevant) {
@@ -332,15 +331,8 @@ export function evaluateN4(snap: CaseSnapshot): GateResult {
     }
   }
 
-  if (r.missing.length) return blockMissing(r);
-  if (r.alerts.length) {
-    r.decision = Decision.SOFT_ALERT;
-    r.canProceed = true;
-    r.reasons.push('变更均已确认生效，关联节点复核仅软提示');
-    return r;
-  }
-  r.reasons.push('变更单证据链完整（diff → 客户/内部确认 → 新版本），中信保限额已按变更后金额核对');
-  return r;
+  if (hardMissing(r).length) return blockMissing(r);
+  return finalizeExposureDecision(r, '变更单证据链完整（diff → 客户/内部确认 → 新版本），中信保占用已按变更后金额核对');
 }
 
 export function evaluateN5(snap: CaseSnapshot): GateResult {
@@ -901,10 +893,59 @@ function applySinosureGate(
     r.missing.push(`${nodeCode}_SINOSURE_CURRENCY`);
     r.reasons.push(`中信保限额币种（${pol.currency}）与合同币种（${currency}）不一致，禁止推进`);
   }
-  if (pol && pol.insuredLimitFen > 0 && totalFen > 0 && totalFen > pol.insuredLimitFen) {
+
+  const exp = evaluateOccupancy({
+    openUnpaidFen: snap.sinosureOccupancy?.openUnpaidFen ?? 0,
+    fulfilledUnpaidFen: snap.sinosureOccupancy?.fulfilledUnpaidFen ?? 0,
+    newContractFen: Math.max(0, totalFen || 0),
+    insuredLimitFen: pol?.insuredLimitFen ?? 0,
+    currency: pol?.currency || currency || 'USD',
+    limitCurrency: pol?.currency || null,
+    contractCurrency: currency,
+  });
+  r.exposure = exp;
+  for (const note of exp.notes) r.alerts.push(note);
+  r.reasons.push(exp.summary);
+
+  const canBand =
+    !!pol && pol.insuredLimitFen > 0 && !r.missing.includes(`${nodeCode}_SINOSURE_CURRENCY`);
+  if (!canBand) return;
+
+  if (exp.band === ExposureBand.ULTRA_HIGH) {
     r.missing.push(`${nodeCode}_SINOSURE_OVER_LIMIT`);
+    r.missing.push(`${nodeCode}_SINOSURE_EXPOSURE_ULTRA`);
     r.reasons.push(
-      `合同总金额超过中信保投保限额（合同 ${(totalFen / 100).toFixed(2)} ${currency}，限额 ${(pol.insuredLimitFen / 100).toFixed(2)} ${pol.currency || currency}），禁止推进`,
+      `中信保占用超过投保限额 ${moneyLabel(exp.excessFen, exp.currency)}，属超高风险，禁止推进`,
     );
+  } else if (exp.band === ExposureBand.HIGH) {
+    r.reasons.push(`超额 ${moneyLabel(exp.excessFen, exp.currency)}，高风险，须审核后才能推进`);
+  } else if (exp.band === ExposureBand.MEDIUM) {
+    r.alerts.push(`超额 ${moneyLabel(exp.excessFen, exp.currency)}，中风险软提示，可继续推进`);
+  } else if (exp.band === ExposureBand.BELOW_MEDIUM) {
+    r.alerts.push(`超额 ${moneyLabel(exp.excessFen, exp.currency)}（不足 1 万美元），软提示关注`);
+  } else if (exp.band === ExposureBand.WITHIN_LIMIT) {
+    r.reasons.push(`占用未超限额，剩余额度 ${moneyLabel(exp.remainingFen, exp.currency)}`);
   }
+}
+
+function hardMissing(r: GateResult): string[] {
+  return (r.missing || []).filter((m) => !/_SINOSURE_EXPOSURE_HIGH$/.test(m));
+}
+
+function finalizeExposureDecision(r: GateResult, passReason: string): GateResult {
+  const exp = r.exposure;
+  if (hardMissing(r).length) return blockMissing(r);
+  if (exp?.band === ExposureBand.HIGH) {
+    r.missing.push(`${r.nodeCode}_SINOSURE_EXPOSURE_HIGH`);
+    r.decision = Decision.REVIEW;
+    r.canProceed = false;
+    return r;
+  }
+  if (r.alerts.length || exp?.band === ExposureBand.MEDIUM || exp?.band === ExposureBand.BELOW_MEDIUM) {
+    r.decision = Decision.SOFT_ALERT;
+    r.canProceed = true;
+    return r;
+  }
+  if (!r.reasons.includes(passReason)) r.reasons.push(passReason);
+  return r;
 }

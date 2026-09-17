@@ -2,10 +2,14 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CaseSnapshot, CustomsSnap, DocSnap, GateResult, HsTemplateSnap } from '../common/types';
 import { evaluateNode } from './gate.engine';
+import { CustomersService } from '../customers/customers.service';
 
 @Injectable()
 export class GateService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly customers: CustomersService,
+  ) {}
 
   async snapshot(caseId: string): Promise<CaseSnapshot> {
     const c = await this.prisma.tradeCase.findUniqueOrThrow({
@@ -28,12 +32,13 @@ export class GateService {
       },
     });
     const goodsKey = normGoods(c.goodsDesc);
-    const [floor, history, hsTpl] = await Promise.all([
+    const [floor, history, hsTpl, occ] = await Promise.all([
       this.prisma.costFloor.findUnique({ where: { goodsKey } }),
       this.prisma.historicalPrice.findMany({ where: { goodsKey } }),
       c.customs?.hsCode
         ? this.prisma.hsTemplate.findUnique({ where: { hsCode: c.customs.hsCode } })
         : Promise.resolve(null),
+      this.customers.occupancyForCase(caseId),
     ]);
     return {
       parties: c.parties,
@@ -75,6 +80,10 @@ export class GateService {
       caseAmountFen: c.amountFen,
       caseCurrency: c.currency,
       sinosurePolicies: c.sinosurePolicies,
+      sinosureOccupancy: {
+        openUnpaidFen: occ.openUnpaidFen,
+        fulfilledUnpaidFen: occ.fulfilledUnpaidFen,
+      },
     };
   }
 

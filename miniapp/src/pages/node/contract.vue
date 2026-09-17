@@ -2,7 +2,7 @@
   <view class="wrap" v-if="c">
     <view class="card">
       <view class="h2">合同 / 订单确认</view>
-      <view class="muted">所有权保留、争议解决条款为必填。须上传中信保保单并登记投保限额；合同总金额不得超过限额，否则不能推进。保存合同或推进本节点后，本案买方将自动录入或合并至客户管理。</view>
+      <view class="muted">所有权保留、争议解决条款为必填。须上传中信保保单并登记投保限额。占用 = 未履行完毕合同未回款 + 已履行完毕合同未回款 + 新签订合同金额；超额将按分档提示或拦截。保存合同或推进本节点后，本案买方将自动录入或合并至客户管理。</view>
     </view>
     <view class="card">
       <view class="label">相对方</view>
@@ -30,7 +30,8 @@
 
     <view class="card">
       <view class="h2">中信保</view>
-      <view class="muted">请上传出口信用保险保单或限额批注，并填写投保限额。合同总金额超过限额时系统将拒绝推进。</view>
+      <view class="muted">请上传出口信用保险保单或限额批注，并填写投保限额。保存或推进时自动测算占用；超高风险禁止推进，高风险须审核，中风险软提示。</view>
+      <SinosureExposure :exposure="exposureView" :show-new="true" />
       <view class="muted" v-if="sinosureHint" style="margin-top: 8rpx">{{ sinosureHint }}</view>
       <view class="label">保单编号 / 附件编号</view>
       <input class="input" v-model="sino.evidenceRef" placeholder="可手填编号，或点下方模拟上传" />
@@ -52,7 +53,8 @@
 <script setup lang="ts">
 import { onLoad } from '@dcloudio/uni-app';
 import { computed, reactive, ref } from 'vue';
-import { api, fenToYuan, latestSinosure, yuanToFen } from '../../api';
+import { api, fenToYuan, latestSinosure, previewExposure, yuanToFen } from '../../api';
+import SinosureExposure from '../../components/SinosureExposure.vue';
 
 const id = ref('');
 const c = ref<any>(null);
@@ -82,6 +84,11 @@ const sinosureHint = computed(() => {
   if (!p) return '';
   const limit = fenToYuan(p.insuredLimitFen);
   return `已登记：限额 ${p.currency} ${limit} · ${p.fileName || p.evidenceRef || '已留存附件'}`;
+});
+
+const exposureView = computed(() => {
+  const base = c.value?.sinosureExposure;
+  return previewExposure(base, yuanToFen(form.amountYuan)) || base;
 });
 
 onLoad(async (q) => {
@@ -130,7 +137,8 @@ async function save() {
     amountFen: yuanToFen(form.amountYuan),
     currency: form.currency,
   });
-  ok.value = '合同要素已保存，买方已录入或合并至客户管理';
+  c.value = await api.case(id.value);
+  ok.value = '合同要素已保存，已按当前金额测算占用；买方已录入或合并至客户管理';
 }
 
 async function saveSino() {
@@ -154,7 +162,9 @@ async function tryAdvance() {
     const r = await api.advance(id.value, 'N3');
     ok.value = `已推进至 ${r.nextNode}`;
   } catch (e: any) {
-    err.value = (e?.reasons || []).join('；') || e?.message || '闸门拒绝';
+    err.value =
+      (e?.exposure?.summary ? `${e.exposure.bandLabel || ''}：${e.exposure.summary}。` : '') +
+      ((e?.reasons || []).join('；') || e?.message || '闸门拒绝');
   }
 }
 </script>
