@@ -5,6 +5,9 @@
       <view class="muted" style="margin-top: 8rpx">
         {{ c.country || '国家未填' }}{{ c.address ? ' · ' + c.address : '' }}
       </view>
+      <view class="muted" style="margin-top: 8rpx">
+        仅展示已到达合同确认（N3）的案件；同一客户的多笔订单已合并到本档案。
+      </view>
       <view class="chips">
         <view class="badge" :class="remittanceClass(c.collection?.code)">
           约定收款日 {{ remittanceText(c.collection?.code) }}
@@ -102,7 +105,7 @@
       <view class="muted" v-if="t.hasContract">
         已收汇 {{ money(t.receivedFen, t.currency) }} / 未收汇 {{ money(t.unpaidFen, t.currency) }}
       </view>
-      <view class="muted" v-else>尚无出口合同（询盘/报价阶段）</view>
+      <view class="muted" v-else>尚未保存出口合同</view>
       <view class="muted" v-if="t.collection?.note">{{ t.collection.note }}</view>
     </view>
     <view class="muted" v-if="!c.transactions?.length">暂无交易。</view>

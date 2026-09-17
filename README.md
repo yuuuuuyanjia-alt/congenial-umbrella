@@ -145,8 +145,8 @@ npm test
 | 案件号 | 路径 | 说明 |
 | --- | --- | --- |
 | `DEMO-PASS` | 绿灯通过 | Nordlicht GmbH，清单未命中；国内供应商苏州精工机械筛查通过；CIF **正本提单**过 N6；报价 v1 废止 / v2 生效；中信保限额 150,000 USD 覆盖合同 128,000 USD；变更单 CO-001 数量 8→10 已确认生效并再次核对限额；采购到货未延期；HS 要素与原产地证齐全并模拟放行 |
-| `DEMO-SOFT` | 软提示 | `Acme Industrial Co` 低置信近似命中，不阻断；N2 报价已过，停在 N3 |
-| `DEMO-BLOCK` | 硬拦截 | `Banned Trading LLC` 高置信命中模拟 OFAC，N1 拒绝 |
+| `DEMO-SOFT` | 软提示 | `Acme Industrial Co` 低置信近似命中，不阻断；N2 报价已过，**已到达 N3**（尚无合同，客户管理会录入） |
+| `DEMO-BLOCK` | 硬拦截 | `Banned Trading LLC` 高置信命中模拟 OFAC，N1 拒绝；**未到达 N3，不进入客户管理** |
 | `DEMO-GATE` | 闸门演示 | 已过 KYC / 报价 / 合同（FOB，含中信保）/ **无变更故跳过 N4** / 国内采购备货，停在 N6，书面指示与无提单依据为空 |
 | `DEMO-FOB` | FOB 无提单 | Pacific Tools，FOB 买方订舱；N6 走「无提单」路径（书面指示 + 内部审批 + 装船通知依据），已过闸停在 N7 |
 | `DEMO-LIMIT` | 中信保超额 | Pacific Gear Ltd，合同 80,000 USD，投保限额仅 30,000 USD，停在 N3；推进应 **409 GATE_REFUSED** |
@@ -156,13 +156,26 @@ npm test
 
 ## 客户管理
 
-首页「工作入口」进入 **客户管理**。按买方聚合全部案件，便于业务人员查看：
+首页「工作入口」进入 **客户管理**。仅收录 **已到达合同/订单确认（N3）及之后** 的买方：询盘 KYC（N1）填写的买方会带到合同节点，但 **未到达 N3 的案件不会作为正式客户出现**（例如 `DEMO-BLOCK` 停在 N1）。同一买方多笔已达 N3 的订单合并到同一客户详情。
+
+录入触发：保存 N3 合同、登记 N3 中信保、或案件推进至 N3 / 通过 N3。幂等。
+
+匹配与合并（避免重复档案）：
+
+1. **注册号 / 税号**（`Party.registrationNo`）：若已填写，按规范化号码（去空格、连字符与点，忽略大小写）精确匹配；命中则视为同一客户。
+2. 否则按 **规范化名称 + 国家** 匹配：去掉 GmbH / Ltd / Pte / 有限公司 等法律后缀，忽略大小写与标点。
+3. 名称相同但国家不同，视为不同客户。
+4. 未填国家时，仅当该规范化名称在库中唯一才合并。
+5. 名称+国家命中但双方税号均已填且不一致 → 不合并。
+6. 命中则 **合并** 到已有客户档案（补全空字段，把本案合同/交易挂到该客户下）；未命中则新建。
+
+便于业务人员查看：
 
 1. **中信保限额**：该客户名下最新一笔中信保保单的投保限额与币种（无保单则显示未登记）
 2. **签过哪些合同**：已登记出口合同的案件（相对方、金额、付款条件、约定收款日）
 3. **已收汇 / 未收汇**：合同金额与 N9 到账金额之差（支持部分收汇）
 4. **约定收款日**：每笔及总体为 **按期 / 逾期 / 未到期 / 无收款约定**（即是否按期回款）
-5. **历次交易记录**：含尚无合同的询盘/报价案件
+5. **历次交易记录**：该客户已达 N3 的案件（含已到 N3 但尚未保存合同的，如 `DEMO-SOFT`）
 
 判断口径（合同到期日字段较薄时的推算）：
 
@@ -172,7 +185,7 @@ npm test
 - 未收齐且到期日已过 → 逾期；已收齐且到账不晚于到期日 → 按期；未到期则未到期
 - 客户总体：任一笔逾期则为逾期
 
-演示客户 **Nordlicht GmbH**：中信保限额 150,000 USD；三份合同——`DEMO-PASS` 已收齐且按期、`DEMO-NORD-LATE` 部分收汇且逾期、`DEMO-NORD-OPEN` 未收汇且未到期。Acme 等停在合同前的客户为无收款约定。
+演示客户 **Nordlicht GmbH**：三笔订单（`DEMO-PASS` / `DEMO-NORD-LATE` / `DEMO-NORD-OPEN`）按名称+国家合并为同一档案；中信保限额 150,000 USD；`DEMO-PASS` 已收齐且按期、`DEMO-NORD-LATE` 部分收汇且逾期、`DEMO-NORD-OPEN` 未收汇且未到期。Acme（`DEMO-SOFT`）已达 N3、尚无合同，为无收款约定。Banned Trading（`DEMO-BLOCK`）未达 N3，不出现。
 
 ```bash
 curl -s http://127.0.0.1:3000/api/customers | python -c "import json,sys; [print(c['name'], c['collection']['label'], c.get('receivable')) for c in json.load(sys.stdin)]"
@@ -236,8 +249,8 @@ curl -s -X POST http://127.0.0.1:3000/api/cases/<DEMO-LIMIT的id>/nodes/N3/advan
 - `GET /api/workbench/queue` 命中队列
 - `POST /api/workbench/:caseId/action` 工作台处置
 - `GET /api/cases/:id/audit` 审计轨迹
-- `GET /api/customers` 客户列表（中信保限额、合同数、已收汇/未收汇、约定收款日）
-- `GET /api/customers/:id` 客户详情（限额、合同、历次交易、收汇与收款日）
+- `GET /api/customers` 客户列表（仅 N3+ 买方；中信保限额、合同数、已收汇/未收汇、约定收款日）
+- `GET /api/customers/:id` 客户详情（限额、合同、历次 N3+ 交易、收汇与收款日）
 - `GET /api/suppliers` 供应商列表（采购单数、已付/未付、交货与付款是否按期）
 - `GET /api/suppliers/:id` 供应商详情（每笔采购合同/PO、交货、货款）
 

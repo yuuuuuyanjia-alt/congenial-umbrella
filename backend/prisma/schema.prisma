@@ -21,18 +21,27 @@ model User {
   approvals        Shipment[]        @relation("ShipmentApprover")
 }
 
-/// 客户主数据：由买方（及同名付款人/收货人）聚合，跨案件查看限额与收汇
+/// 客户主数据：案件到达 N3 后由买方录入；按规范化名称+国家或税号合并，跨案件查看限额与收汇
 model Customer {
-  id             String   @id @default(cuid())
-  name           String   @unique
-  nameEn         String?
-  country        String?
-  address        String?
-  registrationNo String?
-  note           String?
-  createdAt      DateTime @default(now())
+  id              String   @id @default(cuid())
+  name            String
+  nameEn          String?
+  country         String?
+  address         String?
+  registrationNo  String?
+  /// 规范化名称（去后缀、忽略大小写），与 countryKey 一起作为合并键
+  nameKey         String
+  /// 规范化国家码；未填则为空字符串
+  countryKey      String   @default("")
+  /// 规范化注册号/税号；未填则为 null
+  registrationKey String?
+  note            String?
+  createdAt       DateTime @default(now())
 
   parties Party[]
+
+  @@unique([nameKey, countryKey])
+  @@index([registrationKey])
 }
 
 /// 国内供应商主数据：由 N5 Party SUPPLIER 聚合，跨案件查看采购单、交货与货款

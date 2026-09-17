@@ -148,18 +148,13 @@ export class CasesService {
     const existing = await this.prisma.party.findFirst({
       where: { caseId, role: dto.role },
     });
-    let customerId: string | undefined;
     let supplierId: string | undefined;
     if (dto.role === PartyRole.SUPPLIER) {
       const supplier = await this.suppliers.findOrCreateFromParty(dto);
       supplierId = supplier?.id;
-    } else {
-      const customer = await this.customers.findOrCreateFromParty(dto);
-      customerId = customer?.id;
     }
     const data = {
       ...dto,
-      ...(customerId ? { customerId } : {}),
       ...(supplierId ? { supplierId } : {}),
     };
     const party = existing
@@ -167,6 +162,9 @@ export class CasesService {
       : await this.prisma.party.create({ data: { caseId, ...data } });
     const nodeCode = dto.role === PartyRole.SUPPLIER ? 'N5' : 'N1';
     await this.touchNode(caseId, nodeCode, NodeStatus.IN_PROGRESS);
+    if (dto.role !== PartyRole.SUPPLIER) {
+      await this.enrollBuyerIfReachedN3(caseId, actorId);
+    }
     await this.audit.append({
       caseId,
       actorId,
@@ -210,6 +208,7 @@ export class CasesService {
     }
     await this.snapshotContract(caseId, null);
     await this.touchNode(caseId, 'N3', NodeStatus.IN_PROGRESS);
+    await this.enrollBuyerIfReachedN3(caseId, actorId);
     await this.audit.append({
       caseId,
       actorId,
@@ -292,6 +291,9 @@ export class CasesService {
       },
     });
     await this.touchNode(caseId, code, NodeStatus.IN_PROGRESS);
+    if (code === 'N3' || code === 'N4') {
+      await this.enrollBuyerIfReachedN3(caseId, actorId);
+    }
     await this.audit.append({
       caseId,
       actorId,
@@ -900,6 +902,7 @@ export class CasesService {
         overallRisk: result.decision === Decision.SOFT_ALERT ? RiskLevel.LOW : undefined,
       },
     });
+    await this.enrollBuyerIfReachedN3(caseId, actorId);
     return { stub: false, result, nextNode: done ? null : next };
   }
 
@@ -1041,6 +1044,19 @@ export class CasesService {
       detail: { score: maxScore, riskLevel, hitCount: allHits.length },
     });
     return { caseNo: c.caseNo, report: { ...report, payload: JSON.parse(report.payload) }, hits: allHits };
+  }
+
+  private async enrollBuyerIfReachedN3(caseId: string, actorId?: string) {
+    const enrolled = await this.customers.enrollBuyerForCase(caseId);
+    if (!enrolled) return;
+    if (!enrolled.created && !enrolled.linked) return;
+    await this.audit.append({
+      caseId,
+      actorId,
+      action: enrolled.created ? 'CUSTOMER_ENROLLED' : 'CUSTOMER_MERGED',
+      nodeCode: 'N3',
+      detail: { customerId: enrolled.id, name: enrolled.name, created: enrolled.created, merged: enrolled.merged },
+    });
   }
 
   private async ensureCase(id: string) {

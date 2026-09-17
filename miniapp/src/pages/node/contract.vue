@@ -2,7 +2,7 @@
   <view class="wrap" v-if="c">
     <view class="card">
       <view class="h2">合同 / 订单确认</view>
-      <view class="muted">所有权保留、争议解决条款为必填。须上传中信保保单并登记投保限额；合同总金额不得超过限额，否则不能推进。</view>
+      <view class="muted">所有权保留、争议解决条款为必填。须上传中信保保单并登记投保限额；合同总金额不得超过限额，否则不能推进。保存合同或推进本节点后，本案买方将自动录入或合并至客户管理。</view>
     </view>
     <view class="card">
       <view class="label">相对方</view>
@@ -130,7 +130,7 @@ async function save() {
     amountFen: yuanToFen(form.amountYuan),
     currency: form.currency,
   });
-  ok.value = '合同要素已保存';
+  ok.value = '合同要素已保存，买方已录入或合并至客户管理';
 }
 
 async function saveSino() {
