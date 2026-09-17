@@ -81,7 +81,6 @@ const paths = [
     cls: 'badge-review',
     desc: '新签使占用超额 2.5 万美元，高风险进入审核队列，N3 不得直接推进。',
   },
-  },
   {
     caseNo: 'DEMO-SUPPLIER',
     title: '供应商硬拦截',
