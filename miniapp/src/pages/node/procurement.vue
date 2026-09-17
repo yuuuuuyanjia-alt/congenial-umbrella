@@ -194,7 +194,10 @@ const scheduleWording = computed(() => {
   const first = form.installments[0];
   const last = form.installments[form.installments.length - 1];
   const pct = first.percent || ' ';
-  const residual = last.amountYuan || '具体金额';
+  const residualNum = Number(last.amountYuan);
+  const residual = Number.isFinite(residualNum)
+    ? `${form.currency || 'CNY'} ${residualNum.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+    : last.amountYuan || '具体金额';
   const cond = last.conditionText || '填写条件';
   return `货物到达交付地点之后支付（${pct}）%货款，剩余尾款（${residual}）于（${cond}）支付`;
 });
