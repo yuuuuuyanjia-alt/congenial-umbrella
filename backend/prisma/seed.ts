@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import { NODE_CATALOG } from '../src/common/constants';
+import { enrollBuyerForCase } from '../src/customers/customer-enroll';
 import { derivePaymentDueAt } from '../src/customers/remittance';
 
 const prisma = new PrismaClient();
@@ -156,6 +157,9 @@ async function main() {
   await attachSuppliers();
   await fillPaymentDueDates();
 
+  const customerCount = await prisma.customer.count();
+  const enrolledBuyers = await prisma.party.count({ where: { role: 'BUYER', customerId: { not: null } } });
+
   console.log('种子数据已写入：');
   console.log('  PASS      ', pass.caseNo, pass.id);
   console.log('  NORD_LATE ', nordLate.caseNo, nordLate.id, '（Nordlicht 逾期收汇）');
@@ -166,6 +170,7 @@ async function main() {
   console.log('  FOB_NO_BL ', fob.caseNo, fob.id, '（FOB 无提单路径已过 N6）');
   console.log('  SINOSURE  ', limit.caseNo, limit.id, '（合同金额超过中信保限额，N3 拒绝）');
   console.log('  SUPPLIER  ', supplierBlock.caseNo, supplierBlock.id, '（国内供应商命中不可靠实体，N5 硬拦截）');
+  console.log(`客户管理：${customerCount} 个客户，${enrolledBuyers} 个已达 N3 的买方已挂档（询盘未达 N3 的如 DEMO-BLOCK 不录入）`);
 }
 
 function nodeCreates(overrides: Record<string, Partial<{ status: string; decision: string | null; summary: string }>>) {
@@ -1514,24 +1519,11 @@ async function seedNordlichtOpenCase(salesId: string, approverId: string) {
 
 async function attachBuyersToCustomers() {
   const buyers = await prisma.party.findMany({ where: { role: 'BUYER' } });
+  const seen = new Set<string>();
   for (const buyer of buyers) {
-    const customer = await prisma.customer.upsert({
-      where: { name: buyer.name },
-      create: {
-        name: buyer.name,
-        nameEn: buyer.nameEn,
-        country: buyer.country,
-        address: buyer.address,
-        registrationNo: buyer.registrationNo,
-      },
-      update: {
-        ...(buyer.country ? { country: buyer.country } : {}),
-      },
-    });
-    await prisma.party.updateMany({
-      where: { caseId: buyer.caseId, role: { in: ['BUYER', 'PAYER', 'CONSIGNEE'] } },
-      data: { customerId: customer.id },
-    });
+    if (seen.has(buyer.caseId)) continue;
+    seen.add(buyer.caseId);
+    await enrollBuyerForCase(prisma, buyer.caseId);
   }
 }
 

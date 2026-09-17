@@ -3,6 +3,7 @@
     <view class="card">
       <view class="h2">询盘 / 客户 KYC</view>
       <view class="muted">须确认买方、付款人、收货人关系，并对 OFAC / UN / EU / UK 与中国不可靠实体清单做模拟筛查。高置信命中硬拦截。</view>
+      <view class="muted" style="margin-top: 8rpx">买方在本节点填写后，待案件到达合同/订单确认（N3）时自动录入客户管理；若已有同一客户（按名称+国家或税号匹配）则合并到已有档案，不重复建档。</view>
     </view>
 
     <view class="card" v-for="role in roles" :key="role.key">
@@ -75,8 +76,9 @@ async function reload() {
 
 async function save(role: string) {
   err.value = '';
+  const roleLabel = roles.find((r) => r.key === role)?.label || role;
   await api.upsertParty(id.value, { role, name: forms[role].name, country: forms[role].country });
-  ok.value = `${role} 已保存`;
+  ok.value = `${roleLabel} 已保存。到达合同确认（N3）后将自动录入客户管理。`;
   await reload();
 }
 

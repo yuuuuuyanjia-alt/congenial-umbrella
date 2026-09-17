@@ -1,6 +1,8 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PartyRole } from '../common/constants';
 import { PrismaService } from '../prisma/prisma.service';
+import { enrollBuyerForCase, EnrollResult } from './customer-enroll';
+import { hasReachedN3 } from './customer-match';
 import {
   derivePaymentDueAt,
   evaluateRemittance,
@@ -14,7 +16,7 @@ export class CustomersService {
 
   async list() {
     const customers = await this.loadCustomers();
-    return customers.map((c) => this.toListItem(c));
+    return customers.map((c) => this.toListItem(c)).filter((c) => c.caseCount > 0);
   }
 
   async get(id: string) {
@@ -24,31 +26,9 @@ export class CustomersService {
     return this.toDetail(row);
   }
 
-  async findOrCreateFromParty(input: {
-    name: string;
-    nameEn?: string | null;
-    country?: string | null;
-    address?: string | null;
-    registrationNo?: string | null;
-  }) {
-    const name = input.name.trim();
-    if (!name) return null;
-    return this.prisma.customer.upsert({
-      where: { name },
-      create: {
-        name,
-        nameEn: input.nameEn ?? null,
-        country: input.country ?? null,
-        address: input.address ?? null,
-        registrationNo: input.registrationNo ?? null,
-      },
-      update: {
-        ...(input.nameEn ? { nameEn: input.nameEn } : {}),
-        ...(input.country ? { country: input.country } : {}),
-        ...(input.address ? { address: input.address } : {}),
-        ...(input.registrationNo ? { registrationNo: input.registrationNo } : {}),
-      },
-    });
+  /** 案件已到达 N3 时录入/合并买方；未到达则返回 null。 */
+  async enrollBuyerForCase(caseId: string): Promise<EnrollResult | null> {
+    return enrollBuyerForCase(this.prisma, caseId);
   }
 
   private async loadCustomers(id?: string) {
@@ -64,7 +44,7 @@ export class CustomersService {
                 contract: true,
                 settlement: true,
                 sinosurePolicies: { orderBy: { createdAt: 'desc' } },
-                nodes: { where: { code: 'N9' } },
+                nodes: { where: { code: { in: ['N3', 'N9'] } } },
               },
             },
           },
@@ -78,6 +58,8 @@ export class CustomersService {
     const cases: Array<(typeof customer.parties)[number]['case']> = [];
     for (const p of customer.parties) {
       if (seen.has(p.caseId)) continue;
+      const n3 = p.case.nodes.find((n) => n.code === 'N3');
+      if (!hasReachedN3(p.case.currentNode, n3?.status)) continue;
       seen.add(p.caseId);
       cases.push(p.case);
     }
