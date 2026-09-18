@@ -1,7 +1,7 @@
 <template>
   <view class="wrap">
     <view class="card">
-      <view class="h2">案例工作台</view>
+      <view class="h2">命中处置</view>
       <view class="muted">对筛查命中做误报排除、确认真实、补充信息或持续监控。处置写入审计日志，并按命中所属节点重算 N1 客户 KYC 或 N5 供应商闸门。</view>
     </view>
     <view class="card" v-for="h in queue" :key="h.id">

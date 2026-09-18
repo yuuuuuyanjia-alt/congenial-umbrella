@@ -18,10 +18,10 @@
 
     <view class="card">
       <view class="h2">工作入口</view>
-      <view class="btn" @click="go('/pages/customer/list')">客户管理</view>
+      <view class="btn" @click="go('/pages/case/list')">合同管理</view>
       <view class="btn" @click="go('/pages/supplier/list')">供应商管理</view>
-      <view class="btn" @click="go('/pages/case/list')">案件工作台</view>
-      <view class="btn btn-ghost" @click="go('/pages/workbench/index')">命中处置（误报/确认/补充/监控）</view>
+      <view class="btn" @click="go('/pages/customer/list')">客户管理</view>
+      <view class="btn" @click="go('/pages/workbench/index')">命中处置</view>
     </view>
   </view>
 </template>
@@ -121,7 +121,7 @@ function openByNo(caseNo: string) {
 
 <style scoped>
 .hero {
-  background: linear-gradient(135deg, #0b3a5b 0%, #164e6e 70%, #8c4a1f 140%);
+  background: linear-gradient(135deg, #0a2e22 0%, #165a40 70%, #8c6b1f 140%);
 }
 .hero .h1,
 .hero .eyebrow,

@@ -62,7 +62,7 @@ const showNew = computed(() => {
 }
 .total {
   font-weight: 700;
-  color: #0b3a5b;
+  color: #0f3d2e;
 }
 .over {
   color: #b42318;

@@ -6,7 +6,7 @@
     },
     {
       "path": "pages/case/list",
-      "style": { "navigationBarTitleText": "案件列表" }
+      "style": { "navigationBarTitleText": "合同管理" }
     },
     {
       "path": "pages/case/detail",
@@ -54,7 +54,7 @@
     },
     {
       "path": "pages/workbench/index",
-      "style": { "navigationBarTitleText": "案例工作台" }
+      "style": { "navigationBarTitleText": "命中处置" }
     },
     {
       "path": "pages/customer/list",
@@ -80,7 +80,7 @@
   "globalStyle": {
     "navigationBarTextStyle": "white",
     "navigationBarTitleText": "出口风控",
-    "navigationBarBackgroundColor": "#0B3A5B",
+    "navigationBarBackgroundColor": "#0F3D2E",
     "backgroundColor": "#F4F1EA"
   }
 }
