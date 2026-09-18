@@ -2,7 +2,7 @@
   <view class="wrap">
     <view class="h1" style="margin-bottom: 8rpx">供应商管理</view>
     <view class="muted" style="margin-bottom: 16rpx">
-      按国内供应商查看采购合同/PO、关联的销售合同、是否按期交货，以及货款一次性付清或分期（每期比例、条件、已付未付、是否过约定付款日）。
+      按国内供应商查看采购合同/PO、关联的销售合同、是否按期交货，以及货款一次性付清或分期支付（每期约定付款时间、付款比例、金额、已付未付）。
     </view>
     <view class="card" v-for="s in list" :key="s.id" @click="open(s.id)">
       <view class="row">
@@ -18,7 +18,7 @@
       </view>
       <view class="chips">
         <view class="badge" :class="remittanceClass(s.payment?.code)">付款 {{ s.payment?.label || remittanceText(s.payment?.code) }}</view>
-        <view class="chip" v-if="s.hasStaged">含分期付款</view>
+        <view class="chip" v-if="s.hasStaged">含分期支付</view>
       </view>
       <view class="muted" v-for="b in s.payable || []" :key="b.currency" style="margin-top: 8rpx">
         已付款 {{ money(b.settledFen, b.currency) }} · 未付款 {{ money(b.openFen, b.currency) }}

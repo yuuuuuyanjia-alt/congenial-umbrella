@@ -44,7 +44,7 @@ import { GateResult } from '../common/types';
 import { CustomersService } from '../customers/customers.service';
 import { derivePaymentDueAt } from '../customers/remittance';
 import { SuppliersService } from '../suppliers/suppliers.service';
-import { buildInstallmentRecords, presentPlanPayment } from '../suppliers/payment-schedule';
+import { buildInstallmentRecords, PaymentMode, presentPlanPayment, validateStagedInstallments } from '../suppliers/payment-schedule';
 
 @Injectable()
 export class CasesService {
@@ -693,6 +693,19 @@ export class CasesService {
       }
     }
     const amountFen = dto.amountFen ?? existingPlan?.amountFen ?? null;
+    const staged =
+      dto.paymentMode === PaymentMode.STAGED ||
+      (dto.paymentMode !== PaymentMode.FULL && (dto.installments?.length || 0) > 1);
+    if (staged) {
+      const gaps = validateStagedInstallments(dto.installments);
+      if (gaps.length) {
+        throw new BadRequestException({
+          code: 'STAGED_FIELDS_REQUIRED',
+          message: gaps[0],
+          reasons: gaps,
+        });
+      }
+    }
     const schedule = buildInstallmentRecords(
       {
         paymentMode: dto.paymentMode,

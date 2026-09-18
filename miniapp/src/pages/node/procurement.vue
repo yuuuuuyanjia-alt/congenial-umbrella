@@ -3,7 +3,7 @@
     <view class="card">
       <view class="h2">采购合同 / 国内备货</view>
       <view class="muted">
-        销售合同与采购合同分开签订。公司惯例先销售后采购：本页是采购合同，须先选择一笔已签订的销售/出口合同（已过 N3），否则不得保存或推进。公司无自有产线，向国内供应商采购。须登记供应商、采购合同/PO、计划到货日与货款支付计划（一次性付清或分期），并对供应商做制裁/不可靠实体筛查。计划到货不得晚于客户合同交货期；若延期须登记结构化原因并保留客户同意证据。
+        销售合同与采购合同分开签订。公司惯例先销售后采购：本页是采购合同，须先选择一笔已签订的销售/出口合同（已过 N3），否则不得保存或推进。公司无自有产线，向国内供应商采购。须登记供应商、采购合同/PO、计划到货日与货款支付方式（一次性付清或分期支付），并对供应商做制裁/不可靠实体筛查。计划到货不得晚于客户合同交货期；若延期须登记结构化原因并保留客户同意证据。
       </view>
     </view>
 
@@ -65,23 +65,21 @@
       <input class="input" type="digit" v-model="form.amountYuan" placeholder="采购合同/PO 金额" @blur="syncAmountsFromPercent" />
       <view class="label">币种</view>
       <input class="input" v-model="form.currency" placeholder="CNY" />
-      <view class="label">货款怎么付</view>
+      <view class="h2" style="margin-top: 24rpx">付款方式</view>
+      <view class="muted">请选择：一次性付清，或分期支付。分期支付时，每一期须填写约定付款时间、付款比例、金额。</view>
       <view class="choice-row">
         <view class="choice-btn" :class="{ 'choice-btn-on': form.paymentMode === 'FULL' }" @click="setMode('FULL')">一次性付清</view>
-        <view class="choice-btn" :class="{ 'choice-btn-on': form.paymentMode === 'STAGED' }" @click="setMode('STAGED')">分期付款</view>
-      </view>
-      <view class="muted" style="margin-top: 12rpx">
-        一次付清不必拆期。分期可按「货物到达交付地点之后支付（ ）%货款，剩余尾款（具体金额）于（填写条件）支付」登记，每期有自己的条件和约定付款日。
+        <view class="choice-btn" :class="{ 'choice-btn-on': form.paymentMode === 'STAGED' }" @click="setMode('STAGED')">分期支付</view>
       </view>
       <view class="muted" v-if="scheduleWording" style="margin-top: 8rpx">当前：{{ scheduleWording }}</view>
 
       <view v-if="form.paymentMode === 'FULL'">
+        <view class="label">约定付款时间</view>
+        <input class="input" v-model="form.paymentDueAt" placeholder="YYYY-MM-DD 约定付款日期" />
         <view class="label">付款条件（可选）</view>
         <input class="input" v-model="form.paymentConditionText" placeholder="一次性付清" />
         <view class="label">已付货款（元）</view>
         <input class="input" type="digit" v-model="form.paidYuan" placeholder="已付给供应商的金额" />
-        <view class="label">约定付款日期</view>
-        <input class="input" v-model="form.paymentDueAt" placeholder="YYYY-MM-DD" />
         <view class="label">付款日期（付清日）</view>
         <input class="input" v-model="form.paidAt" placeholder="YYYY-MM-DD" />
       </view>
@@ -95,14 +93,14 @@
           </view>
           <view class="label">期次名称</view>
           <input class="input" v-model="row.label" :placeholder="defaultInstLabel(idx)" />
-          <view class="label">本期比例（%）</view>
+          <view class="label">付款比例（%）<text class="req">必填</text></view>
           <input class="input" type="digit" v-model="row.percent" placeholder="如 90" @blur="onPercent(idx)" />
-          <view class="label">本期金额（元）</view>
+          <view class="label">金额（元）<text class="req">必填</text></view>
           <input class="input" type="digit" v-model="row.amountYuan" placeholder="可按比例自动带出" @blur="onAmount(idx)" />
-          <view class="label">付款条件 / 触发</view>
-          <input class="input" v-model="row.conditionText" :placeholder="idx === 0 ? '货物到达交付地点之后支付' : '填写尾款支付条件'" />
-          <view class="label">约定付款日（可选）</view>
-          <input class="input" v-model="row.dueAt" placeholder="YYYY-MM-DD，过此日未付清即逾期" />
+          <view class="label">约定付款时间<text class="req">必填</text></view>
+          <view class="muted">填写约定日期，或填写触发时间（如货物到达后支付）。至少填一项。</view>
+          <input class="input" v-model="row.dueAt" placeholder="YYYY-MM-DD 约定付款日期" />
+          <input class="input" v-model="row.conditionText" :placeholder="idx === 0 ? '触发时间，如 货物到达交付地点之后' : '触发时间，如 验收合格后支付'" />
           <view class="label">本期已付（元）</view>
           <input class="input" type="digit" v-model="row.paidYuan" placeholder="登记本期实付" />
           <view class="label">本期付款日</view>
@@ -418,6 +416,29 @@ async function save(silent = false) {
     err.value = '须关联已签订的销售合同（先销售后采购），否则不得保存或推进采购合同';
     return false;
   }
+  if (form.paymentMode === 'STAGED') {
+    syncAmountsFromPercent();
+    if (form.installments.length < 2) {
+      err.value = '分期支付至少两期，每一期须填写约定付款时间、付款比例、金额';
+      return false;
+    }
+    for (let i = 0; i < form.installments.length; i += 1) {
+      const row = form.installments[i];
+      const n = i + 1;
+      if (row.percent === '' || !Number.isFinite(Number(row.percent))) {
+        err.value = `第${n}期须填写付款比例`;
+        return false;
+      }
+      if (row.amountYuan === '') {
+        err.value = `第${n}期须填写金额`;
+        return false;
+      }
+      if (!row.dueAt && !(row.conditionText || '').trim()) {
+        err.value = `第${n}期须填写约定付款时间（约定日期或触发时间）`;
+        return false;
+      }
+    }
+  }
   const payload: any = {
     ...form,
     amountFen: form.amountYuan === '' ? undefined : yuanToFen(form.amountYuan),
@@ -503,5 +524,11 @@ async function tryAdvance() {
 .pick-on {
   border-color: #0b3a5b;
   background: #e8eef3;
+}
+.req {
+  color: #b42318;
+  font-weight: 600;
+  margin-left: 8rpx;
+  font-size: 22rpx;
 }
 </style>

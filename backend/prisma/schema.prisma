@@ -434,7 +434,7 @@ model ProcurementPlan {
   paymentDueAt              DateTime?
   /// 付清或最近一次付款日（分期时为最晚一期付款日）
   paidAt                    DateTime?
-  /// FULL 一次性付清 / STAGED 分期付款
+  /// FULL 一次性付清 / STAGED 分期支付
   paymentMode               String    @default("FULL")
   updatedAt                 DateTime  @updatedAt
   case                      TradeCase  @relation("CaseOwnsProcurement", fields: [caseId], references: [id], onDelete: Cascade)

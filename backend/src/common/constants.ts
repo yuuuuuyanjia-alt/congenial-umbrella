@@ -379,7 +379,7 @@ export const PaymentMode = {
 
 export const PaymentModeLabel: Record<string, string> = {
   FULL: '一次性付清',
-  STAGED: '分期付款',
+  STAGED: '分期支付',
 };
 
 export const InstallmentStatus = {
