@@ -15,7 +15,8 @@
       <view class="muted" v-if="kind === 'procurement'" style="margin-top: 6rpx">{{ salesLine(c) }}</view>
     </view>
 
-    <view class="muted" v-if="!list.length">{{ empty }}</view>
+    <view class="muted" v-if="!loaded">正在加载合同…</view>
+    <view class="muted" v-else-if="!list.length">{{ empty }}</view>
   </view>
 </template>
 
@@ -26,6 +27,7 @@ import { api, decisionClass, decisionText, isProcurementListCase, isSalesListCas
 
 const kind = ref<'sales' | 'procurement' | ''>('');
 const raw = ref<any[]>([]);
+const loaded = ref(false);
 
 const title = computed(() => (kind.value === 'procurement' ? '采购合同管理' : '销售合同管理'));
 const hint = computed(() =>
@@ -51,6 +53,8 @@ onLoad((q) => {
     return;
   }
   kind.value = q.kind;
+  loaded.value = false;
+  raw.value = [];
   uni.setNavigationBarTitle({ title: title.value });
 });
 
@@ -60,6 +64,8 @@ onShow(async () => {
     raw.value = await api.cases(kind.value || undefined);
   } catch {
     uni.showToast({ title: '无法加载合同，请先启动后端', icon: 'none' });
+  } finally {
+    loaded.value = true;
   }
 });
 
