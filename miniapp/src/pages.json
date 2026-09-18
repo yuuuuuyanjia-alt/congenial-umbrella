@@ -5,8 +5,12 @@
       "style": { "navigationBarTitleText": "出口风控" }
     },
     {
-      "path": "pages/case/list",
+      "path": "pages/case/hub",
       "style": { "navigationBarTitleText": "合同管理" }
+    },
+    {
+      "path": "pages/case/list",
+      "style": { "navigationBarTitleText": "合同列表" }
     },
     {
       "path": "pages/case/detail",

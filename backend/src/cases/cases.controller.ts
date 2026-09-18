@@ -25,8 +25,8 @@ export class CasesController {
   ) {}
 
   @Get()
-  list() {
-    return this.cases.list();
+  list(@Query('kind') kind?: string) {
+    return this.cases.list(kind);
   }
 
   @Get(':id')

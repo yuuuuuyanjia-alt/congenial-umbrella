@@ -6,6 +6,7 @@ import { GateService } from '../gates/gate.service';
 import {
   CUSTOMER_PARTY_ROLES,
   CaseStatus,
+  CaseStatusLabel,
   ChangeFieldLabel,
   ChangeStatus,
   Decision,
@@ -24,7 +25,17 @@ import {
   VersionStatus,
 } from '../common/constants';
 import { evaluateN3ContractSave, isChangeField, isSensitiveChange, nextNode } from '../gates/gate.engine';
-import { isEligibleSalesCase, presentSalesLink, signedSalesOptions } from './sales-link';
+import {
+  isEligibleSalesCase,
+  isProcurementContractListItem,
+  isSalesContractListItem,
+  nodeLabel,
+  parseContractListKind,
+  presentSalesLink,
+  salesCustomerOf,
+  signedSalesOptions,
+  supplierNameOf,
+} from './sales-link';
 import {
   AckChangeDto,
   CreateCaseDto,
@@ -57,15 +68,38 @@ export class CasesService {
     private readonly suppliers: SuppliersService,
   ) {}
 
-  async list() {
-    return this.prisma.tradeCase.findMany({
+  async list(kind?: string) {
+    const rows = await this.prisma.tradeCase.findMany({
       orderBy: { createdAt: 'asc' },
       include: {
         nodes: { orderBy: { code: 'asc' } },
         parties: true,
         hits: true,
+        contract: true,
+        procurementPlan: {
+          include: {
+            salesCase: { include: { contract: true, parties: true, nodes: true } },
+          },
+        },
       },
     });
+    const scope = parseContractListKind(kind);
+    const filtered =
+      scope === 'sales'
+        ? rows.filter(isSalesContractListItem)
+        : scope === 'procurement'
+          ? rows.filter(isProcurementContractListItem)
+          : rows;
+    return filtered.map((c) => ({
+      ...c,
+      customer: salesCustomerOf(c),
+      signed: isEligibleSalesCase(c),
+      currentNodeLabel: nodeLabel(c.currentNode),
+      statusLabel: CaseStatusLabel[c.status] || c.status,
+      supplierName: supplierNameOf(c),
+      poNo: c.procurementPlan?.poNo || null,
+      salesLink: c.procurementPlan?.salesCase ? presentSalesLink(c.procurementPlan.salesCase) : null,
+    }));
   }
 
   async get(id: string) {

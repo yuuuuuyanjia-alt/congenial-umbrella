@@ -28,7 +28,7 @@ export const api = {
   health: () => request('GET', '/health'),
   catalog: () => request('GET', '/catalog'),
   users: () => request('GET', '/users'),
-  cases: () => request('GET', '/cases'),
+  cases: (kind?: string) => request('GET', `/cases${kind ? `?kind=${encodeURIComponent(kind)}` : ''}`),
   case: (id: string) => request('GET', `/cases/${id}`),
   audit: (id: string) => request('GET', `/cases/${id}/audit`),
   createCase: (body: unknown) => request('POST', '/cases', body),
@@ -107,6 +107,24 @@ export function decisionText(d?: string | null) {
     ULTRA_HIGH: '超高风险',
   };
   return (d && map[d]) || d || '-';
+}
+
+const NODE_FLOW = ['N1', 'N2', 'N3', 'N4', 'N5', 'N6', 'N7', 'N8', 'N9'];
+
+export function hasReachedNode(currentNode?: string | null, target = 'N3') {
+  const i = NODE_FLOW.indexOf(currentNode || '');
+  const t = NODE_FLOW.indexOf(target);
+  return i >= 0 && t >= 0 && i >= t;
+}
+
+/** 销售合同列表：已到 N3 或已有销售合同；不含采购 PO 条目。 */
+export function isSalesListCase(c: any) {
+  return hasReachedNode(c?.currentNode, 'N3') || !!c?.contract;
+}
+
+/** 采购合同列表：已到 N5 或已有采购计划/PO。 */
+export function isProcurementListCase(c: any) {
+  return hasReachedNode(c?.currentNode, 'N5') || !!c?.procurementPlan || !!c?.poNo;
 }
 
 export function nodePage(code: string) {
