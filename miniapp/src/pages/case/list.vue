@@ -1,6 +1,6 @@
 <template>
   <view class="wrap">
-    <view class="h1" style="margin-bottom: 16rpx">案件列表</view>
+    <view class="h1" style="margin-bottom: 16rpx">合同管理</view>
     <view class="card" v-for="c in list" :key="c.id" @click="open(c.id)">
       <view class="row">
         <view>

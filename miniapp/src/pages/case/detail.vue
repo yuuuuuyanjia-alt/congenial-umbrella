@@ -35,7 +35,7 @@
     </view>
 
     <view class="btn btn-ghost" @click="go(`/pages/audit/index?id=${c.id}`)">查看审计日志</view>
-    <view class="btn btn-ghost" @click="go('/pages/workbench/index')">案例工作台</view>
+    <view class="btn btn-ghost" @click="go('/pages/workbench/index')">命中处置</view>
   </view>
 </template>
 

@@ -19,17 +19,17 @@ page {
   border-radius: 16rpx;
   padding: 28rpx;
   margin-bottom: 20rpx;
-  box-shadow: 0 8rpx 24rpx rgba(11, 58, 91, 0.06);
+  box-shadow: 0 8rpx 24rpx rgba(15, 61, 46, 0.08);
 }
 .h1 {
   font-size: 40rpx;
   font-weight: 700;
-  color: #0b3a5b;
+  color: #0f3d2e;
 }
 .h2 {
   font-size: 30rpx;
   font-weight: 650;
-  color: #0b3a5b;
+  color: #0f3d2e;
   margin-bottom: 12rpx;
 }
 .muted {
@@ -55,9 +55,9 @@ page {
 .badge-review { background: #ffe8d6; color: #b54708; }
 .badge-block { background: #fde8e6; color: #b42318; }
 .badge-stub { background: #eef0f3; color: #4b5563; }
-.badge-gate { background: #0b3a5b; color: #fff; }
+.badge-gate { background: #0f3d2e; color: #fff; }
 .btn {
-  background: #0b3a5b;
+  background: #0f3d2e;
   color: #fff;
   text-align: center;
   padding: 20rpx;
@@ -67,8 +67,8 @@ page {
 }
 .btn-ghost {
   background: #fff;
-  color: #0b3a5b;
-  border: 2rpx solid #0b3a5b;
+  color: #0f3d2e;
+  border: 2rpx solid #0f3d2e;
 }
 .btn-danger { background: #b42318; }
 .btn-warn { background: #b54708; }
@@ -95,11 +95,11 @@ page {
 .chip {
   font-size: 22rpx;
   padding: 8rpx 16rpx;
-  background: #e8eef3;
-  color: #0b3a5b;
+  background: #e6efe9;
+  color: #0f3d2e;
   border-radius: 8rpx;
 }
-.chip-on { background: #0b3a5b; color: #fff; }
+.chip-on { background: #0f3d2e; color: #fff; }
 .choice-row {
   display: flex;
   align-items: stretch;
@@ -111,17 +111,17 @@ page {
   text-align: center;
   padding: 22rpx 12rpx;
   border-radius: 12rpx;
-  background: #e8eef3;
-  color: #0b3a5b;
+  background: #e6efe9;
+  color: #0f3d2e;
   font-size: 28rpx;
   font-weight: 650;
-  border: 2rpx solid #c5d4e0;
+  border: 2rpx solid #c5d4cb;
   box-sizing: border-box;
 }
 .choice-btn-on {
-  background: #0b3a5b;
+  background: #0f3d2e;
   color: #fff;
-  border-color: #0b3a5b;
+  border-color: #0f3d2e;
 }
 .err {
   background: #fde8e6;
