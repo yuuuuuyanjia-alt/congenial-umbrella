@@ -1,5 +1,7 @@
 import { NodeStatus } from '../common/constants';
 import {
+  explicitSalesCaseId,
+  filterSalesOptions,
   hasReachedNode,
   isEligibleSalesCase,
   isProcurementContractListItem,
@@ -101,6 +103,54 @@ describe('销售合同关联（先销售后采购）', () => {
     expect(opts[0].customer).toBe('Nordlicht GmbH');
     expect(opts[0].contractNo).toBe('DEMO-PASS');
     expect(opts[0].statusLabel).toBe('已完成');
+  });
+
+  it('可选列表含全部已签销售合同，本案不是唯一可选项、也不排到最前', () => {
+    const fob = {
+      ...nord,
+      id: 'c-fob',
+      caseNo: 'DEMO-FOB',
+      title: 'Pacific Tools FOB',
+      contract: { counterparty: 'Pacific Tools Pte Ltd', amountFen: 3600000, currency: 'USD' },
+      parties: [{ role: 'BUYER', name: 'Pacific Tools Pte Ltd' }],
+    };
+    const gate = {
+      ...nord,
+      id: 'c-gate',
+      caseNo: 'DEMO-GATE',
+      title: 'Harbor View',
+      contract: { counterparty: 'Harbor View Ltd', amountFen: 5400000, currency: 'USD' },
+      parties: [{ role: 'BUYER', name: 'Harbor View Ltd' }],
+    };
+    const opts = signedSalesOptions([nord, fob, gate, soft], 'c-fob');
+    expect(opts.map((o) => o.caseNo)).toEqual(['DEMO-FOB', 'DEMO-GATE', 'DEMO-PASS']);
+    expect(opts.find((o) => o.caseNo === 'DEMO-FOB')?.isCurrent).toBe(true);
+    expect(opts.find((o) => o.caseNo === 'DEMO-PASS')?.isCurrent).toBe(false);
+    expect(opts.filter((o) => o.signed)).toHaveLength(3);
+  });
+
+  it('关联销售合同须用户选定或沿用已保存值，不得因本案已签而自动填入', () => {
+    expect(explicitSalesCaseId(undefined, undefined)).toBe('');
+    expect(explicitSalesCaseId('', 'existing-id')).toBe('');
+    expect(explicitSalesCaseId(undefined, 'saved-sales')).toBe('saved-sales');
+    expect(explicitSalesCaseId('picked-id', 'saved-sales')).toBe('picked-id');
+    expect(explicitSalesCaseId('  other-signed  ', nord.id)).toBe('other-signed');
+  });
+
+  it('可按客户或合同号筛选可选销售合同', () => {
+    const fob = {
+      ...nord,
+      id: 'c-fob',
+      caseNo: 'DEMO-FOB',
+      title: 'Pacific Tools FOB',
+      goodsDesc: '手工具套装',
+      contract: { counterparty: 'Pacific Tools Pte Ltd' },
+      parties: [{ role: 'BUYER', name: 'Pacific Tools Pte Ltd' }],
+    };
+    const opts = signedSalesOptions([nord, fob], 'c-pass');
+    expect(filterSalesOptions(opts, 'nordlicht').map((o) => o.caseNo)).toEqual(['DEMO-PASS']);
+    expect(filterSalesOptions(opts, 'FOB').map((o) => o.caseNo)).toEqual(['DEMO-FOB']);
+    expect(filterSalesOptions(opts, '').map((o) => o.caseNo)).toEqual(['DEMO-FOB', 'DEMO-PASS']);
   });
 
   it('展示字段含客户、合同号、金额与状态（中文）', () => {

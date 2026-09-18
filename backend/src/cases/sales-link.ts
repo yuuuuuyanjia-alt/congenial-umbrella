@@ -107,11 +107,40 @@ export function signedSalesOptions(rows: SalesLinkCaseInput[], currentCaseId?: s
     ...presentSalesLink(row),
     isCurrent: row.id === currentCaseId,
   }));
-  list.sort((a, b) => {
-    if (a.isCurrent !== b.isCurrent) return a.isCurrent ? -1 : 1;
-    return a.caseNo.localeCompare(b.caseNo, 'zh-CN');
-  });
+  list.sort((a, b) => a.caseNo.localeCompare(b.caseNo, 'zh-CN'));
   return list;
+}
+
+/**
+ * 采购关联对象必须由用户选定，或沿用已保存值。
+ * 不得因「本案已签销售合同」而自动填入当前案件 id。
+ */
+export function explicitSalesCaseId(
+  requested?: string | null,
+  existing?: string | null,
+): string {
+  if (requested !== undefined && requested !== null) return String(requested).trim();
+  return (existing || '').trim();
+}
+
+export function filterSalesOptions<
+  T extends {
+    customer?: string | null;
+    contractNo?: string | null;
+    caseNo?: string | null;
+    goodsDesc?: string | null;
+    title?: string | null;
+  },
+>(rows: T[], query?: string | null): T[] {
+  const q = (query || '').trim().toLowerCase();
+  if (!q) return rows;
+  return rows.filter((row) =>
+    [row.customer, row.contractNo, row.caseNo, row.goodsDesc, row.title]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase()
+      .includes(q),
+  );
 }
 
 export type ContractListKind = 'sales' | 'procurement';

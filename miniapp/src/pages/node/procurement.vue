@@ -3,38 +3,61 @@
     <view class="card">
       <view class="h2">采购合同 / 国内备货</view>
       <view class="muted">
-        销售合同与采购合同分开签订。公司惯例先销售后采购：本页是采购合同，须先选择一笔已签订的销售/出口合同（已过 N3），否则不得保存或推进。公司无自有产线，向国内供应商采购。须登记供应商、采购合同/PO、计划到货日与货款支付方式（一次性付清或分期支付），并对供应商做制裁/不可靠实体筛查。计划到货不得晚于客户合同交货期；若延期须登记结构化原因并保留客户同意证据。
+        销售合同与采购合同分开签订。公司惯例先销售后采购：本页是采购合同，须先从已签订的销售/出口合同中任选一笔关联（不限于本案），否则不得保存或推进。公司无自有产线，向国内供应商采购。须登记供应商、采购合同/PO、计划到货日与货款支付方式（一次性付清或分期支付），并对供应商做制裁/不可靠实体筛查。计划到货不得晚于客户合同交货期；若延期须登记结构化原因并保留客户同意证据。
       </view>
     </view>
 
     <view class="card">
       <view class="h2">关联销售合同</view>
-      <view class="muted">请选择本采购合同服务的出口销售案件。列表仅含已签订销售合同的案件（客户、合同号、金额、状态）。</view>
-      <view class="err" v-if="!form.salesCaseId" style="margin-top: 12rpx">尚未选择销售合同，不得保存采购合同。</view>
-      <view
-        class="pick"
-        :class="{ 'pick-on': form.salesCaseId === opt.id }"
-        v-for="opt in salesOptions"
-        :key="opt.id"
-        @click="pickSales(opt)"
-      >
-        <view class="row">
-          <view>
-            <view class="h2" style="margin: 0">{{ opt.customer }} · {{ opt.contractNo }}</view>
-            <view class="muted" style="margin-top: 6rpx">{{ opt.goodsDesc }}</view>
-          </view>
-          <view>
-            <view class="badge" :class="opt.isCurrent ? 'badge-pass' : 'badge-stub'">{{ opt.isCurrent ? '本案' : opt.statusLabel }}</view>
+      <view class="muted">
+        请从已签订的销售合同中<text style="font-weight: 650">任选一笔</text>关联，不限于本案出口合同。列表来自全部已签销售合同（客户、合同号、金额）。未选择则不得保存或推进。
+      </view>
+      <view class="label">已签订的销售合同<text class="req">必填</text></view>
+      <view class="picker-face" :class="{ 'picker-face-on': !!selectedSales, 'picker-face-open': pickerOpen }" @click="togglePicker">
+        <view v-if="selectedSales">
+          <view class="h2" style="margin: 0">{{ selectedSales.customer }} · {{ selectedSales.contractNo }}</view>
+          <view class="muted" style="margin-top: 6rpx">
+            销售金额 {{ money(selectedSales.amountFen, selectedSales.currency) }}
+            <text v-if="selectedSales.statusLabel"> · {{ selectedSales.statusLabel }}</text>
           </view>
         </view>
+        <view v-else class="muted">请选择已签订的销售合同（可任选一笔）</view>
+        <view class="picker-caret">{{ pickerOpen ? '收起选项' : `展开 ${salesOptions.length} 笔已签合同` }}</view>
+      </view>
+      <view v-if="pickerOpen" class="picker-panel">
+        <input class="input" v-model="salesQuery" placeholder="筛选客户、合同号或品名" @click.stop />
         <view class="muted" style="margin-top: 8rpx">
-          销售金额 {{ money(opt.amountFen, opt.currency) }} · {{ opt.currentNodeLabel }} · {{ opt.statusLabel }}
+          共 {{ filteredSalesOptions.length }} 笔可关联，点选即可更换，不锁定本案。
         </view>
+        <view
+          class="pick"
+          :class="{ 'pick-on': form.salesCaseId === opt.id }"
+          v-for="opt in filteredSalesOptions"
+          :key="opt.id"
+          @click.stop="pickSales(opt)"
+        >
+          <view class="row">
+            <view>
+              <view class="h2" style="margin: 0">{{ opt.customer }} · {{ opt.contractNo }}</view>
+              <view class="muted" style="margin-top: 6rpx">{{ opt.goodsDesc }}</view>
+            </view>
+            <view>
+              <view class="badge" :class="form.salesCaseId === opt.id ? 'badge-pass' : 'badge-stub'">
+                {{ form.salesCaseId === opt.id ? '已选' : opt.isCurrent ? '本案出口' : opt.statusLabel }}
+              </view>
+            </view>
+          </view>
+          <view class="muted" style="margin-top: 8rpx">
+            销售金额 {{ money(opt.amountFen, opt.currency) }} · {{ opt.currentNodeLabel }} · {{ opt.statusLabel }}
+          </view>
+        </view>
+        <view class="muted" v-if="!filteredSalesOptions.length" style="margin-top: 12rpx">没有匹配的已签销售合同。</view>
       </view>
       <view class="muted" v-if="!salesOptions.length" style="margin-top: 12rpx">暂无已签订的销售合同。请先完成销售合同（N3）签订。</view>
       <view class="ok" v-if="selectedSales" style="margin-top: 12rpx">
-        已关联：{{ selectedSales.customer }} · {{ selectedSales.contractNo }} · {{ money(selectedSales.amountFen, selectedSales.currency) }}
+        已关联：客户 {{ selectedSales.customer }} · 合同号 {{ selectedSales.contractNo }} · 金额 {{ money(selectedSales.amountFen, selectedSales.currency) }}
       </view>
+      <view class="err" v-if="!form.salesCaseId" style="margin-top: 12rpx">尚未选择销售合同，不得保存采购合同。</view>
     </view>
 
     <view class="card">
@@ -166,6 +189,8 @@ const c = ref<any>(null);
 const err = ref('');
 const ok = ref('');
 const salesOptions = ref<any[]>([]);
+const salesQuery = ref('');
+const pickerOpen = ref(true);
 const triggers = [
   { key: 'FORCE_MAJEURE', label: '不可抗力' },
   { key: 'PORT_CONGESTION', label: '港口拥堵' },
@@ -213,7 +238,23 @@ const form = reactive({
   customerConsentRef: '',
 });
 
-const selectedSales = computed(() => salesOptions.value.find((o: any) => o.id === form.salesCaseId) || c.value?.procurementPlan?.salesLink || null);
+const selectedSales = computed(
+  () =>
+    salesOptions.value.find((o: any) => o.id === form.salesCaseId) ||
+    (form.salesCaseId ? c.value?.procurementPlan?.salesLink : null) ||
+    null,
+);
+const filteredSalesOptions = computed(() => {
+  const q = salesQuery.value.trim().toLowerCase();
+  if (!q) return salesOptions.value;
+  return salesOptions.value.filter((o: any) =>
+    [o.customer, o.contractNo, o.caseNo, o.goodsDesc, o.title]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase()
+      .includes(q),
+  );
+});
 const supplierReport = computed(() =>
   (c.value?.kycReports || []).find((r: any) => r.nodeCode === 'N5'),
 );
@@ -370,9 +411,9 @@ async function reload() {
   const p = c.value.procurementPlan;
   const d = c.value.contract?.deliveryDate;
   if (d) form.contractDelivery = String(d).slice(0, 10);
-  const savedSalesId = p?.salesCaseId || p?.salesLink?.id;
-  const currentEligible = salesOptions.value.find((o: any) => o.isCurrent);
-  form.salesCaseId = savedSalesId || currentEligible?.id || form.salesCaseId;
+  const savedSalesId = p?.salesCaseId || p?.salesLink?.id || '';
+  form.salesCaseId = savedSalesId;
+  pickerOpen.value = !savedSalesId || salesOptions.value.length > 1;
   if (p) {
     form.poNo = p.poNo || form.poNo;
     form.contractDelivery = String(p.contractDelivery || form.contractDelivery).slice(0, 10);
@@ -398,10 +439,15 @@ async function reload() {
   }
 }
 
+function togglePicker() {
+  pickerOpen.value = !pickerOpen.value;
+}
+
 function pickSales(opt: any) {
   form.salesCaseId = opt.id;
   if (opt.deliveryDate) form.contractDelivery = String(opt.deliveryDate).slice(0, 10);
-  ok.value = `已选择销售合同 ${opt.customer} · ${opt.contractNo}`;
+  ok.value = `已选择销售合同 ${opt.customer} · ${opt.contractNo} · ${money(opt.amountFen, opt.currency)}`;
+  err.value = '';
 }
 
 function stubUpload() {
@@ -522,8 +568,36 @@ async function tryAdvance() {
   background: #fbfaf7;
 }
 .pick-on {
-  border-color: #0b3a5b;
-  background: #e8eef3;
+  border-color: #0f3d2e;
+  background: #e6efe9;
+}
+.picker-face {
+  margin-top: 12rpx;
+  border: 2rpx solid #c5d4cb;
+  border-radius: 12rpx;
+  padding: 20rpx 18rpx;
+  background: #f7f5f0;
+}
+.picker-face-on {
+  border-color: #0f3d2e;
+  background: #e6efe9;
+}
+.picker-face-open {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+.picker-caret {
+  margin-top: 10rpx;
+  color: #0f3d2e;
+  font-size: 24rpx;
+  font-weight: 650;
+}
+.picker-panel {
+  border: 2rpx solid #0f3d2e;
+  border-top: none;
+  border-radius: 0 0 12rpx 12rpx;
+  padding: 8rpx 16rpx 16rpx;
+  background: #fff;
 }
 .req {
   color: #b42318;

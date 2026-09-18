@@ -26,6 +26,7 @@ import {
 } from '../common/constants';
 import { evaluateN3ContractSave, isChangeField, isSensitiveChange, nextNode } from '../gates/gate.engine';
 import {
+  explicitSalesCaseId,
   isEligibleSalesCase,
   isProcurementContractListItem,
   isSalesContractListItem,
@@ -1243,11 +1244,10 @@ export class CasesService {
     existingSalesCaseId?: string | null,
     actorId?: string,
   ) {
-    let salesCaseId = (dto.salesCaseId !== undefined ? dto.salesCaseId : existingSalesCaseId || '').trim();
-    if (!salesCaseId) {
-      const self = await this.loadSalesCase(caseId);
-      if (self && isEligibleSalesCase(self)) salesCaseId = caseId;
-    }
+    const salesCaseId = explicitSalesCaseId(
+      dto.salesCaseId !== undefined ? dto.salesCaseId : undefined,
+      existingSalesCaseId,
+    );
     if (!salesCaseId) {
       await this.refuseN5Sales(caseId, 'N5_SALES_LINK', N5_SALES_LINK_REQUIRED_REASON, actorId);
     }

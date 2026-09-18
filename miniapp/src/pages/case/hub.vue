@@ -15,7 +15,7 @@
 
     <view class="card" @click="go('/pages/case/list?kind=procurement')">
       <view class="h2" style="margin-bottom: 8rpx">采购合同管理</view>
-      <view class="muted">国内采购合同/备货列表。打开后可填写并提交采购合同；保存前须关联已签订的销售合同。</view>
+      <view class="muted">国内采购合同/备货列表。打开后可填写并提交采购合同；保存前须从已签销售合同中任选一笔关联（不限于本案）。</view>
       <view class="btn">进入采购合同</view>
     </view>
   </view>
