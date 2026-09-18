@@ -107,9 +107,78 @@ export function signedSalesOptions(rows: SalesLinkCaseInput[], currentCaseId?: s
     ...presentSalesLink(row),
     isCurrent: row.id === currentCaseId,
   }));
-  list.sort((a, b) => {
-    if (a.isCurrent !== b.isCurrent) return a.isCurrent ? -1 : 1;
-    return a.caseNo.localeCompare(b.caseNo, 'zh-CN');
-  });
+  list.sort((a, b) => a.caseNo.localeCompare(b.caseNo, 'zh-CN'));
   return list;
+}
+
+/**
+ * 采购关联对象必须由用户选定，或沿用已保存值。
+ * 不得因「本案已签销售合同」而自动填入当前案件 id。
+ */
+export function explicitSalesCaseId(
+  requested?: string | null,
+  existing?: string | null,
+): string {
+  if (requested !== undefined && requested !== null) return String(requested).trim();
+  return (existing || '').trim();
+}
+
+export function filterSalesOptions<
+  T extends {
+    customer?: string | null;
+    contractNo?: string | null;
+    caseNo?: string | null;
+    goodsDesc?: string | null;
+    title?: string | null;
+  },
+>(rows: T[], query?: string | null): T[] {
+  const q = (query || '').trim().toLowerCase();
+  if (!q) return rows;
+  return rows.filter((row) =>
+    [row.customer, row.contractNo, row.caseNo, row.goodsDesc, row.title]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase()
+      .includes(q),
+  );
+}
+
+export type ContractListKind = 'sales' | 'procurement';
+
+export function parseContractListKind(raw?: string | null): ContractListKind | undefined {
+  if (raw === 'sales' || raw === 'procurement') return raw;
+  return undefined;
+}
+
+/** 案件当前节点是否已到达（含）目标节点。 */
+export function hasReachedNode(currentNode: string | null | undefined, target: NodeCode): boolean {
+  const i = NODE_FLOW.indexOf((currentNode || '') as NodeCode);
+  const t = NODE_FLOW.indexOf(target);
+  return i >= 0 && t >= 0 && i >= t;
+}
+
+/**
+ * 销售合同列表：已到达 N3（可填销售合同）或已有销售合同记录。
+ * 不含仅停在询盘/报价、从未进入销售合同节点的案件。
+ */
+export function isSalesContractListItem(row: {
+  currentNode?: string | null;
+  contract?: unknown | null;
+}): boolean {
+  return hasReachedNode(row.currentNode, 'N3') || !!row.contract;
+}
+
+/**
+ * 采购合同列表：已到达 N5（可填采购合同/PO）或已登记采购计划。
+ * 与销售列表分开，不以采购 PO 作为销售合同条目。
+ */
+export function isProcurementContractListItem(row: {
+  currentNode?: string | null;
+  procurementPlan?: unknown | null;
+}): boolean {
+  return hasReachedNode(row.currentNode, 'N5') || !!row.procurementPlan;
+}
+
+export function supplierNameOf(row: { parties?: Array<{ role: string; name: string }> | null }): string {
+  return row.parties?.find((p) => p.role === 'SUPPLIER')?.name?.trim() || '';
 }

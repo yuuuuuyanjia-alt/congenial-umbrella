@@ -8,20 +8,22 @@
       </view>
     </view>
 
+    <view class="card">
+      <view class="h2">工作入口</view>
+      <view class="muted">销售与采购分开办理：请先签订销售合同，再办理采购合同并关联已签销售合同。</view>
+      <view class="btn" @click="go('/pages/case/hub')">合同管理</view>
+      <view class="btn" @click="go('/pages/supplier/list')">供应商管理</view>
+      <view class="btn" @click="go('/pages/customer/list')">客户管理</view>
+      <view class="btn" @click="go('/pages/workbench/index')">命中处置</view>
+    </view>
+
+    <view class="h2" style="margin: 8rpx 8rpx 16rpx">演示路径</view>
     <view class="card" v-for="item in paths" :key="item.caseNo" @click="openByNo(item.caseNo)">
       <view class="row">
         <view class="h2" style="margin: 0">{{ item.title }}</view>
         <view class="badge" :class="item.cls">{{ item.tag }}</view>
       </view>
       <view class="muted">{{ item.desc }}</view>
-    </view>
-
-    <view class="card">
-      <view class="h2">工作入口</view>
-      <view class="btn" @click="go('/pages/case/list')">合同管理</view>
-      <view class="btn" @click="go('/pages/supplier/list')">供应商管理</view>
-      <view class="btn" @click="go('/pages/customer/list')">客户管理</view>
-      <view class="btn" @click="go('/pages/workbench/index')">命中处置</view>
     </view>
   </view>
 </template>

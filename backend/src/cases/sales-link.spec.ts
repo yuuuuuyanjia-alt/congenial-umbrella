@@ -1,10 +1,64 @@
 import { NodeStatus } from '../common/constants';
 import {
+  explicitSalesCaseId,
+  filterSalesOptions,
+  hasReachedNode,
   isEligibleSalesCase,
+  isProcurementContractListItem,
+  isSalesContractListItem,
   isSalesContractSigned,
+  parseContractListKind,
   presentSalesLink,
   signedSalesOptions,
 } from './sales-link';
+
+const nord = {
+  id: 'c-pass',
+  caseNo: 'DEMO-PASS',
+  title: 'Nordlicht 绿灯',
+  status: 'COMPLETED',
+  currentNode: 'N9',
+  goodsDesc: '数控机床配件',
+  destination: 'Hamburg',
+  amountFen: 12800000,
+  currency: 'USD',
+  contract: {
+    counterparty: 'Nordlicht GmbH',
+    amountFen: 12800000,
+    currency: 'USD',
+    deliveryDate: '2026-11-30',
+  },
+  parties: [{ role: 'BUYER', name: 'Nordlicht GmbH' }],
+  nodes: [{ code: 'N3', status: NodeStatus.PASSED }],
+};
+const soft = {
+  id: 'c-soft',
+  caseNo: 'DEMO-SOFT',
+  title: 'Acme 软提示',
+  status: 'IN_PROGRESS',
+  currentNode: 'N3',
+  goodsDesc: '手工具套装',
+  destination: 'Los Angeles',
+  amountFen: 3600000,
+  currency: 'USD',
+  contract: null,
+  parties: [{ role: 'BUYER', name: 'Acme Industrial Co' }],
+  nodes: [{ code: 'N3', status: NodeStatus.IN_PROGRESS }],
+};
+const limit = {
+  id: 'c-limit',
+  caseNo: 'DEMO-LIMIT',
+  title: 'Pacific Gear 超额',
+  status: 'IN_PROGRESS',
+  currentNode: 'N3',
+  goodsDesc: '工业泵',
+  destination: 'Melbourne',
+  amountFen: 8000000,
+  currency: 'USD',
+  contract: { counterparty: 'Pacific Gear Ltd', amountFen: 8000000, currency: 'USD' },
+  parties: [{ role: 'BUYER', name: 'Pacific Gear Ltd' }],
+  nodes: [{ code: 'N3', status: NodeStatus.IN_PROGRESS }],
+};
 
 describe('销售合同关联（先销售后采购）', () => {
   it('无销售合同不算已签', () => {
@@ -39,54 +93,6 @@ describe('销售合同关联（先销售后采购）', () => {
     );
   });
 
-  const nord = {
-    id: 'c-pass',
-    caseNo: 'DEMO-PASS',
-    title: 'Nordlicht 绿灯',
-    status: 'COMPLETED',
-    currentNode: 'N9',
-    goodsDesc: '数控机床配件',
-    destination: 'Hamburg',
-    amountFen: 12800000,
-    currency: 'USD',
-    contract: {
-      counterparty: 'Nordlicht GmbH',
-      amountFen: 12800000,
-      currency: 'USD',
-      deliveryDate: '2026-11-30',
-    },
-    parties: [{ role: 'BUYER', name: 'Nordlicht GmbH' }],
-    nodes: [{ code: 'N3', status: NodeStatus.PASSED }],
-  };
-  const soft = {
-    id: 'c-soft',
-    caseNo: 'DEMO-SOFT',
-    title: 'Acme 软提示',
-    status: 'IN_PROGRESS',
-    currentNode: 'N3',
-    goodsDesc: '手工具套装',
-    destination: 'Los Angeles',
-    amountFen: 3600000,
-    currency: 'USD',
-    contract: null,
-    parties: [{ role: 'BUYER', name: 'Acme Industrial Co' }],
-    nodes: [{ code: 'N3', status: NodeStatus.IN_PROGRESS }],
-  };
-  const limit = {
-    id: 'c-limit',
-    caseNo: 'DEMO-LIMIT',
-    title: 'Pacific Gear 超额',
-    status: 'IN_PROGRESS',
-    currentNode: 'N3',
-    goodsDesc: '工业泵',
-    destination: 'Melbourne',
-    amountFen: 8000000,
-    currency: 'USD',
-    contract: { counterparty: 'Pacific Gear Ltd', amountFen: 8000000, currency: 'USD' },
-    parties: [{ role: 'BUYER', name: 'Pacific Gear Ltd' }],
-    nodes: [{ code: 'N3', status: NodeStatus.IN_PROGRESS }],
-  };
-
   it('已签销售合同可出现在采购关联选项中，未签的不出现', () => {
     expect(isEligibleSalesCase(nord)).toBe(true);
     expect(isEligibleSalesCase(soft)).toBe(false);
@@ -99,6 +105,54 @@ describe('销售合同关联（先销售后采购）', () => {
     expect(opts[0].statusLabel).toBe('已完成');
   });
 
+  it('可选列表含全部已签销售合同，本案不是唯一可选项、也不排到最前', () => {
+    const fob = {
+      ...nord,
+      id: 'c-fob',
+      caseNo: 'DEMO-FOB',
+      title: 'Pacific Tools FOB',
+      contract: { counterparty: 'Pacific Tools Pte Ltd', amountFen: 3600000, currency: 'USD' },
+      parties: [{ role: 'BUYER', name: 'Pacific Tools Pte Ltd' }],
+    };
+    const gate = {
+      ...nord,
+      id: 'c-gate',
+      caseNo: 'DEMO-GATE',
+      title: 'Harbor View',
+      contract: { counterparty: 'Harbor View Ltd', amountFen: 5400000, currency: 'USD' },
+      parties: [{ role: 'BUYER', name: 'Harbor View Ltd' }],
+    };
+    const opts = signedSalesOptions([nord, fob, gate, soft], 'c-fob');
+    expect(opts.map((o) => o.caseNo)).toEqual(['DEMO-FOB', 'DEMO-GATE', 'DEMO-PASS']);
+    expect(opts.find((o) => o.caseNo === 'DEMO-FOB')?.isCurrent).toBe(true);
+    expect(opts.find((o) => o.caseNo === 'DEMO-PASS')?.isCurrent).toBe(false);
+    expect(opts.filter((o) => o.signed)).toHaveLength(3);
+  });
+
+  it('关联销售合同须用户选定或沿用已保存值，不得因本案已签而自动填入', () => {
+    expect(explicitSalesCaseId(undefined, undefined)).toBe('');
+    expect(explicitSalesCaseId('', 'existing-id')).toBe('');
+    expect(explicitSalesCaseId(undefined, 'saved-sales')).toBe('saved-sales');
+    expect(explicitSalesCaseId('picked-id', 'saved-sales')).toBe('picked-id');
+    expect(explicitSalesCaseId('  other-signed  ', nord.id)).toBe('other-signed');
+  });
+
+  it('可按客户或合同号筛选可选销售合同', () => {
+    const fob = {
+      ...nord,
+      id: 'c-fob',
+      caseNo: 'DEMO-FOB',
+      title: 'Pacific Tools FOB',
+      goodsDesc: '手工具套装',
+      contract: { counterparty: 'Pacific Tools Pte Ltd' },
+      parties: [{ role: 'BUYER', name: 'Pacific Tools Pte Ltd' }],
+    };
+    const opts = signedSalesOptions([nord, fob], 'c-pass');
+    expect(filterSalesOptions(opts, 'nordlicht').map((o) => o.caseNo)).toEqual(['DEMO-PASS']);
+    expect(filterSalesOptions(opts, 'FOB').map((o) => o.caseNo)).toEqual(['DEMO-FOB']);
+    expect(filterSalesOptions(opts, '').map((o) => o.caseNo)).toEqual(['DEMO-FOB', 'DEMO-PASS']);
+  });
+
   it('展示字段含客户、合同号、金额与状态（中文）', () => {
     const view = presentSalesLink(nord);
     expect(view.customer).toBe('Nordlicht GmbH');
@@ -107,5 +161,85 @@ describe('销售合同关联（先销售后采购）', () => {
     expect(view.currency).toBe('USD');
     expect(view.currentNodeLabel).toContain('收汇');
     expect(view.signed).toBe(true);
+  });
+});
+
+describe('销售/采购合同列表分流（同一案件模型，按节点过滤）', () => {
+  const blocked = {
+    id: 'c-block',
+    caseNo: 'DEMO-BLOCK',
+    currentNode: 'N1',
+    contract: null,
+    procurementPlan: null,
+  };
+  const quoteOnly = {
+    id: 'c-quote',
+    caseNo: 'DEMO-QUOTE',
+    currentNode: 'N2',
+    contract: null,
+    procurementPlan: null,
+  };
+  const unsignedN3 = {
+    ...soft,
+    procurementPlan: null,
+  };
+  const fillingN3 = {
+    ...limit,
+    procurementPlan: null,
+  };
+  const wipN5 = {
+    id: 'c-wip',
+    caseNo: 'DEMO-NORD-WIP',
+    currentNode: 'N5',
+    contract: { counterparty: 'Nordlicht GmbH' },
+    procurementPlan: null,
+    parties: [{ role: 'BUYER', name: 'Nordlicht GmbH' }],
+    nodes: [{ code: 'N3', status: NodeStatus.PASSED }],
+    title: 'Nordlicht 待采购',
+    status: 'IN_PROGRESS',
+    goodsDesc: '配件',
+    destination: 'Hamburg',
+    amountFen: 1800000,
+    currency: 'USD',
+  };
+  const withPo = {
+    ...nord,
+    procurementPlan: { poNo: 'PO-BH-2026-011' },
+  };
+
+  it('kind 仅接受 sales / procurement', () => {
+    expect(parseContractListKind('sales')).toBe('sales');
+    expect(parseContractListKind('procurement')).toBe('procurement');
+    expect(parseContractListKind('all')).toBeUndefined();
+    expect(parseContractListKind('')).toBeUndefined();
+  });
+
+  it('N3 为销售列表起点，询盘硬拦截与报价中案件不进入销售合同列表', () => {
+    expect(hasReachedNode('N2', 'N3')).toBe(false);
+    expect(hasReachedNode('N3', 'N3')).toBe(true);
+    expect(hasReachedNode('N5', 'N3')).toBe(true);
+    expect(isSalesContractListItem(blocked)).toBe(false);
+    expect(isSalesContractListItem(quoteOnly)).toBe(false);
+    expect(isSalesContractListItem(unsignedN3)).toBe(true);
+    expect(isSalesContractListItem(fillingN3)).toBe(true);
+    expect(isSalesContractListItem(withPo)).toBe(true);
+  });
+
+  it('采购列表为 N5 及已登记 PO，不含未到采购节点的销售合同', () => {
+    expect(hasReachedNode('N3', 'N5')).toBe(false);
+    expect(hasReachedNode('N5', 'N5')).toBe(true);
+    expect(isProcurementContractListItem(blocked)).toBe(false);
+    expect(isProcurementContractListItem(unsignedN3)).toBe(false);
+    expect(isProcurementContractListItem(fillingN3)).toBe(false);
+    expect(isProcurementContractListItem(wipN5)).toBe(true);
+    expect(isProcurementContractListItem(withPo)).toBe(true);
+  });
+
+  it('销售列表条目是出口案件而非采购 PO 号', () => {
+    const sales = [blocked, unsignedN3, fillingN3, wipN5, withPo].filter(isSalesContractListItem);
+    expect(sales.map((c) => c.caseNo)).toEqual(['DEMO-SOFT', 'DEMO-LIMIT', 'DEMO-NORD-WIP', 'DEMO-PASS']);
+    expect(sales.every((c) => !('poNo' in c && c.poNo && !c.caseNo))).toBe(true);
+    const proc = [blocked, unsignedN3, fillingN3, wipN5, withPo].filter(isProcurementContractListItem);
+    expect(proc.map((c) => c.caseNo)).toEqual(['DEMO-NORD-WIP', 'DEMO-PASS']);
   });
 });
