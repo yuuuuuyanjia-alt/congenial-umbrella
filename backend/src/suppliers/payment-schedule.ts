@@ -17,7 +17,7 @@ export type PaymentModeCode = (typeof PaymentMode)[keyof typeof PaymentMode];
 
 export const PaymentModeLabel: Record<PaymentModeCode, string> = {
   FULL: '一次性付清',
-  STAGED: '分期付款',
+  STAGED: '分期支付',
 };
 
 export const InstallmentStatus = {
@@ -77,6 +77,8 @@ export interface PresentedInstallment {
   statusLabel: string;
   duePassed: boolean;
   timing: RemittanceEval;
+  /** 约定付款时间：约定日期和/或触发时间 */
+  agreedPaymentTime: string;
 }
 
 export interface PresentedPlanPayment {
@@ -118,6 +120,34 @@ export function formatPercent(percentBps?: number | null): string {
   const n = bpsToPercent(percentBps);
   if (n == null) return '';
   return Number.isInteger(n) ? String(n) : n.toFixed(2);
+}
+
+/** 约定付款时间：约定日期、触发时间，或两者。 */
+export function agreedPaymentTime(item: { dueAt?: Date | string | null; conditionText?: string | null }): string {
+  const date = ymd(item.dueAt);
+  const trigger = (item.conditionText || '').trim();
+  if (date && trigger && trigger !== '一次性付清') return `${date}（${trigger}）`;
+  if (date) return date;
+  return trigger;
+}
+
+/** 分期支付每一期须填写：约定付款时间、付款比例、金额。 */
+export function validateStagedInstallments(items?: ScheduleInstallmentInput[] | null): string[] {
+  const rows = items || [];
+  if (rows.length < 2) return ['分期支付至少两期，每一期须填写约定付款时间、付款比例、金额'];
+  const reasons: string[] = [];
+  rows.forEach((item, i) => {
+    const n = i + 1;
+    const bps = toPercentBps(item.percent, item.percentBps);
+    const amount =
+      item.amountFen != null && Number.isFinite(Number(item.amountFen)) ? Number(item.amountFen) : null;
+    if (bps == null) reasons.push(`第${n}期须填写付款比例`);
+    if (amount == null) reasons.push(`第${n}期须填写金额`);
+    if (!item.dueAt && !(item.conditionText || '').trim()) {
+      reasons.push(`第${n}期须填写约定付款时间（约定日期或触发时间）`);
+    }
+  });
+  return reasons;
 }
 
 function defaultLabel(seq: number, total: number, paymentMode: PaymentModeCode): string {
@@ -218,6 +248,7 @@ export function evaluateInstallment(
     statusLabel: InstallmentStatusLabel[status],
     duePassed,
     timing,
+    agreedPaymentTime: agreedPaymentTime({ dueAt: item.dueAt, conditionText: item.conditionText }),
   };
 }
 

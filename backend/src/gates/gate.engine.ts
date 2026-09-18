@@ -16,6 +16,8 @@ import {
   NodeStatus,
   CUSTOMER_PARTY_ROLES,
   N3_SINOSURE_UNREGISTERED_REASON,
+  N5_SALES_LINK_REQUIRED_REASON,
+  N5_SALES_NOT_SIGNED_REASON,
   PartyRole,
   PartyRoleLabel,
   PriceBasis,
@@ -360,6 +362,13 @@ export function evaluateN5(snap: CaseSnapshot): GateResult {
   if (!plan.poNo?.trim()) {
     r.missing.push('N5_PO_NO');
     r.reasons.push('未填写采购订单/采购合同编号');
+  }
+  if (!plan.salesCaseId?.trim()) {
+    r.missing.push('N5_SALES_LINK');
+    r.reasons.push(N5_SALES_LINK_REQUIRED_REASON);
+  } else if (!plan.salesContractSigned) {
+    r.missing.push('N5_SALES_NOT_SIGNED');
+    r.reasons.push(N5_SALES_NOT_SIGNED_REASON);
   }
   if (!plan.plannedArrival) {
     r.missing.push('N5_PLANNED_ARRIVAL');

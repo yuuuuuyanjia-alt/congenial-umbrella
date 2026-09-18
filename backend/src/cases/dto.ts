@@ -167,6 +167,8 @@ export class SavePlanDto {
   @ValidateNested({ each: true })
   @Type(() => SavePlanInstallmentDto)
   installments?: SavePlanInstallmentDto[];
+  /** 关联的销售/出口案件 id（须已签销售合同） */
+  @IsOptional() @IsString() salesCaseId?: string;
 }
 
 export class SaveCustomsDto {

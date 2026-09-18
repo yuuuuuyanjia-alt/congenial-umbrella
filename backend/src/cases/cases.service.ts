@@ -13,6 +13,8 @@ import {
   EportStatus,
   EvidenceKind,
   N3_SINOSURE_UNREGISTERED_REASON,
+  N5_SALES_LINK_REQUIRED_REASON,
+  N5_SALES_NOT_SIGNED_REASON,
   NODE_CATALOG,
   NodeStatus,
   PartyRole,
@@ -22,6 +24,7 @@ import {
   VersionStatus,
 } from '../common/constants';
 import { evaluateN3ContractSave, isChangeField, isSensitiveChange, nextNode } from '../gates/gate.engine';
+import { isEligibleSalesCase, presentSalesLink, signedSalesOptions } from './sales-link';
 import {
   AckChangeDto,
   CreateCaseDto,
@@ -41,7 +44,7 @@ import { GateResult } from '../common/types';
 import { CustomersService } from '../customers/customers.service';
 import { derivePaymentDueAt } from '../customers/remittance';
 import { SuppliersService } from '../suppliers/suppliers.service';
-import { buildInstallmentRecords, presentPlanPayment } from '../suppliers/payment-schedule';
+import { buildInstallmentRecords, PaymentMode, presentPlanPayment, validateStagedInstallments } from '../suppliers/payment-schedule';
 
 @Injectable()
 export class CasesService {
@@ -82,7 +85,12 @@ export class CasesService {
         quotes: { orderBy: { version: 'desc' } },
         changeOrders: { include: { diffs: true }, orderBy: { createdAt: 'asc' } },
         contractVersions: { orderBy: { version: 'desc' } },
-        procurementPlan: { include: { installments: { orderBy: { seq: 'asc' } } } },
+        procurementPlan: {
+          include: {
+            installments: { orderBy: { seq: 'asc' } },
+            salesCase: { include: { contract: true, parties: true, nodes: true } },
+          },
+        },
         customs: true,
         evidences: { orderBy: { createdAt: 'asc' } },
         sinosurePolicies: { orderBy: { createdAt: 'asc' } },
@@ -116,6 +124,7 @@ export class CasesService {
             installments: planPayment?.installments ?? [],
             scheduleWording: planPayment?.wording,
             unpaidFen: planPayment?.unpaidFen,
+            salesLink: c.procurementPlan.salesCase ? presentSalesLink(c.procurementPlan.salesCase) : null,
           }
         : null,
     };
@@ -629,9 +638,24 @@ export class CasesService {
     return row;
   }
 
+  async listSalesOptions(caseId: string) {
+    await this.ensureCase(caseId);
+    const rows = await this.prisma.tradeCase.findMany({
+      where: { contract: { isNot: null } },
+      include: { contract: true, parties: true, nodes: true },
+      orderBy: { createdAt: 'desc' },
+    });
+    return signedSalesOptions(rows, caseId);
+  }
+
   async savePlan(caseId: string, dto: SavePlanDto, actorId?: string) {
     await this.ensureCase(caseId);
-    const contract = await this.prisma.contract.findUnique({ where: { caseId } });
+    const existingPlan = await this.prisma.procurementPlan.findUnique({
+      where: { caseId },
+      include: { installments: { orderBy: { seq: 'asc' } } },
+    });
+    const salesCase = await this.resolveSalesLink(caseId, dto, existingPlan?.salesCaseId, actorId);
+    const contract = salesCase.contract || (await this.prisma.contract.findUnique({ where: { caseId } }));
     if (dto.supplierName?.trim()) {
       await this.upsertParty(
         caseId,
@@ -668,11 +692,20 @@ export class CasesService {
         poEvidenceId = ev.id;
       }
     }
-    const existingPlan = await this.prisma.procurementPlan.findUnique({
-      where: { caseId },
-      include: { installments: { orderBy: { seq: 'asc' } } },
-    });
     const amountFen = dto.amountFen ?? existingPlan?.amountFen ?? null;
+    const staged =
+      dto.paymentMode === PaymentMode.STAGED ||
+      (dto.paymentMode !== PaymentMode.FULL && (dto.installments?.length || 0) > 1);
+    if (staged) {
+      const gaps = validateStagedInstallments(dto.installments);
+      if (gaps.length) {
+        throw new BadRequestException({
+          code: 'STAGED_FIELDS_REQUIRED',
+          message: gaps[0],
+          reasons: gaps,
+        });
+      }
+    }
     const schedule = buildInstallmentRecords(
       {
         paymentMode: dto.paymentMode,
@@ -690,6 +723,7 @@ export class CasesService {
       existingPlan,
     );
     const data = {
+      salesCaseId: salesCase.id,
       poNo: dto.poNo || null,
       plannedArrival: parseDate(dto.plannedArrival || dto.plannedDelivery),
       contractDelivery: parseDate(dto.contractDelivery) || contract?.deliveryDate || null,
@@ -733,7 +767,10 @@ export class CasesService {
       }
       return tx.procurementPlan.findUniqueOrThrow({
         where: { id: plan.id },
-        include: { installments: { orderBy: { seq: 'asc' } } },
+        include: {
+          installments: { orderBy: { seq: 'asc' } },
+          salesCase: { include: { contract: true, parties: true, nodes: true } },
+        },
       });
     });
     await this.touchNode(caseId, 'N5', NodeStatus.IN_PROGRESS);
@@ -742,7 +779,14 @@ export class CasesService {
       actorId,
       action: 'PROCUREMENT_PLAN_SAVED',
       nodeCode: 'N5',
-      detail: { ...dto, customerConsentEvidenceId: consentId, poEvidenceId, paymentMode: schedule.paymentMode },
+      detail: {
+        ...dto,
+        salesCaseId: salesCase.id,
+        salesCaseNo: salesCase.caseNo,
+        customerConsentEvidenceId: consentId,
+        poEvidenceId,
+        paymentMode: schedule.paymentMode,
+      },
     });
     const presented = presentPlanPayment(row);
     return {
@@ -751,6 +795,7 @@ export class CasesService {
       installments: presented.installments,
       scheduleWording: presented.wording,
       unpaidFen: presented.unpaidFen,
+      salesLink: row.salesCase ? presentSalesLink(row.salesCase) : presentSalesLink(salesCase),
     };
   }
 
@@ -1158,10 +1203,59 @@ export class CasesService {
     });
   }
 
+  private async resolveSalesLink(
+    caseId: string,
+    dto: SavePlanDto,
+    existingSalesCaseId?: string | null,
+    actorId?: string,
+  ) {
+    let salesCaseId = (dto.salesCaseId !== undefined ? dto.salesCaseId : existingSalesCaseId || '').trim();
+    if (!salesCaseId) {
+      const self = await this.loadSalesCase(caseId);
+      if (self && isEligibleSalesCase(self)) salesCaseId = caseId;
+    }
+    if (!salesCaseId) {
+      await this.refuseN5Sales(caseId, 'N5_SALES_LINK', N5_SALES_LINK_REQUIRED_REASON, actorId);
+    }
+    const linked = await this.loadSalesCase(salesCaseId);
+    if (!linked || !isEligibleSalesCase(linked)) {
+      await this.refuseN5Sales(caseId, 'N5_SALES_NOT_SIGNED', N5_SALES_NOT_SIGNED_REASON, actorId);
+    }
+    return linked!;
+  }
+
+  private async loadSalesCase(id: string) {
+    return this.prisma.tradeCase.findUnique({
+      where: { id },
+      include: { contract: true, parties: true, nodes: true },
+    });
+  }
+
+  private async refuseN5Sales(caseId: string, missing: string, reason: string, actorId?: string): Promise<never> {
+    const result: GateResult = {
+      nodeCode: 'N5',
+      decision: Decision.HARD_BLOCK,
+      canProceed: false,
+      missing: [missing],
+      reasons: [reason],
+      alerts: [],
+    };
+    await this.persistGateCheck(caseId, result);
+    await this.audit.append({
+      caseId,
+      actorId,
+      action: 'GATE_REFUSED',
+      nodeCode: 'N5',
+      detail: result,
+    });
+    this.throwGateRefused(result, reason);
+  }
+
   private throwGateRefused(result: GateResult, message?: string): never {
     const unregistered =
       result.missing.includes('N3_SINOSURE_LIMIT') &&
       result.reasons.includes(N3_SINOSURE_UNREGISTERED_REASON);
+    const salesLink = result.missing.includes('N5_SALES_LINK') || result.missing.includes('N5_SALES_NOT_SIGNED');
     throw new HttpException(
       {
         code: 'GATE_REFUSED',
@@ -1169,7 +1263,9 @@ export class CasesService {
           message ||
           (unregistered
             ? N3_SINOSURE_UNREGISTERED_REASON
-            : '闸门拒绝推进：证据不足或命中硬拦截'),
+            : salesLink
+              ? result.reasons[0] || N5_SALES_LINK_REQUIRED_REASON
+              : '闸门拒绝推进：证据不足或命中硬拦截'),
         ...result,
       },
       HttpStatus.CONFLICT,

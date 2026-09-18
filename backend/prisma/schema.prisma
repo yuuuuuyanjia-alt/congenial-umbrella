@@ -86,13 +86,14 @@ model TradeCase {
   auditLogs         AuditLog[]
   workbench         WorkbenchAction[]
   gateChecks        GateCheck[]
-  quotes            Quote[]
-  changeOrders      ChangeOrder[]
-  contractVersions  ContractVersion[]
-  procurementPlan   ProcurementPlan?
-  customs           CustomsDeclaration?
-  evidences         Evidence[]
-  sinosurePolicies  SinosurePolicy[]
+  quotes                  Quote[]
+  changeOrders            ChangeOrder[]
+  contractVersions        ContractVersion[]
+  procurementPlan         ProcurementPlan? @relation("CaseOwnsProcurement")
+  salesLinkedProcurements ProcurementPlan[] @relation("SalesLinkedProcurement")
+  customs                 CustomsDeclaration?
+  evidences               Evidence[]
+  sinosurePolicies        SinosurePolicy[]
 }
 
 model Party {
@@ -405,10 +406,12 @@ model ContractVersion {
   @@unique([caseId, version])
 }
 
-/// N5 国内采购/备货（无自有产线，向国内供应商采购）
+/// N5 采购合同/国内备货（无自有产线，向国内供应商采购；须关联已签销售合同，先销售后采购）
 model ProcurementPlan {
   id                        String    @id @default(cuid())
   caseId                    String    @unique
+  /// 本采购合同服务的销售/出口案件（须已达 N3 且已签销售合同）
+  salesCaseId               String?
   poNo                      String?
   plannedArrival            DateTime?
   contractDelivery          DateTime?
@@ -431,11 +434,14 @@ model ProcurementPlan {
   paymentDueAt              DateTime?
   /// 付清或最近一次付款日（分期时为最晚一期付款日）
   paidAt                    DateTime?
-  /// FULL 一次性付清 / STAGED 分期付款
+  /// FULL 一次性付清 / STAGED 分期支付
   paymentMode               String    @default("FULL")
   updatedAt                 DateTime  @updatedAt
-  case                      TradeCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  case                      TradeCase  @relation("CaseOwnsProcurement", fields: [caseId], references: [id], onDelete: Cascade)
+  salesCase                 TradeCase? @relation("SalesLinkedProcurement", fields: [salesCaseId], references: [id], onDelete: SetNull)
   installments              ProcurementPaymentInstallment[]
+
+  @@index([salesCaseId])
 }
 
 /// N5 采购货款分期：每一期独立比例/金额、触发条件与约定付款日

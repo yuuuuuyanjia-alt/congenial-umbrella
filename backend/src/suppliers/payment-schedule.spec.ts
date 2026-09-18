@@ -2,12 +2,14 @@ import { RemittanceStatus } from '../customers/remittance';
 import {
   InstallmentStatus,
   PaymentMode,
+  agreedPaymentTime,
   buildInstallmentRecords,
   evaluateInstallment,
   presentPlanPayment,
   resolveSchedule,
   scheduleWording,
   toPercentBps,
+  validateStagedInstallments,
 } from './payment-schedule';
 
 describe('采购货款分期', () => {
@@ -121,7 +123,7 @@ describe('采购货款分期', () => {
       },
       '2026-09-16',
     );
-    expect(presented.paymentModeLabel).toBe('分期付款');
+    expect(presented.paymentModeLabel).toBe('分期支付');
     expect(presented.paidFen).toBe(25200000);
     expect(presented.unpaidFen).toBe(2800000);
     expect(presented.payment.code).toBe(RemittanceStatus.OVERDUE);
@@ -152,5 +154,43 @@ describe('采购货款分期', () => {
     expect(built.paymentMode).toBe(PaymentMode.FULL);
     expect(built.resolved).toHaveLength(1);
     expect(built.rollup.paidFen).toBe(21000000);
+  });
+
+  it('分期支付缺少付款比例、金额或约定付款时间则列出缺口', () => {
+    expect(validateStagedInstallments([{ percent: 90 }])).toEqual([
+      '分期支付至少两期，每一期须填写约定付款时间、付款比例、金额',
+    ]);
+    expect(
+      validateStagedInstallments([
+        { percent: 90, amountFen: 9000, dueAt: '2026-11-01' },
+        { amountFen: 1000, conditionText: '验收后支付' },
+      ]),
+    ).toContain('第2期须填写付款比例');
+    expect(
+      validateStagedInstallments([
+        { percent: 90, dueAt: '2026-11-01' },
+        { percent: 10, amountFen: 1000, conditionText: '验收后支付' },
+      ]),
+    ).toContain('第1期须填写金额');
+    expect(
+      validateStagedInstallments([
+        { percent: 90, amountFen: 9000 },
+        { percent: 10, amountFen: 1000, dueAt: '2026-12-01' },
+      ]),
+    ).toContain('第1期须填写约定付款时间（约定日期或触发时间）');
+    expect(
+      validateStagedInstallments([
+        { percent: 90, amountFen: 9000, conditionText: '货物到达交付地点之后支付' },
+        { percent: 10, amountFen: 1000, dueAt: '2026-12-01' },
+      ]),
+    ).toEqual([]);
+  });
+
+  it('约定付款时间可只填日期、只填触发，或两者', () => {
+    expect(agreedPaymentTime({ dueAt: '2026-11-28', conditionText: '货物到达交付地点之后支付' })).toBe(
+      '2026-11-28（货物到达交付地点之后支付）',
+    );
+    expect(agreedPaymentTime({ dueAt: '2026-11-28' })).toBe('2026-11-28');
+    expect(agreedPaymentTime({ conditionText: '验收合格后支付' })).toBe('验收合格后支付');
   });
 });

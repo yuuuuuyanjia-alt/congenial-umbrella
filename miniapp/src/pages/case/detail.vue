@@ -12,6 +12,19 @@
       </view>
     </view>
 
+    <view class="card" v-if="c.procurementPlan?.salesLink">
+      <view class="h2">关联销售合同</view>
+      <view class="muted">{{ c.procurementPlan.salesLink.customer }} · {{ c.procurementPlan.salesLink.contractNo }}</view>
+      <view class="muted" style="margin-top: 8rpx">
+        {{ money(c.procurementPlan.salesLink.amountFen, c.procurementPlan.salesLink.currency) }} · {{ c.procurementPlan.salesLink.statusLabel }} · {{ c.procurementPlan.salesLink.currentNodeLabel }}
+      </view>
+      <view
+        class="btn btn-ghost"
+        v-if="c.procurementPlan.salesLink.id !== c.id"
+        @click="go(`/pages/case/detail?id=${c.procurementPlan.salesLink.id}`)"
+      >打开关联销售案件</view>
+    </view>
+
     <view class="card">
       <view class="h2">当事方</view>
       <view v-for="p in c.parties" :key="p.id" class="muted">
@@ -42,7 +55,7 @@
 <script setup lang="ts">
 import { onLoad, onShow } from '@dcloudio/uni-app';
 import { ref } from 'vue';
-import { api, decisionClass, decisionText, nodePage } from '../../api';
+import { api, decisionClass, decisionText, money, nodePage } from '../../api';
 
 const id = ref('');
 const c = ref<any>(null);

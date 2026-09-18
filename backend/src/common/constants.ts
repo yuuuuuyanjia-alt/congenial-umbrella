@@ -18,11 +18,11 @@ export const NODE_CATALOG = [
   },
   {
     code: 'N3',
-    name: '合同/订单确认',
+    name: '销售合同/订单确认',
     mvp: true,
     isHardGate: false,
     isStub: false,
-    summary: '所有权保留与争议解决条款必填；中信保限额未登记不得签订合同；须上传保单并登记投保限额；按买方占用测算（未履行完毕未回款+已履行完毕未回款+新签合同），超额分档提示或拦截。',
+    summary: '销售/出口合同与采购合同分开签订。所有权保留与争议解决条款必填；中信保限额未登记不得签订销售合同；须上传保单并登记投保限额；按买方占用测算（未履行完毕未回款+已履行完毕未回款+新签合同），超额分档提示或拦截。',
   },
   {
     code: 'N4',
@@ -34,11 +34,11 @@ export const NODE_CATALOG = [
   },
   {
     code: 'N5',
-    name: '国内采购/备货',
+    name: '采购合同/国内备货',
     mvp: true,
     isHardGate: false,
     isStub: false,
-    summary: '登记国内供应商、采购合同/PO 与计划到货；供应商须过制裁/不可靠实体筛查；计划到货不得晚于客户合同交期，除非已登记结构化延期并保留客户同意证据。',
+    summary: '采购合同与销售合同分开签订。公司惯例先销售后采购：须关联一笔已达 N3 且已签的销售/出口合同，否则不得保存或推进；登记国内供应商、采购合同/PO 与计划到货；供应商须过制裁/不可靠实体筛查；计划到货不得晚于客户合同交期，除非已登记结构化延期并保留客户同意证据。',
   },
   {
     code: 'N6',
@@ -163,6 +163,13 @@ export const CaseStatus = {
   BLOCKED: 'BLOCKED',
   COMPLETED: 'COMPLETED',
 } as const;
+
+export const CaseStatusLabel: Record<string, string> = {
+  DRAFT: '草稿',
+  IN_PROGRESS: '进行中',
+  BLOCKED: '已拦截',
+  COMPLETED: '已完成',
+};
 
 export const Disposition = {
   OPEN: 'OPEN',
@@ -372,7 +379,7 @@ export const PaymentMode = {
 
 export const PaymentModeLabel: Record<string, string> = {
   FULL: '一次性付清',
-  STAGED: '分期付款',
+  STAGED: '分期支付',
 };
 
 export const InstallmentStatus = {
@@ -408,6 +415,12 @@ export const VAGUE_PRICE_RE =
 
 /** N3 硬规则：买方/案件未登记中信保投保限额时，不得保存或推进合同 */
 export const N3_SINOSURE_UNREGISTERED_REASON = '尚未登记中信保限额，不得签订合同';
+
+/** N5 硬规则：采购合同须关联已签订的销售合同（先销售后采购） */
+export const N5_SALES_LINK_REQUIRED_REASON =
+  '须关联已签订的销售合同（先销售后采购），否则不得保存或推进采购合同';
+export const N5_SALES_NOT_SIGNED_REASON =
+  '关联的销售案件尚未完成销售合同签订，须至少到达合同确认（N3）且已签销售合同';
 
 export const HISTORY_DEV_SOFT_PCT = 0.15;
 export const HISTORY_DEV_MEDIUM_PCT = 0.3;

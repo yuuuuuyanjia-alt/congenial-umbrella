@@ -9,7 +9,7 @@
         <view class="badge" :class="remittanceClass(s.delivery?.code)">交货 {{ remittanceText(s.delivery?.code) }}</view>
         <view class="badge" :class="remittanceClass(s.payment?.code)">付款 {{ remittanceText(s.payment?.code) }}</view>
         <view class="chip">{{ s.poCount || 0 }} 笔采购单</view>
-        <view class="chip" v-if="s.hasStaged">含分期付款</view>
+        <view class="chip" v-if="s.hasStaged">含分期支付</view>
       </view>
     </view>
 
@@ -31,8 +31,8 @@
     </view>
 
     <view class="card">
-      <view class="h2">是否按期交货 · 约定付款日</view>
-      <view class="muted">交货对照实际到货与计划到货（无计划则对照客户合同交期）。付款按每一期的约定付款日判断：未付清且到期已过即为逾期；分期时任一期逾期则总体逾期。</view>
+      <view class="h2">是否按期交货 · 约定付款时间</view>
+      <view class="muted">交货对照实际到货与计划到货（无计划则对照客户合同交期）。付款按每一期的约定付款时间判断：未付清且到期已过即为逾期；分期支付时任一期逾期则总体逾期。</view>
       <view class="row" style="margin-top: 16rpx">
         <view class="stat">
           <view class="stat-n over">{{ s.delivery?.counts?.overdue ?? 0 }}</view>
@@ -62,6 +62,11 @@
         </view>
         <view class="badge" :class="remittanceClass(p.delivery?.code)">交货 {{ remittanceText(p.delivery?.code) }}</view>
       </view>
+      <view class="muted" style="margin-top: 10rpx" v-if="p.salesLink">
+        关联销售合同 {{ p.salesLink.contractNo }} · {{ p.salesLink.customer }} · {{ money(p.salesLink.amountFen, p.salesLink.currency) }} · {{ p.salesLink.statusLabel }}
+      </view>
+      <view class="muted" v-else style="margin-top: 10rpx">尚未关联销售合同</view>
+      <view class="chip" v-if="p.salesLink" style="margin-top: 8rpx" @click.stop="openCase(p.salesLink.id)">查看销售合同</view>
       <view class="muted" style="margin-top: 10rpx">
         计划到货 {{ ymd(p.plannedArrival) }} · 客户交期 {{ ymd(p.contractDelivery) }} · 实际到货 {{ ymd(p.actualArrival) }}
       </view>
@@ -79,9 +84,9 @@
           <view class="badge" :class="remittanceClass(inst.status === 'PAID' ? 'ON_TIME' : inst.status)">{{ inst.statusLabel }}</view>
         </view>
         <view class="muted" style="margin-top: 8rpx">
-          比例 {{ inst.percent != null ? inst.percent + '%' : '—' }} · 本期金额 {{ money(inst.amountFen, p.currency) }}
+          付款比例 {{ inst.percent != null ? inst.percent + '%' : '—' }} · 金额 {{ money(inst.amountFen, p.currency) }}
         </view>
-        <view class="muted">条件：{{ inst.conditionText || '未填' }}</view>
+        <view class="muted">约定付款时间 {{ inst.agreedPaymentTime || ymd(inst.dueAt) || inst.conditionText || '—' }}</view>
         <view class="muted">
           已付 {{ money(inst.paidFen, p.currency) }} · 未付 {{ money(inst.unpaidFen, p.currency) }}
         </view>
@@ -89,9 +94,9 @@
           <view class="badge" :class="remittanceClass(inst.timing?.code)">{{ remittanceText(inst.timing?.code) }}</view>
           <view class="muted">{{ dueFlag(inst) }}</view>
         </view>
-        <view class="muted">约定付款日 {{ ymd(inst.dueAt) }} · 付款日 {{ ymd(inst.paidAt) }}</view>
+        <view class="muted">付款日 {{ ymd(inst.paidAt) }}</view>
       </view>
-      <view class="muted" v-if="!(p.installments || []).length">约定付款日 {{ p.paymentDueAt || '—' }} · 付款日 {{ p.paidAt || '—' }}</view>
+      <view class="muted" v-if="!(p.installments || []).length">约定付款时间 {{ p.paymentDueAt || '—' }} · 付款日 {{ p.paidAt || '—' }}</view>
       <view class="muted" v-if="p.delivery?.note">{{ p.delivery.note }}</view>
     </view>
     <view class="muted" v-if="!s.purchases?.length">暂无采购单。</view>
@@ -117,10 +122,10 @@ function ymd(v?: string | null) {
 }
 
 function dueFlag(inst: any) {
-  if (!inst?.dueAt) return '无约定付款日';
-  if (inst.duePassed) return '已过约定付款日';
-  if (inst.status === 'PAID' && inst.timing?.code === 'OVERDUE') return '付款日晚于约定付款日';
-  return '未过约定付款日';
+  if (!inst?.dueAt && !inst?.conditionText) return '无约定付款时间';
+  if (inst.duePassed) return '已过约定付款时间';
+  if (inst.status === 'PAID' && inst.timing?.code === 'OVERDUE') return '付款日晚于约定付款时间';
+  return '未过约定付款时间';
 }
 
 function openCase(caseId: string) {
