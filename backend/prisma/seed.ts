@@ -195,6 +195,7 @@ async function main() {
   await attachBuyersToCustomers();
   await attachSuppliers();
   await fillPaymentDueDates();
+  const linkedPairs = await linkProcurementPlansToSalesCases();
 
   const customerCount = await prisma.customer.count();
   const enrolledBuyers = await prisma.party.count({ where: { role: 'BUYER', customerId: { not: null } } });
@@ -214,6 +215,10 @@ async function main() {
   console.log('  LIMIT_HIGH', high.caseNo, high.id, '（超额 25,000 USD 高风险，N3 审核）');
   console.log('  SUPPLIER  ', supplierBlock.caseNo, supplierBlock.id, '（国内供应商命中不可靠实体，N5 硬拦截）');
   console.log(`客户管理：${customerCount} 个客户，${enrolledBuyers} 个已达 N3 的买方已挂档（询盘未达 N3 的如 DEMO-BLOCK 不录入）`);
+  console.log('采购合同 ↔ 销售合同（先销售后采购）：');
+  for (const p of linkedPairs) {
+    console.log(`  ${p.poNo || '（无 PO 号）'}  ←  ${p.salesCaseNo}（${p.customer}，${p.caseNo} 采购侧）`);
+  }
 }
 
 function nodeCreates(overrides: Record<string, Partial<{ status: string; decision: string | null; summary: string }>>) {
@@ -571,9 +576,9 @@ function passNodes() {
   return {
     N1: { status: 'PASSED', decision: 'PASS', summary: '当事方齐全，筛查未命中' },
     N2: { status: 'PASSED', decision: 'PASS', summary: '报价 v2 价格基础/有效期/承担方齐全' },
-    N3: { status: 'PASSED', decision: 'PASS', summary: '条款齐全，中信保限额覆盖合同金额' },
+    N3: { status: 'PASSED', decision: 'PASS', summary: '销售合同条款齐全，中信保限额覆盖合同金额' },
     N4: { status: 'PASSED', decision: 'PASS', summary: 'CO-001 数量 8→10，客户与内部确认后生效；变更后再次核对中信保限额' },
-    N5: { status: 'PASSED', decision: 'PASS', summary: '苏州精工机械计划到货 2026-11-28，不晚于合同交期；供应商筛查未命中' },
+    N5: { status: 'PASSED', decision: 'PASS', summary: '已关联本案件销售合同；苏州精工机械计划到货不晚于合同交期；供应商筛查未命中' },
     N6: { status: 'PASSED', decision: 'PASS', summary: '书面指示、内部审批、正本提单（与电放二选一）齐全' },
     N7: { status: 'PASSED', decision: 'PASS', summary: '终稿合同与单证字段一致' },
     N8: { status: 'PASSED', decision: 'PASS', summary: 'HS 8458.11.00 申报要素与原产地证齐全，电子口岸已放行' },
@@ -770,9 +775,9 @@ async function seedGateDemoCase(salesId: string) {
         create: nodeCreates({
           N1: { status: 'PASSED', decision: 'PASS', summary: '筛查通过' },
           N2: { status: 'PASSED', decision: 'PASS', summary: '报价要素齐全' },
-          N3: { status: 'PASSED', decision: 'PASS', summary: '合同条款齐全，中信保限额覆盖合同金额' },
+          N3: { status: 'PASSED', decision: 'PASS', summary: '销售合同条款齐全，中信保限额覆盖合同金额' },
           N4: { status: 'PASSED', decision: 'PASS', summary: '无待确认变更，已跳过变更管理' },
-          N5: { status: 'PASSED', decision: 'PASS', summary: '采购计划到货不晚于合同交期；供应商筛查未命中' },
+          N5: { status: 'PASSED', decision: 'PASS', summary: '已关联销售合同 DEMO-GATE；采购计划到货不晚于合同交期；供应商筛查未命中' },
           N6: { status: 'IN_PROGRESS', decision: null, summary: '待补客户书面指示、内部审批；FOB 须走无提单路径或仍选正本/电放' },
         }),
       },
@@ -910,9 +915,9 @@ async function seedFobNoBlCase(salesId: string, approverId: string) {
         create: nodeCreates({
           N1: { status: 'PASSED', decision: 'PASS', summary: '当事方齐全，筛查未命中' },
           N2: { status: 'PASSED', decision: 'PASS', summary: '报价要素齐全，运费由买方承担' },
-          N3: { status: 'PASSED', decision: 'PASS', summary: 'FOB，条款与中信保限额齐全' },
+          N3: { status: 'PASSED', decision: 'PASS', summary: 'FOB 销售合同，条款与中信保限额齐全' },
           N4: { status: 'PASSED', decision: 'PASS', summary: '无待确认变更' },
-          N5: { status: 'PASSED', decision: 'PASS', summary: '采购计划到货不晚于合同交期；供应商筛查未命中' },
+          N5: { status: 'PASSED', decision: 'PASS', summary: '已关联销售合同 DEMO-FOB；采购计划到货不晚于合同交期；供应商筛查未命中' },
           N6: {
             status: 'PASSED',
             decision: 'PASS',
@@ -1272,12 +1277,12 @@ async function seedSupplierBlockCase(salesId: string) {
         create: nodeCreates({
           N1: { status: 'PASSED', decision: 'PASS', summary: '国外买方筛查未命中' },
           N2: { status: 'PASSED', decision: 'PASS', summary: '报价要素齐全' },
-          N3: { status: 'PASSED', decision: 'PASS', summary: '合同条款与中信保限额齐全' },
+          N3: { status: 'PASSED', decision: 'PASS', summary: '销售合同条款与中信保限额齐全' },
           N4: { status: 'PASSED', decision: 'PASS', summary: '无待确认变更，已跳过变更管理' },
           N5: {
             status: 'BLOCKED',
             decision: 'HARD_BLOCK',
-            summary: '国内供应商高置信命中中国不可靠实体清单，硬拦截',
+            summary: '已关联销售合同 DEMO-SUPPLIER；国内供应商高置信命中中国不可靠实体清单，硬拦截',
           },
         }),
       },
@@ -1592,9 +1597,9 @@ async function seedNordlichtOpenCase(salesId: string, approverId: string) {
         create: nodeCreates({
           N1: { status: 'PASSED', decision: 'PASS', summary: '当事方齐全，筛查未命中' },
           N2: { status: 'PASSED', decision: 'PASS', summary: '报价要素齐全' },
-          N3: { status: 'PASSED', decision: 'PASS', summary: '条款齐全，中信保限额覆盖合同金额' },
+          N3: { status: 'PASSED', decision: 'PASS', summary: '销售合同条款齐全，中信保限额覆盖合同金额' },
           N4: { status: 'PASSED', decision: 'PASS', summary: '无待确认变更' },
-          N5: { status: 'PASSED', decision: 'PASS', summary: '采购到货不晚于合同交期' },
+          N5: { status: 'PASSED', decision: 'PASS', summary: '已关联销售合同 DEMO-NORD-OPEN；采购到货不晚于合同交期' },
           N6: { status: 'PASSED', decision: 'PASS', summary: '书面指示与正本提单齐全' },
           N7: { status: 'PASSED', decision: 'PASS', summary: '单证一致' },
           N8: { status: 'PASSED', decision: 'PASS', summary: '已报关放行，待收汇' },
@@ -1858,9 +1863,9 @@ async function seedNordlichtWipCase(salesId: string) {
     nodeOverrides: {
       N1: { status: 'PASSED', decision: 'PASS', summary: '当事方齐全，筛查未命中' },
       N2: { status: 'PASSED', decision: 'PASS', summary: '报价要素齐全' },
-      N3: { status: 'PASSED', decision: 'PASS', summary: '条款齐全，中信保限额覆盖合同金额' },
+      N3: { status: 'PASSED', decision: 'PASS', summary: '销售合同条款齐全，中信保限额覆盖合同金额' },
       N4: { status: 'PASSED', decision: 'PASS', summary: '无待确认变更' },
-      N5: { status: 'IN_PROGRESS', decision: null, summary: '国内采购备货中，合同尚未履行完毕' },
+      N5: { status: 'IN_PROGRESS', decision: null, summary: '待登记采购合同并关联本销售案件 DEMO-NORD-WIP' },
     },
   });
 }
@@ -1917,7 +1922,7 @@ async function seedHeliosMediumBundle(salesId: string, approverId: string) {
       N2: { status: 'PASSED', decision: 'PASS', summary: '报价要素齐全' },
       N3: { status: 'PASSED', decision: 'PASS', summary: '条款与中信保限额齐全' },
       N4: { status: 'PASSED', decision: 'PASS', summary: '无待确认变更' },
-      N5: { status: 'IN_PROGRESS', decision: null, summary: '采购备货中，尚未装运' },
+      N5: { status: 'IN_PROGRESS', decision: null, summary: '待登记采购合同并关联本销售案件 DEMO-HELIOS-WIP，尚未装运' },
     },
   });
   const n3 = await seedBareExport({
@@ -2020,6 +2025,40 @@ async function fillPaymentDueDates() {
     if (!due) continue;
     await prisma.contract.update({ where: { id: row.id }, data: { paymentDueAt: due } });
   }
+}
+
+async function linkProcurementPlansToSalesCases() {
+  const plans = await prisma.procurementPlan.findMany({
+    include: {
+      case: { include: { contract: true, parties: true } },
+    },
+  });
+  const pairs: Array<{ poNo: string | null; caseNo: string; salesCaseNo: string; customer: string }> = [];
+  for (const plan of plans) {
+    const salesCaseId = plan.salesCaseId || plan.caseId;
+    if (!plan.salesCaseId) {
+      await prisma.procurementPlan.update({
+        where: { id: plan.id },
+        data: { salesCaseId },
+      });
+    }
+    const sales = salesCaseId === plan.caseId ? plan.case : await prisma.tradeCase.findUnique({
+      where: { id: salesCaseId },
+      include: { contract: true, parties: true },
+    });
+    const customer =
+      sales?.contract?.counterparty ||
+      sales?.parties.find((p) => p.role === 'BUYER')?.name ||
+      plan.case.contract?.counterparty ||
+      '—';
+    pairs.push({
+      poNo: plan.poNo,
+      caseNo: plan.case.caseNo,
+      salesCaseNo: sales?.caseNo || plan.case.caseNo,
+      customer,
+    });
+  }
+  return pairs;
 }
 
 main()

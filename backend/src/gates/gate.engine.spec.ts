@@ -136,6 +136,8 @@ function baseSnap(over: Partial<CaseSnapshot> = {}): CaseSnapshot {
       poEvidenceStub: 'PO-BH-2026-011.pdf',
       delayRegistered: false,
       customerConsent: false,
+      salesCaseId: 'case-sales-1',
+      salesContractSigned: true,
     },
     supplierScreened: true,
     customs: {
@@ -1066,6 +1068,8 @@ describe('闸门引擎 N5 国内采购/备货', () => {
     poEvidenceStub: 'PO-BH-2026-011.pdf',
     delayRegistered: false,
     customerConsent: false,
+    salesCaseId: 'case-sales-1',
+    salesContractSigned: true,
     ...over,
   });
 
@@ -1264,6 +1268,22 @@ describe('闸门引擎 N5 国内采购/备货', () => {
     );
     expect(r.canProceed).toBe(false);
     expect(r.missing).toContain('N5_PENDING_CHANGE');
+  });
+
+  it('未关联销售合同不得推进采购', () => {
+    const r = evaluateN5(baseSnap({ procurementPlan: plan({ salesCaseId: '', salesContractSigned: false }) }));
+    expect(r.canProceed).toBe(false);
+    expect(r.missing).toContain('N5_SALES_LINK');
+  });
+
+  it('关联的销售案件尚未签订销售合同不得推进', () => {
+    const r = evaluateN5(
+      baseSnap({
+        procurementPlan: plan({ salesCaseId: 'case-n3-draft', salesContractSigned: false }),
+      }),
+    );
+    expect(r.canProceed).toBe(false);
+    expect(r.missing).toContain('N5_SALES_NOT_SIGNED');
   });
 });
 

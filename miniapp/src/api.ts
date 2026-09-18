@@ -45,6 +45,7 @@ export const api = {
   applyChange: (id: string, changeId: string) =>
     request('POST', `/cases/${id}/nodes/N4/changes/${changeId}/apply`),
   savePlan: (id: string, body: unknown) => request('POST', `/cases/${id}/nodes/N5/plan`, body),
+  salesOptions: (id: string) => request('GET', `/cases/${id}/nodes/N5/sales-options`),
   saveShipment: (id: string, body: unknown) => request('POST', `/cases/${id}/nodes/N6/shipment`, body),
   saveDocument: (id: string, body: unknown) => request('POST', `/cases/${id}/nodes/N7/documents`, body),
   saveFix: (id: string, body: unknown) => request('POST', `/cases/${id}/nodes/N7/fixes`, body),

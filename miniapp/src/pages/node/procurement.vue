@@ -1,9 +1,39 @@
 <template>
   <view class="wrap" v-if="c">
     <view class="card">
-      <view class="h2">国内采购 / 备货</view>
+      <view class="h2">采购合同 / 国内备货</view>
       <view class="muted">
-        公司无自有产线，签约后向国内供应商采购。须登记供应商、采购合同/PO、计划到货日与货款支付计划（一次性付清或分期），并对供应商做制裁/不可靠实体筛查。计划到货不得晚于客户合同交货期；若延期须登记结构化原因并保留客户同意证据。
+        销售合同与采购合同分开签订。公司惯例先销售后采购：本页是采购合同，须先选择一笔已签订的销售/出口合同（已过 N3），否则不得保存或推进。公司无自有产线，向国内供应商采购。须登记供应商、采购合同/PO、计划到货日与货款支付计划（一次性付清或分期），并对供应商做制裁/不可靠实体筛查。计划到货不得晚于客户合同交货期；若延期须登记结构化原因并保留客户同意证据。
+      </view>
+    </view>
+
+    <view class="card">
+      <view class="h2">关联销售合同</view>
+      <view class="muted">请选择本采购合同服务的出口销售案件。列表仅含已签订销售合同的案件（客户、合同号、金额、状态）。</view>
+      <view class="err" v-if="!form.salesCaseId" style="margin-top: 12rpx">尚未选择销售合同，不得保存采购合同。</view>
+      <view
+        class="pick"
+        :class="{ 'pick-on': form.salesCaseId === opt.id }"
+        v-for="opt in salesOptions"
+        :key="opt.id"
+        @click="pickSales(opt)"
+      >
+        <view class="row">
+          <view>
+            <view class="h2" style="margin: 0">{{ opt.customer }} · {{ opt.contractNo }}</view>
+            <view class="muted" style="margin-top: 6rpx">{{ opt.goodsDesc }}</view>
+          </view>
+          <view>
+            <view class="badge" :class="opt.isCurrent ? 'badge-pass' : 'badge-stub'">{{ opt.isCurrent ? '本案' : opt.statusLabel }}</view>
+          </view>
+        </view>
+        <view class="muted" style="margin-top: 8rpx">
+          销售金额 {{ money(opt.amountFen, opt.currency) }} · {{ opt.currentNodeLabel }} · {{ opt.statusLabel }}
+        </view>
+      </view>
+      <view class="muted" v-if="!salesOptions.length" style="margin-top: 12rpx">暂无已签订的销售合同。请先完成销售合同（N3）签订。</view>
+      <view class="ok" v-if="selectedSales" style="margin-top: 12rpx">
+        已关联：{{ selectedSales.customer }} · {{ selectedSales.contractNo }} · {{ money(selectedSales.amountFen, selectedSales.currency) }}
       </view>
     </view>
 
@@ -131,12 +161,13 @@
 <script setup lang="ts">
 import { onLoad } from '@dcloudio/uni-app';
 import { computed, reactive, ref } from 'vue';
-import { api, decisionClass, decisionText, fenToYuan, toastErr, yuanToFen } from '../../api';
+import { api, decisionClass, decisionText, fenToYuan, money, toastErr, yuanToFen } from '../../api';
 
 const id = ref('');
 const c = ref<any>(null);
 const err = ref('');
 const ok = ref('');
+const salesOptions = ref<any[]>([]);
 const triggers = [
   { key: 'FORCE_MAJEURE', label: '不可抗力' },
   { key: 'PORT_CONGESTION', label: '港口拥堵' },
@@ -162,6 +193,7 @@ const form = reactive({
   supplierCountry: 'CN',
   supplierRegistrationNo: '',
   supplierAddress: '',
+  salesCaseId: '',
   poNo: '',
   contractDelivery: '2026-11-30',
   plannedArrival: '2026-11-28',
@@ -183,6 +215,7 @@ const form = reactive({
   customerConsentRef: '',
 });
 
+const selectedSales = computed(() => salesOptions.value.find((o: any) => o.id === form.salesCaseId) || c.value?.procurementPlan?.salesLink || null);
 const supplierReport = computed(() =>
   (c.value?.kycReports || []).find((r: any) => r.nodeCode === 'N5'),
 );
@@ -323,6 +356,11 @@ function instFromPlan(p: any) {
 
 async function reload() {
   c.value = await api.case(id.value);
+  try {
+    salesOptions.value = await api.salesOptions(id.value);
+  } catch {
+    salesOptions.value = [];
+  }
   const supplier = (c.value.parties || []).find((p: any) => p.role === 'SUPPLIER');
   if (supplier) {
     form.supplierName = supplier.name || '';
@@ -334,6 +372,9 @@ async function reload() {
   const p = c.value.procurementPlan;
   const d = c.value.contract?.deliveryDate;
   if (d) form.contractDelivery = String(d).slice(0, 10);
+  const savedSalesId = p?.salesCaseId || p?.salesLink?.id;
+  const currentEligible = salesOptions.value.find((o: any) => o.isCurrent);
+  form.salesCaseId = savedSalesId || currentEligible?.id || form.salesCaseId;
   if (p) {
     form.poNo = p.poNo || form.poNo;
     form.contractDelivery = String(p.contractDelivery || form.contractDelivery).slice(0, 10);
@@ -354,7 +395,15 @@ async function reload() {
     form.paymentMode = loaded.paymentMode;
     form.installments = loaded.installments;
     form.paymentConditionText = loaded.installments[0]?.conditionText || p.installments?.[0]?.conditionText || '一次性付清';
+  } else if (selectedSales.value?.deliveryDate && !form.contractDelivery) {
+    form.contractDelivery = String(selectedSales.value.deliveryDate).slice(0, 10);
   }
+}
+
+function pickSales(opt: any) {
+  form.salesCaseId = opt.id;
+  if (opt.deliveryDate) form.contractDelivery = String(opt.deliveryDate).slice(0, 10);
+  ok.value = `已选择销售合同 ${opt.customer} · ${opt.contractNo}`;
 }
 
 function stubUpload() {
@@ -365,6 +414,10 @@ function stubUpload() {
 
 async function save(silent = false) {
   err.value = '';
+  if (!form.salesCaseId) {
+    err.value = '须关联已签订的销售合同（先销售后采购），否则不得保存或推进采购合同';
+    return false;
+  }
   const payload: any = {
     ...form,
     amountFen: form.amountYuan === '' ? undefined : yuanToFen(form.amountYuan),
@@ -374,6 +427,7 @@ async function save(silent = false) {
     paidAt: form.paidAt || undefined,
     paymentMode: form.paymentMode,
     paymentConditionText: form.paymentConditionText || undefined,
+    salesCaseId: form.salesCaseId,
   };
   if (form.paymentMode === 'STAGED') {
     payload.installments = form.installments.map((row, i) => ({
@@ -389,16 +443,24 @@ async function save(silent = false) {
   } else {
     payload.installments = undefined;
   }
-  await api.savePlan(id.value, payload);
-  await reload();
-  if (!silent) ok.value = '采购/备货已保存';
+  try {
+    await api.savePlan(id.value, payload);
+    await reload();
+    if (!silent) ok.value = '采购合同已保存，已关联销售合同';
+    return true;
+  } catch (e: any) {
+    err.value = (e?.reasons || []).join('；') || e?.message || JSON.stringify(e);
+    toastErr(e);
+    return false;
+  }
 }
 
 async function runScreen() {
   err.value = '';
   ok.value = '';
   try {
-    await save(true);
+    const saved = await save(true);
+    if (!saved) return;
     await api.screenSupplier(id.value);
     ok.value = '供应商筛查完成（模拟黑名单，无真实 API Key）';
     await reload();
@@ -412,7 +474,8 @@ async function tryAdvance() {
   err.value = '';
   ok.value = '';
   try {
-    await save(true);
+    const saved = await save(true);
+    if (!saved) return;
     const r = await api.advance(id.value, 'N5');
     ok.value = `已推进至 ${r.nextNode}`;
     await reload();
@@ -429,5 +492,16 @@ async function tryAdvance() {
   padding: 16rpx 16rpx 20rpx;
   margin-top: 16rpx;
   background: #fbfaf7;
+}
+.pick {
+  border: 2rpx solid #e8eef3;
+  border-radius: 12rpx;
+  padding: 16rpx;
+  margin-top: 12rpx;
+  background: #fbfaf7;
+}
+.pick-on {
+  border-color: #0b3a5b;
+  background: #e8eef3;
 }
 </style>

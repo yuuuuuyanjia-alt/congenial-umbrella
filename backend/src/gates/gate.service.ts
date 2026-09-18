@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CaseSnapshot, CustomsSnap, DocSnap, GateResult, HsTemplateSnap } from '../common/types';
 import { evaluateNode } from './gate.engine';
 import { CustomersService } from '../customers/customers.service';
+import { isSalesContractSigned, n3StatusOf } from '../cases/sales-link';
 
 @Injectable()
 export class GateService {
@@ -26,7 +27,7 @@ export class GateService {
         nodes: true,
         quotes: { orderBy: { version: 'asc' } },
         changeOrders: { include: { diffs: true }, orderBy: { createdAt: 'asc' } },
-        procurementPlan: true,
+        procurementPlan: { include: { salesCase: { include: { contract: true, nodes: true, parties: true } } } },
         customs: true,
         sinosurePolicies: { orderBy: { createdAt: 'asc' } },
       },
@@ -72,7 +73,35 @@ export class GateService {
         ...co,
         diffs: co.diffs,
       })),
-      procurementPlan: c.procurementPlan,
+      procurementPlan: c.procurementPlan
+        ? {
+            poNo: c.procurementPlan.poNo,
+            plannedArrival: c.procurementPlan.plannedArrival,
+            contractDelivery: c.procurementPlan.contractDelivery,
+            poEvidenceStub: c.procurementPlan.poEvidenceStub,
+            poEvidenceId: c.procurementPlan.poEvidenceId,
+            delayRegistered: c.procurementPlan.delayRegistered,
+            delayTriggerCode: c.procurementPlan.delayTriggerCode,
+            delayTriggerRef: c.procurementPlan.delayTriggerRef,
+            delayReason: c.procurementPlan.delayReason,
+            customerConsent: c.procurementPlan.customerConsent,
+            customerConsentEvidenceId: c.procurementPlan.customerConsentEvidenceId,
+            actualArrival: c.procurementPlan.actualArrival,
+            amountFen: c.procurementPlan.amountFen,
+            currency: c.procurementPlan.currency,
+            paidFen: c.procurementPlan.paidFen,
+            paymentDueAt: c.procurementPlan.paymentDueAt,
+            paidAt: c.procurementPlan.paidAt,
+            paymentMode: c.procurementPlan.paymentMode,
+            salesCaseId: c.procurementPlan.salesCaseId,
+            salesCaseNo: c.procurementPlan.salesCase?.caseNo ?? null,
+            salesContractSigned: isSalesContractSigned({
+              currentNode: c.procurementPlan.salesCase?.currentNode,
+              n3Status: n3StatusOf(c.procurementPlan.salesCase?.nodes),
+              hasContract: !!c.procurementPlan.salesCase?.contract,
+            }),
+          }
+        : null,
       customs: c.customs ? toCustomsSnap(c.customs) : null,
       hsTemplate: hsTpl ? toHsSnap(hsTpl) : null,
       costFloorFen: floor?.floorFen ?? null,

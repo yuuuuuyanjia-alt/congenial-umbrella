@@ -1,9 +1,9 @@
 <template>
   <view class="wrap" v-if="c">
     <view class="card">
-      <view class="h2">合同 / 订单确认</view>
-      <view class="muted">硬规则：中信保限额未登记，不得签订合同。请先登记投保限额，再保存合同要素。所有权保留、争议解决条款为必填。占用 = 未履行完毕合同未回款 + 已履行完毕合同未回款 + 新签订合同金额；超额将按分档提示或拦截。保存合同或推进本节点后，本案买方将自动录入或合并至客户管理。</view>
-      <view class="err" v-if="!hasLimit" style="margin-top: 12rpx">尚未登记中信保限额，不得签订合同。</view>
+      <view class="h2">销售合同 / 订单确认</view>
+      <view class="muted">销售合同与采购合同分开签订。硬规则：中信保限额未登记，不得签订销售合同。请先登记投保限额，再保存合同要素。所有权保留、争议解决条款为必填。占用 = 未履行完毕合同未回款 + 已履行完毕合同未回款 + 新签订合同金额；超额将按分档提示或拦截。保存合同或推进本节点后，本案买方将自动录入或合并至客户管理。公司惯例先销售后采购：国内采购合同在 N5 另签，并须关联本销售合同。</view>
+      <view class="err" v-if="!hasLimit" style="margin-top: 12rpx">尚未登记中信保限额，不得签订销售合同。</view>
     </view>
     <view class="card">
       <view class="label">相对方</view>
@@ -27,7 +27,7 @@
       <view class="label">争议解决条款</view>
       <switch :checked="form.hasDisputeClause" @change="(e: any) => (form.hasDisputeClause = e.detail.value)" />
       <view class="btn" @click="save">保存合同要素</view>
-      <view class="muted" v-if="!hasLimit" style="margin-top: 8rpx">须先保存中信保限额，否则保存合同将被拒绝。</view>
+      <view class="muted" v-if="!hasLimit" style="margin-top: 8rpx">须先保存中信保限额，否则保存销售合同将被拒绝。</view>
     </view>
 
     <view class="card">
@@ -153,7 +153,7 @@ async function save() {
       currency: form.currency,
     });
     c.value = await api.case(id.value);
-    ok.value = '合同要素已保存，已按当前金额测算占用；买方已录入或合并至客户管理';
+    ok.value = '销售合同要素已保存，已按当前金额测算占用；买方已录入或合并至客户管理';
     return true;
   } catch (e: any) {
     err.value = gateMessage(e);

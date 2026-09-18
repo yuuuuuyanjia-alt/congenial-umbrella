@@ -62,6 +62,11 @@
         </view>
         <view class="badge" :class="remittanceClass(p.delivery?.code)">交货 {{ remittanceText(p.delivery?.code) }}</view>
       </view>
+      <view class="muted" style="margin-top: 10rpx" v-if="p.salesLink">
+        关联销售合同 {{ p.salesLink.contractNo }} · {{ p.salesLink.customer }} · {{ money(p.salesLink.amountFen, p.salesLink.currency) }} · {{ p.salesLink.statusLabel }}
+      </view>
+      <view class="muted" v-else style="margin-top: 10rpx">尚未关联销售合同</view>
+      <view class="chip" v-if="p.salesLink" style="margin-top: 8rpx" @click.stop="openCase(p.salesLink.id)">查看销售合同</view>
       <view class="muted" style="margin-top: 10rpx">
         计划到货 {{ ymd(p.plannedArrival) }} · 客户交期 {{ ymd(p.contractDelivery) }} · 实际到货 {{ ymd(p.actualArrival) }}
       </view>

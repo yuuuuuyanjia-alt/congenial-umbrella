@@ -3,6 +3,7 @@ import { PartyRole } from '../common/constants';
 import { evaluateRemittance, moneyBuckets, summarizeRemittance } from '../customers/remittance';
 import { PrismaService } from '../prisma/prisma.service';
 import { presentPlanPayment } from './payment-schedule';
+import { presentSalesLink } from '../cases/sales-link';
 
 @Injectable()
 export class SuppliersService {
@@ -56,7 +57,12 @@ export class SuppliersService {
             case: {
               include: {
                 contract: true,
-                procurementPlan: { include: { installments: { orderBy: { seq: 'asc' } } } },
+                procurementPlan: {
+                  include: {
+                    installments: { orderBy: { seq: 'asc' } },
+                    salesCase: { include: { contract: true, parties: true, nodes: true } },
+                  },
+                },
               },
             },
           },
@@ -91,6 +97,7 @@ export class SuppliersService {
       receivedAt: plan?.actualArrival ?? null,
     });
     const payment = schedule.payment;
+    const salesLink = plan?.salesCase ? presentSalesLink(plan.salesCase) : null;
     return {
       id: c.id,
       caseNo: c.caseNo,
@@ -100,7 +107,7 @@ export class SuppliersService {
       goodsDesc: c.goodsDesc,
       poNo: plan?.poNo ?? null,
       plannedArrival: plan?.plannedArrival ?? null,
-      contractDelivery: plan?.contractDelivery ?? c.contract?.deliveryDate ?? null,
+      contractDelivery: plan?.contractDelivery ?? c.contract?.deliveryDate ?? salesLink?.deliveryDate ?? null,
       actualArrival: plan?.actualArrival ?? null,
       delayRegistered: plan?.delayRegistered ?? false,
       amountFen,
@@ -116,6 +123,8 @@ export class SuppliersService {
       delivery,
       payment,
       hasPo: !!(plan?.poNo || plan?.amountFen || plan),
+      salesCaseId: plan?.salesCaseId ?? null,
+      salesLink,
     };
   }
 

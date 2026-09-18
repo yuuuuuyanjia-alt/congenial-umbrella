@@ -169,6 +169,11 @@ export interface ProcurementPlanSnap {
   poNo?: string | null;
   plannedArrival?: string | Date | null;
   contractDelivery?: string | Date | null;
+  /** 本采购合同服务的销售/出口案件 id */
+  salesCaseId?: string | null;
+  salesCaseNo?: string | null;
+  /** 关联销售案件是否已签销售合同（N3 已通过，或已过 N3 且有合同） */
+  salesContractSigned?: boolean;
   poEvidenceStub?: string | null;
   poEvidenceId?: string | null;
   delayRegistered: boolean;
