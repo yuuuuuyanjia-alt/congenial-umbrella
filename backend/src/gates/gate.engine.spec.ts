@@ -13,6 +13,7 @@ import {
   evaluateN9,
   effectiveN6Incoterms,
   isCifFamilyIncoterms,
+  isN7NoBlPath,
   nextNode,
   parseIncotermsCode,
   checkProcurementDelayVsSalesDelivery,
@@ -190,6 +191,30 @@ function baseSnap(over: Partial<CaseSnapshot> = {}): CaseSnapshot {
     occupancyReviews: [],
     ...over,
   };
+}
+
+function fobNoBlDocs() {
+  return baseSnap()
+    .documents.filter((d) => d.type !== 'BL')
+    .map((d) => ({ ...d, fields: { ...d.fields, incoterms: 'FOB' } }));
+}
+
+function fobNoBlSnap(over: Partial<CaseSnapshot> = {}): CaseSnapshot {
+  return baseSnap({
+    contract: { ...baseSnap().contract!, incoterms: 'FOB' },
+    shipment: {
+      hasCustomerWrittenInstruction: true,
+      instructionRef: 'INST-FOB-001',
+      hasInternalApproval: true,
+      blControl: 'NO_BL',
+      blNo: null,
+      noBlReason: 'FOB 买方指定货代，卖方不控提单',
+      noBlRef: 'SA-FOB-2026-001',
+      noBlEvidenceStub: 'DEMO-SA-FOB.pdf',
+    },
+    documents: fobNoBlDocs(),
+    ...over,
+  });
 }
 
 describe('闸门引擎 MVP 节点', () => {
@@ -962,6 +987,151 @@ describe('闸门引擎 MVP 节点', () => {
     );
     expect(r.canProceed).toBe(true);
     expect(r.missing.some((m) => m.includes('incoterms'))).toBe(false);
+  });
+
+  it('N7 FOB 无提单路径有装船通知/订舱号即可过闸，不要求提单', () => {
+    const snap = fobNoBlSnap();
+    expect(isN7NoBlPath(snap)).toBe(true);
+    const r = evaluateN7(snap);
+    expect(r.canProceed).toBe(true);
+    expect(r.missing).not.toContain('N7_BL');
+    expect(r.missing).not.toContain('N7_SHIPPING_ADVICE');
+  });
+
+  it('N7 FOB_NO_BL 别名同样不要求提单', () => {
+    const r = evaluateN7(
+      fobNoBlSnap({
+        shipment: { ...fobNoBlSnap().shipment!, blControl: 'FOB_NO_BL' },
+      }),
+    );
+    expect(r.canProceed).toBe(true);
+    expect(r.missing).not.toContain('N7_BL');
+  });
+
+  it('N7 FOB 无提单路径缺装船通知/订舱依据则拒绝', () => {
+    const r = evaluateN7(
+      fobNoBlSnap({
+        shipment: {
+          hasCustomerWrittenInstruction: true,
+          instructionRef: 'INST-FOB-001',
+          hasInternalApproval: true,
+          blControl: 'NO_BL',
+          blNo: null,
+          noBlReason: '',
+          noBlRef: '',
+          noBlEvidenceStub: '',
+        },
+      }),
+    );
+    expect(r.canProceed).toBe(false);
+    expect(r.missing).toContain('N7_SHIPPING_ADVICE');
+    expect(r.missing).not.toContain('N7_BL');
+  });
+
+  it('N7 FOB 无提单路径即使库里有不一致提单也不硬要比对提单', () => {
+    const r = evaluateN7(
+      fobNoBlSnap({
+        documents: [
+          ...fobNoBlDocs(),
+          {
+            type: 'BL',
+            isFinal: true,
+            fields: {
+              buyerName: 'WRONG BUYER',
+              consigneeName: 'WRONG',
+              goodsDesc: 'other',
+              amountFen: 1,
+              currency: 'EUR',
+              incoterms: 'CIF',
+            },
+          },
+        ],
+      }),
+    );
+    expect(r.canProceed).toBe(true);
+    expect(r.missing).not.toContain('N7_BL');
+    expect(r.missing.some((m) => m.includes('MISMATCH'))).toBe(false);
+  });
+
+  it('N7 CIF/卖方提单路径仍须提单一致', () => {
+    const missingBl = evaluateN7(
+      baseSnap({
+        documents: baseSnap().documents.filter((d) => d.type !== 'BL'),
+      }),
+    );
+    expect(missingBl.canProceed).toBe(false);
+    expect(missingBl.missing).toContain('N7_BL');
+
+    const mismatch = evaluateN7(
+      baseSnap({
+        documents: baseSnap().documents.map((d) =>
+          d.type === 'BL' ? { ...d, fields: { ...d.fields, buyerName: 'OTHER BUYER' } } : d,
+        ),
+      }),
+    );
+    expect(mismatch.canProceed).toBe(false);
+    expect(mismatch.missing.some((m) => m.includes('buyerName'))).toBe(true);
+  });
+
+  it('N7 FOB 若实际仍走正本/电放则仍须提单', () => {
+    const r = evaluateN7(
+      baseSnap({
+        contract: { ...baseSnap().contract!, incoterms: 'FOB' },
+        shipment: {
+          hasCustomerWrittenInstruction: true,
+          instructionRef: 'INST-001',
+          hasInternalApproval: true,
+          blControl: 'ORIGINAL',
+          blNo: 'COSU123',
+        },
+        documents: fobNoBlDocs(),
+      }),
+    );
+    expect(isN7NoBlPath(
+      baseSnap({
+        contract: { ...baseSnap().contract!, incoterms: 'FOB' },
+        shipment: {
+          hasCustomerWrittenInstruction: true,
+          instructionRef: 'INST-001',
+          hasInternalApproval: true,
+          blControl: 'ORIGINAL',
+        },
+      }),
+    )).toBe(false);
+    expect(r.canProceed).toBe(false);
+    expect(r.missing).toContain('N7_BL');
+  });
+
+  it('N7 CIF 即使填了装船通知仍须提单（无提单仅适用于买方安排运输）', () => {
+    const r = evaluateN7(
+      baseSnap({
+        shipment: {
+          ...baseSnap().shipment!,
+          blControl: 'NO_BL',
+          noBlRef: 'SA-CIF-SHOULD-NOT-SKIP',
+          noBlReason: '误选无提单',
+        },
+        documents: baseSnap().documents.filter((d) => d.type !== 'BL'),
+      }),
+    );
+    expect(r.canProceed).toBe(false);
+    expect(r.missing).toContain('N7_BL');
+    expect(r.missing).not.toContain('N7_SHIPPING_ADVICE');
+  });
+
+  it('N7 无运输术语回退 FOB 且 NO_BL 时不要求提单', () => {
+    const r = evaluateN7(
+      fobNoBlSnap({
+        contract: {
+          ...baseSnap().contract!,
+          incoterms: 'T/T',
+          ttTiming: 'AFTER',
+          paymentTerms: '后 T/T 30 days',
+        },
+      }),
+    );
+    expect(r.canProceed).toBe(true);
+    expect(r.missing).not.toContain('N7_BL');
   });
 
   it('N9 缺少第三方证明/汇款附言/单证证明/放行审批拒绝', () => {

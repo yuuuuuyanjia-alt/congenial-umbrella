@@ -100,7 +100,7 @@ export class CatalogController {
         tradeTerms: TRADE_TERM_OPTIONS,
         ttTiming: TtTimingLabel,
         n6n7:
-          '装运/单证规则跟随所选运输术语：FOB/EXW/FAS/FCA 买方安排运输（可无提单）；CIF/CFR 等卖方出单（须正本或电放）。T/T 不是 Incoterm。无有效运输术语时明确回退为 FOB，避免把 T/T 切成 T 后误走卖方提单路径。存在未生效变更单时 N6/N7/N8/N9 硬拦截，须先生效变更。',
+          '装运/单证规则跟随所选运输术语：FOB/EXW/FAS/FCA 买方安排运输（可无提单）；CIF/CFR 等卖方出单（须正本或电放）。N7 跟随 N6：无提单路径核验装船通知/订舱号，不硬要提单；卖方提单路径仍须提单一致。T/T 不是 Incoterm。无有效运输术语时明确回退为 FOB，避免把 T/T 切成 T 后误走卖方提单路径。存在未生效变更单时 N6/N7/N8/N9 硬拦截，须先生效变更。',
       },
       hsTemplates: hsTemplates.map((h) => ({
         ...h,
