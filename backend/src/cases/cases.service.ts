@@ -33,6 +33,7 @@ import {
   nodeLabel,
   parseContractListKind,
   presentSalesLink,
+  procurementContractTitle,
   salesCustomerOf,
   signedSalesOptions,
   supplierNameOf,
@@ -91,16 +92,25 @@ export class CasesService {
         : scope === 'procurement'
           ? rows.filter(isProcurementContractListItem)
           : rows;
-    return filtered.map((c) => ({
-      ...c,
-      customer: salesCustomerOf(c),
-      signed: isEligibleSalesCase(c),
-      currentNodeLabel: nodeLabel(c.currentNode),
-      statusLabel: CaseStatusLabel[c.status] || c.status,
-      supplierName: supplierNameOf(c),
-      poNo: c.procurementPlan?.poNo || null,
-      salesLink: c.procurementPlan?.salesCase ? presentSalesLink(c.procurementPlan.salesCase) : null,
-    }));
+    return filtered.map((c) => {
+      const salesLink = c.procurementPlan?.salesCase ? presentSalesLink(c.procurementPlan.salesCase) : null;
+      const supplierName = supplierNameOf(c);
+      return {
+        ...c,
+        customer: salesCustomerOf(c),
+        signed: isEligibleSalesCase(c),
+        currentNodeLabel: nodeLabel(c.currentNode),
+        statusLabel: CaseStatusLabel[c.status] || c.status,
+        supplierName,
+        poNo: c.procurementPlan?.poNo || null,
+        salesLink,
+        procurementTitle: procurementContractTitle({
+          ...c,
+          supplierName,
+          salesLink,
+        }),
+      };
+    });
   }
 
   async get(id: string) {
@@ -134,8 +144,20 @@ export class CasesService {
     if (!c) throw new NotFoundException('案件不存在');
     const planPayment = c.procurementPlan ? presentPlanPayment(c.procurementPlan) : null;
     const sinosureExposure = await this.customers.occupancyForCase(id);
+    const salesLink = c.procurementPlan?.salesCase ? presentSalesLink(c.procurementPlan.salesCase) : null;
+    const supplierName = supplierNameOf(c);
     return {
       ...c,
+      customer: salesCustomerOf(c),
+      supplierName,
+      procurementTitle: procurementContractTitle({
+        ...c,
+        supplierName,
+        salesLink,
+        procurementPlan: c.procurementPlan
+          ? { ...c.procurementPlan, salesLink, salesCase: c.procurementPlan.salesCase }
+          : null,
+      }),
       catalog: NODE_CATALOG,
       sinosureExposure,
       kycReports: c.kycReports.map((k) => ({ ...k, payload: safeJson(k.payload) })),

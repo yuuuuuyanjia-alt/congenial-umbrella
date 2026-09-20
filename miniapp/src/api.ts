@@ -127,6 +127,47 @@ export function isProcurementListCase(c: any) {
   return hasReachedNode(c?.currentNode, 'N5') || !!c?.procurementPlan || !!c?.poNo;
 }
 
+function firstNonEmpty(...vals: Array<string | null | undefined>) {
+  for (const v of vals) {
+    const t = String(v ?? '').trim();
+    if (t) return t;
+  }
+  return '';
+}
+
+/**
+ * 采购合同主标题：`{供应商名称}采购{产品}出口{客户公司}`。
+ * 品名回退：关联销售合同 goodsDesc → 本案 goodsDesc → 合同货物 → 报关品名。
+ */
+export function procurementContractTitle(c: any, live?: { supplierName?: string; productName?: string; customerName?: string }) {
+  const link = c?.salesLink || c?.procurementPlan?.salesLink;
+  const supplier =
+    firstNonEmpty(
+      live?.supplierName,
+      c?.supplierName,
+      (c?.parties || []).find((p: any) => p.role === 'SUPPLIER')?.name,
+    ) || '供应商待登记';
+  const product =
+    firstNonEmpty(
+      live?.productName,
+      link?.goodsDesc,
+      c?.procurementPlan?.salesCase?.goodsDesc,
+      c?.goodsDesc,
+      c?.contract?.goodsDesc,
+      c?.customs?.productName,
+    ) || '货物';
+  const customer =
+    firstNonEmpty(
+      live?.customerName,
+      link?.customer,
+      c?.customer,
+      c?.contract?.counterparty,
+      c?.contract?.buyerName,
+      (c?.parties || []).find((p: any) => p.role === 'BUYER')?.name,
+    ) || '客户待关联';
+  return `${supplier}采购${product}出口${customer}`;
+}
+
 export function nodePage(code: string) {
   if (code === 'N1') return '/pages/node/kyc';
   if (code === 'N2') return '/pages/node/quote';

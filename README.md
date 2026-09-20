@@ -169,6 +169,8 @@ npm test
 
 同一出口案件可同时出现在两个列表（销售面与采购面分开看），不另建一套合同主数据。`GET /api/cases?kind=sales` / `kind=procurement` 为列表过滤；首页演示路径仍用 `GET /api/cases`（全量）。
 
+采购合同列表卡片与详情页主标题格式为 **`{供应商名称}采购{产品}出口{客户公司}`**，例如「苏州精工机械有限公司采购数控机床配件出口Nordlicht GmbH」。产品字段优先取**关联销售合同**的 `goodsDesc`（出口品名），其次本案 `goodsDesc`（货物描述/品名）、销售合同 `goodsDesc`、报关 `productName`；都没有时显示「货物」。客户取关联销售合同买方（未关联则回退本案买方）。供应商未登记时显示「供应商待登记」。销售合同管理列表标题仍为客户名称，不套用该模板。`GET /api/cases?kind=procurement` 与案件详情会返回 `procurementTitle`。
+
 ## 客户管理
 
 首页顶部「工作入口」进入 **客户管理**。仅收录 **已到达合同/订单确认（N3）及之后** 的买方：询盘 KYC（N1）填写的买方会带到合同节点，但 **未到达 N3 的案件不会作为正式客户出现**（例如 `DEMO-BLOCK` 停在 N1）。同一买方多笔已达 N3 的订单合并到同一客户详情。
@@ -269,7 +271,7 @@ curl -s -X POST http://127.0.0.1:3000/api/cases/<DEMO-LIMIT的id>/nodes/N3/advan
 
 常用接口：
 
-- `GET /api/cases` 案件列表；`?kind=sales` 销售合同列表（已达 N3 或已有销售合同）；`?kind=procurement` 采购合同列表（已达 N5 或已有采购 PO）
+- `GET /api/cases` 案件列表；`?kind=sales` 销售合同列表（已达 N3 或已有销售合同）；`?kind=procurement` 采购合同列表（已达 N5 或已有采购 PO，条目含 `procurementTitle`：供应商采购产品出口客户）
 - `GET /api/catalog` 节点、HS 模板、延期原因、价格基础等
 - `POST /api/cases/:id/nodes/N1/screen` 模拟筛查
 - `POST /api/cases/:id/nodes/N2/quotes` 保存报价新版本

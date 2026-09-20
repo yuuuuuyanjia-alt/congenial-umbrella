@@ -1,7 +1,8 @@
 <template>
   <view class="wrap" v-if="c">
     <view class="card">
-      <view class="h2">采购合同 / 国内备货</view>
+      <view class="h1" style="line-height: 1.35">{{ contractTitle }}</view>
+      <view class="muted" style="margin-top: 8rpx">采购合同 / 国内备货</view>
       <view class="muted">
         销售合同与采购合同分开签订。公司惯例先销售后采购：本页是采购合同，须先从已签订的销售/出口合同中任选一笔关联（不限于本案），否则不得保存或推进。公司无自有产线，向国内供应商采购。须登记供应商、采购合同/PO、计划到货日与货款支付方式（一次性付清或分期支付），并对供应商做制裁/不可靠实体筛查。计划到货不得晚于客户合同交货期；若延期须登记结构化原因并保留客户同意证据。
       </view>
@@ -182,7 +183,7 @@
 <script setup lang="ts">
 import { onLoad } from '@dcloudio/uni-app';
 import { computed, reactive, ref } from 'vue';
-import { api, decisionClass, decisionText, fenToYuan, money, toastErr, yuanToFen } from '../../api';
+import { api, decisionClass, decisionText, fenToYuan, money, procurementContractTitle, toastErr, yuanToFen } from '../../api';
 
 const id = ref('');
 const c = ref<any>(null);
@@ -243,6 +244,13 @@ const selectedSales = computed(
     salesOptions.value.find((o: any) => o.id === form.salesCaseId) ||
     (form.salesCaseId ? c.value?.procurementPlan?.salesLink : null) ||
     null,
+);
+const contractTitle = computed(() =>
+  procurementContractTitle(c.value || {}, {
+    supplierName: form.supplierName,
+    productName: selectedSales.value?.goodsDesc,
+    customerName: selectedSales.value?.customer,
+  }),
 );
 const filteredSalesOptions = computed(() => {
   const q = salesQuery.value.trim().toLowerCase();
