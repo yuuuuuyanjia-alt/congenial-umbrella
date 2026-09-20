@@ -588,6 +588,11 @@ export function hasNoBlJustification(s: Pick<ShipmentSnap, 'noBlReason' | 'noBlR
   return !!(s.noBlReason?.trim() || s.noBlRef?.trim() || s.noBlEvidenceStub?.trim());
 }
 
+/** N7 跟随 N6：买方安排运输且已选无提单时，不硬要提单，改核装船通知 / 订舱号。 */
+export function isN7NoBlPath(snap: CaseSnapshot): boolean {
+  return isNoBlControl(snap.shipment?.blControl) && isBuyerArrangedFreight(effectiveN6Incoterms(snap));
+}
+
 export function evaluateN6(snap: CaseSnapshot): GateResult {
   const r = emptyResult('N6');
   const pending = refusePendingChangeAtShipment(r, snap);
@@ -676,12 +681,20 @@ export function evaluateN7(snap: CaseSnapshot): GateResult {
     r.missing.push('N7_PACKING');
     r.reasons.push('硬闸门：缺少装箱单');
   }
-  if (!bl) {
+
+  const noBlPath = isN7NoBlPath(snap);
+  if (noBlPath) {
+    if (!snap.shipment || !hasNoBlJustification(snap.shipment)) {
+      r.missing.push('N7_SHIPPING_ADVICE');
+      r.reasons.push('硬闸门：无提单路径须核验装船通知 / 订舱号等依据（与 N6 NO_BL 一致），不要求提单');
+    }
+  } else if (!bl) {
     r.missing.push('N7_BL');
     r.reasons.push('硬闸门：缺少提单');
   }
 
-  const docs = [contractDoc, invoice, packing, bl].filter(Boolean);
+  const docs = (noBlPath ? [contractDoc, invoice, packing] : [contractDoc, invoice, packing, bl]).filter(Boolean);
+  const setLabel = noBlPath ? '合同/发票/装箱单' : '合同/发票/装箱单/提单';
   const fixed = new Set(snap.mismatchFixes.map((f) => f.field));
   for (const field of COMPARE_FIELDS) {
     const values = docs
@@ -694,7 +707,7 @@ export function evaluateN7(snap: CaseSnapshot): GateResult {
     if (unique.size > 1 && !fixed.has(field)) {
       r.missing.push(`N7_FIELD_MISMATCH_${field}`);
       r.reasons.push(
-        `硬闸门：${FieldLabel[field] || field} 在合同/发票/装箱单/提单间不一致，且无不符点修改记录`,
+        `硬闸门：${FieldLabel[field] || field} 在${setLabel}间不一致，且无不符点修改记录`,
       );
     }
   }

@@ -967,6 +967,13 @@ async function seedFobNoBlCase(salesId: string, approverId: string) {
           noBlEvidenceStub: 'DEMO-SA-FOB-004.pdf',
         },
       },
+      documents: {
+        create: ['CONTRACT', 'INVOICE', 'PACKING'].map((type) => ({
+          type,
+          isFinal: true,
+          fieldsJson: JSON.stringify(fields),
+        })),
+      },
       quotes: {
         create: {
           version: 1,

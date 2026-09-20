@@ -54,7 +54,7 @@ export const NODE_CATALOG = [
     mvp: true,
     isHardGate: true,
     isStub: false,
-    summary: '硬闸门：终稿合同 + 合同/发票/装箱单/提单字段一致 + 不符点修改记录。存在未生效变更单时硬拦截。运输术语按 Incoterms 比对，T/T 结算方式不参与；装运规则与 N6 相同，跟随所选运输术语。',
+    summary: '硬闸门：终稿合同 + 合同/发票/装箱单字段一致 + 不符点修改记录。CIF/卖方提单路径另须提单一致；FOB 等 N6 无提单路径改核装船通知/订舱号，不硬要提单。存在未生效变更单时硬拦截。运输术语按 Incoterms 比对，T/T 结算方式不参与；装运规则与 N6 相同，跟随所选运输术语。',
   },
   {
     code: 'N8',
