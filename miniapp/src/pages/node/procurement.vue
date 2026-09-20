@@ -6,7 +6,9 @@
       <view class="muted">
         销售合同与采购合同分开签订。公司惯例先销售后采购：本页是采购合同，须先从已签订的销售/出口合同中任选一笔关联（不限于本案），否则不得保存或推进。公司无自有产线，向国内供应商采购。须登记供应商、采购合同/PO、供应商实际交付日期与货款支付方式（一次性付清或分期支付），并对供应商做制裁/不可靠实体筛查。供应商实际交付日期对照关联销售合同交货期；若晚于交期须登记结构化延期并保留客户同意证据。
       </view>
+      <view class="muted" v-if="c.currentNode" style="margin-top: 8rpx">本案当前节点：{{ c.currentNode }} {{ currentNodeName }}</view>
     </view>
+    <NextNodeCta :target="nextTarget" :ready="nextReady" :hint="nextHint" @go="goNext" />
 
     <view class="card">
       <view class="h2">关联销售合同</view>
@@ -175,18 +177,35 @@
     <view class="muted" v-if="c.procurementPlan?.poEvidenceId">PO 证据 ID：{{ c.procurementPlan.poEvidenceId }}</view>
     <view class="err" v-if="err">{{ err }}</view>
     <view class="ok" v-if="ok">{{ ok }}</view>
+    <NextNodeCta v-if="nextReady" :target="nextTarget" :ready="nextReady" :hint="nextHint" @go="goNext" />
   </view>
 </template>
 
 <script setup lang="ts">
 import { onLoad } from '@dcloudio/uni-app';
 import { computed, reactive, ref } from 'vue';
-import { api, decisionClass, decisionText, fenToYuan, money, procurementContractTitle, toastErr, yuanToFen } from '../../api';
+import {
+  api,
+  decisionClass,
+  decisionText,
+  fenToYuan,
+  goToNode,
+  money,
+  nextWorkNodeFromForm,
+  pipelineNodeName,
+  procurementContractTitle,
+  toastErr,
+  yuanToFen,
+} from '../../api';
+import NextNodeCta from '../../components/NextNodeCta.vue';
 
+const FORM_NODE = 'N5';
 const id = ref('');
 const c = ref<any>(null);
 const err = ref('');
 const ok = ref('');
+const savedSession = ref(false);
+const advancedTo = ref<string | null>(null);
 const salesOptions = ref<any[]>([]);
 const salesQuery = ref('');
 const pickerOpen = ref(true);
@@ -242,6 +261,34 @@ const selectedSales = computed(
     (form.salesCaseId ? c.value?.procurementPlan?.salesLink : null) ||
     null,
 );
+const currentNodeName = computed(() => pipelineNodeName(c.value?.currentNode));
+const nextTarget = computed(() =>
+  c.value
+    ? nextWorkNodeFromForm(FORM_NODE, {
+        currentNode: c.value.currentNode,
+        changeOrders: c.value.changeOrders,
+        overrideNext: advancedTo.value,
+      })
+    : null,
+);
+const nextReady = computed(() => {
+  if (!nextTarget.value || !c.value) return false;
+  if (advancedTo.value) return true;
+  const cur = c.value.currentNode || '';
+  if (cur && cur !== FORM_NODE) return true;
+  return savedSession.value;
+});
+const nextHint = computed(() => {
+  const t = nextTarget.value;
+  if (!t) return '';
+  const cur = c.value?.currentNode;
+  if (cur && cur !== FORM_NODE) {
+    return `本案已在 ${cur} ${pipelineNodeName(cur)}。可直接进入该节点，不必再从案件树查找。`;
+  }
+  if (advancedTo.value) return `已过闸。下一步为 ${t.code} ${t.name}。`;
+  if (savedSession.value) return `采购合同已保存。可进入 ${t.code} ${t.name}，不必再从案件树查找。`;
+  return `保存或推进本合同后，可进入 ${t.code} ${t.name}，不必再从案件树查找。`;
+});
 const contractTitle = computed(() =>
   procurementContractTitle(c.value || {}, {
     supplierName: form.supplierName,
@@ -512,6 +559,7 @@ async function save(silent = false) {
   try {
     await api.savePlan(id.value, payload);
     await reload();
+    savedSession.value = true;
     if (!silent) ok.value = '采购合同已保存，已关联销售合同';
     return true;
   } catch (e: any) {
@@ -543,11 +591,19 @@ async function tryAdvance() {
     const saved = await save(true);
     if (!saved) return;
     const r = await api.advance(id.value, 'N5');
-    ok.value = `已推进至 ${r.nextNode}`;
+    ok.value = r.nextNode ? `已推进至 ${r.nextNode} ${pipelineNodeName(r.nextNode)}` : '已推进';
+    savedSession.value = true;
+    advancedTo.value = r.nextNode || null;
     await reload();
+    if (r.nextNode) goToNode(id.value, r.nextNode);
   } catch (e: any) {
     err.value = (e?.reasons || []).join('；') || e?.message || '闸门拒绝';
   }
+}
+
+function goNext() {
+  const t = nextTarget.value;
+  if (t) goToNode(id.value, t.code);
 }
 </script>
 

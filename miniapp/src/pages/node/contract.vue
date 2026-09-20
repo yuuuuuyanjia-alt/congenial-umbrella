@@ -7,8 +7,10 @@
     <view class="card">
       <view class="h2">销售合同 / 订单确认</view>
       <view class="muted">销售合同与采购合同分开签订。硬规则：中信保限额未登记，不得签订销售合同。请先登记投保限额，再保存合同要素。所有权保留、争议解决条款为必填。贸易条件为 FOB、CIF、T/T 三选一：CIF 填装运节点，FOB 填国内段到达口岸/港口时间，T/T 再选前 T/T 或后 T/T。所选路径下的字段均可填写。公司惯例先销售后采购：国内采购合同在 N5 另签，并须关联本销售合同。</view>
+      <view class="muted" v-if="c.currentNode" style="margin-top: 8rpx">本案当前节点：{{ c.currentNode }} {{ currentNodeName }}</view>
       <view class="err" v-if="!hasLimit" style="margin-top: 12rpx">尚未登记中信保限额，不得签订销售合同。</view>
     </view>
+    <NextNodeCta :target="nextTarget" :ready="nextReady" :hint="nextHint" @go="goNext" />
     <view class="card">
       <view class="label">相对方</view>
       <input class="input" v-model="form.counterparty" />
@@ -139,6 +141,7 @@
     </view>
     <view class="err" v-if="err">{{ err }}</view>
     <view class="ok" v-if="ok">{{ ok }}</view>
+    <NextNodeCta v-if="nextReady" :target="nextTarget" :ready="nextReady" :hint="nextHint" @go="goNext" />
     </template>
   </view>
 </template>
@@ -146,16 +149,58 @@
 <script setup lang="ts">
 import { onLoad } from '@dcloudio/uni-app';
 import { computed, reactive, ref } from 'vue';
-import { api, fenToYuan, latestSinosure, previewExposure, yuanToFen } from '../../api';
+import {
+  api,
+  fenToYuan,
+  goToNode,
+  latestSinosure,
+  nextWorkNodeFromForm,
+  pipelineNodeName,
+  previewExposure,
+  yuanToFen,
+} from '../../api';
+import NextNodeCta from '../../components/NextNodeCta.vue';
 import SinosureExposure from '../../components/SinosureExposure.vue';
 
 type TradeTerm = 'FOB' | 'CIF' | 'T/T';
 type TtTiming = 'ADVANCE' | 'AFTER';
 
+const FORM_NODE = 'N3';
 const id = ref('');
 const c = ref<any>(null);
 const err = ref('');
 const ok = ref('');
+const savedSession = ref(false);
+const advancedTo = ref<string | null>(null);
+
+const currentNodeName = computed(() => pipelineNodeName(c.value?.currentNode));
+const nextTarget = computed(() =>
+  c.value
+    ? nextWorkNodeFromForm(FORM_NODE, {
+        currentNode: c.value.currentNode,
+        changeOrders: c.value.changeOrders,
+        overrideNext: advancedTo.value,
+      })
+    : null,
+);
+const nextReady = computed(() => {
+  if (!nextTarget.value || !c.value) return false;
+  if (advancedTo.value) return true;
+  const cur = c.value.currentNode || '';
+  if (cur && cur !== FORM_NODE) return true;
+  return savedSession.value;
+});
+const nextHint = computed(() => {
+  const t = nextTarget.value;
+  if (!t) return '';
+  const cur = c.value?.currentNode;
+  if (cur && cur !== FORM_NODE) {
+    return `本案已在 ${cur} ${pipelineNodeName(cur)}。可直接进入该节点，不必再从案件树查找。`;
+  }
+  if (advancedTo.value) return `已过闸。下一步为 ${t.code} ${t.name}。`;
+  if (savedSession.value) return `销售合同已保存。可进入 ${t.code} ${t.name}，不必再从案件树查找。`;
+  return `保存或推进本合同后，可进入 ${t.code} ${t.name}，不必再从案件树查找。`;
+});
 const form = reactive({
   counterparty: '',
   incoterms: 'CIF' as string,
@@ -380,6 +425,7 @@ async function save() {
       remittedFen: form.hasRemittance ? yuanToFen(form.remittedYuan) : 0,
     });
     c.value = await api.case(id.value);
+    savedSession.value = true;
     ok.value = '销售合同要素已保存，已按当前金额测算占用；买方已录入或合并至客户管理';
     return true;
   } catch (e: any) {
@@ -398,6 +444,7 @@ async function saveSino() {
     currency: sino.currency || form.currency,
   });
   c.value = await api.case(id.value);
+  savedSession.value = true;
   ok.value = '中信保信息已保存';
 }
 
@@ -409,10 +456,20 @@ async function tryAdvance() {
     const saved = await save();
     if (!saved) return;
     const r = await api.advance(id.value, 'N3');
-    ok.value = `已推进至 ${r.nextNode}`;
+    c.value = await api.case(id.value);
+    savedSession.value = true;
+    advancedTo.value = r.nextNode || null;
+    const title = r.nextNode ? pipelineNodeName(r.nextNode) : '';
+    ok.value = r.nextNode ? `已推进至 ${r.nextNode} ${title}` : '已推进';
+    if (r.nextNode) goToNode(id.value, r.nextNode);
   } catch (e: any) {
     err.value = gateMessage(e);
   }
+}
+
+function goNext() {
+  const t = nextTarget.value;
+  if (t) goToNode(id.value, t.code);
 }
 </script>
 

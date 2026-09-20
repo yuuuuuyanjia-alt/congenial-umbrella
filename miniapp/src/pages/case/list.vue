@@ -26,6 +26,11 @@
           <view class="badge" :class="badgeClass(c)">{{ badgeText(c) }}</view>
         </view>
         <view class="muted" style="margin-top: 8rpx">{{ secondary(c) }}</view>
+        <view
+          class="btn btn-ghost"
+          v-if="nextOf(c)"
+          @click.stop="openNext(c)"
+        >进入下一节点 · {{ nextOf(c).code }} {{ nextOf(c).name }}</view>
       </view>
     </template>
 
@@ -40,6 +45,11 @@
         </view>
         <view class="muted" style="margin-top: 8rpx">{{ secondary(c) }}</view>
         <view class="muted" v-if="kind === 'procurement'" style="margin-top: 6rpx">{{ salesLine(c) }}</view>
+        <view
+          class="btn btn-ghost"
+          v-if="nextOf(c)"
+          @click.stop="openNext(c)"
+        >进入下一节点 · {{ nextOf(c).code }} {{ nextOf(c).name }}</view>
       </view>
     </template>
 
@@ -56,10 +66,13 @@ import {
   api,
   decisionClass,
   decisionText,
+  goToNode,
   groupSalesListByShipment,
   isProcurementListCase,
   isSalesListCase,
+  listShowsNextNodeButton,
   money,
+  nextWorkNodeFromForm,
   procurementContractTitle,
   salesShipmentBadgeClass,
   salesShipmentBucketLabel,
@@ -73,8 +86,8 @@ const focusGroup = ref<'unshipped' | 'shipped' | 'completed'>('unshipped');
 const title = computed(() => (kind.value === 'procurement' ? '采购合同管理' : '销售合同管理'));
 const hint = computed(() =>
   kind.value === 'procurement'
-    ? '此处只列国内采购合同/备货。打开后填写采购合同；保存或推进前须从已签订的销售合同中任选一笔关联（不限于本案）。货款可选一次性付清或分期支付（分期须填约定付款时间、付款比例、金额）。'
-    : '出口销售合同按未出运、已出运、已完成分组。已完成须已出运、客户已提货且已回款。打开卡片仍填写销售合同（销售合同/订单确认）。国内采购订单不在本列表。',
+    ? '此处只列国内采购合同/备货。打开后填写采购合同；保存或推进前须从已签订的销售合同中任选一笔关联（不限于本案）。货款可选一次性付清或分期支付（分期须填约定付款时间、付款比例、金额）。本案已离开采购节点时，可点「进入下一节点」直达当前九节点步骤。'
+    : '出口销售合同按未出运、已出运、已完成分组。已完成须已出运、客户已提货且已回款。打开卡片仍填写销售合同（销售合同/订单确认）。国内采购订单不在本列表。本案已离开销售合同节点时，可点「进入下一节点」直达当前九节点步骤。',
 );
 const empty = computed(() =>
   kind.value === 'procurement'
@@ -162,5 +175,19 @@ function badgeText(c: any) {
 function open(c: any) {
   const page = kind.value === 'procurement' ? '/pages/node/procurement' : '/pages/node/contract';
   uni.navigateTo({ url: `${page}?id=${c.id}` });
+}
+
+function formNode() {
+  return kind.value === 'procurement' ? 'N5' : 'N3';
+}
+
+function nextOf(c: any) {
+  if (!listShowsNextNodeButton(formNode(), c?.currentNode)) return null;
+  return nextWorkNodeFromForm(formNode(), { currentNode: c.currentNode, changeOrders: c.changeOrders });
+}
+
+function openNext(c: any) {
+  const t = nextOf(c);
+  if (t) goToNode(c.id, t.code);
 }
 </script>
