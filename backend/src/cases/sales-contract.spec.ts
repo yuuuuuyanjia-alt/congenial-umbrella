@@ -228,7 +228,9 @@ describe('切换术语清脏字段', () => {
 
   it('取消 T/T 时显式 ttTiming 空值不再从付款条件回填，并清空电汇专属字段', () => {
     expect(isTtPaymentTermsText('前 T/T')).toBe(true);
+    expect(isTtPaymentTermsText('后 T/T 30 days')).toBe(true);
     expect(isTtPaymentTermsText('L/C')).toBe(false);
+    expect(isTtPaymentTermsText('T/T 30 days')).toBe(false);
     expect(resolveTtTimingForSave({ ttTiming: null, paymentTerms: '前 T/T' })).toBeNull();
     expect(resolveTtTimingForSave({ paymentTerms: '前 T/T' })).toBe('ADVANCE');
     const out = sanitizeSalesContractModeFields({
@@ -268,6 +270,23 @@ describe('切换术语清脏字段', () => {
     expect(out.ttTiming).toBeNull();
     expect(out.ttDaysAfterShipment).toBeNull();
     expect(out.shipmentDate).toBe('2026-08-15');
+  });
+
+  it('取消电汇时保留普通 T/T 账期文案，只清前/后 T/T 合成句', () => {
+    const keep = sanitizeSalesContractModeFields({
+      incoterms: 'CIF',
+      ttTiming: null,
+      paymentTerms: 'T/T 30 days',
+      shipmentPort: 'Shanghai',
+    });
+    expect(keep.paymentTerms).toBe('T/T 30 days');
+    expect(keep.ttTiming).toBeNull();
+    const drop = sanitizeSalesContractModeFields({
+      incoterms: 'FOB',
+      ttTiming: null,
+      paymentTerms: '前 T/T',
+    });
+    expect(drop.paymentTerms).toBeNull();
   });
 
   it('切换术语不改共用金额字段', () => {

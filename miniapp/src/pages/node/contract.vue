@@ -394,7 +394,7 @@ function resolveTtTiming(terms?: string | null): TtTiming | '' {
 }
 
 function isTtPaymentTermsText(raw?: string | null) {
-  return /T\s*\/\s*T|电汇/i.test(String(raw || ''));
+  return /前\s*T\s*\/\s*T|后\s*T\s*\/\s*T/i.test(String(raw || ''));
 }
 
 /** 按当前 FOB/CIF 与前/后 T/T 丢掉另一选项的专属字段，避免隐藏值随保存串台。 */

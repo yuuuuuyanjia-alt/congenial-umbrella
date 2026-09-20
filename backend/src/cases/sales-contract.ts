@@ -87,9 +87,9 @@ export function composeTtPaymentTerms(timing?: string | null, daysAfterShipment?
   return 'T/T';
 }
 
-/** 付款条件是否仍是电汇文案（切换走后应清空，避免脏数据回填前/后 T/T）。 */
+/** 付款条件是否为前/后 T/T 合成文案（取消电汇后应清空，避免再推断时点）。不含普通「T/T 30 days」。 */
 export function isTtPaymentTermsText(raw?: string | null): boolean {
-  return /T\s*\/\s*T|电汇/i.test(String(raw || ''));
+  return /前\s*T\s*\/\s*T|后\s*T\s*\/\s*T/i.test(String(raw || ''));
 }
 
 /** 显式取消结算方式：null / 空串不得再从 paymentTerms 推断前/后 T/T。省略字段则仍可推断。 */
