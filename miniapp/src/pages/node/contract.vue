@@ -93,7 +93,7 @@
 
     <view class="card">
       <view class="h2">提货与收汇</view>
-      <view class="muted">在当前所选贸易条件下均可填写。已完成须客户已提货且已回款。未收汇金额按合同总金额减去收汇金额自动计算。</view>
+      <view class="muted">在当前所选贸易条件下均可填写。已完成须客户已提货且已回款。收汇金额与未收汇金额都可改，另一侧按合同总额轧差。</view>
       <view class="label">客户是否提货</view>
       <view class="choice-row">
         <view class="choice-btn" :class="{ 'choice-btn-on': form.customerPickedUp === true }" @click="form.customerPickedUp = true">已提货</view>
@@ -109,14 +109,13 @@
       <view class="label">收汇金额</view>
       <input
         class="input"
-        type="digit"
         v-model="form.remittedYuan"
-        :disabled="!form.hasRemittance"
-        :placeholder="form.hasRemittance ? `与合同币种一致（${form.currency || 'USD'}）` : '未收汇时为 0'"
+        :placeholder="`与合同币种一致（${form.currency || 'USD'}）`"
+        @input="onRemittedInput"
       />
       <view class="label">未收汇金额</view>
-      <view class="muted">自动计算：合同总金额 − 收汇金额（{{ form.currency || 'USD' }}）</view>
-      <view class="input" style="color: #4b5563">{{ form.currency || 'USD' }} {{ unpaidYuan }}</view>
+      <view class="muted">与收汇金额按合同总额轧差（{{ form.currency || 'USD' }}）</view>
+      <input class="input" v-model="unpaidYuan" :placeholder="`与合同币种一致（${form.currency || 'USD'}）`" />
       <view class="btn" @click="save">保存合同要素</view>
       <view class="muted" v-if="!hasLimit" style="margin-top: 8rpx">须先保存中信保限额，否则保存销售合同将被拒绝。</view>
     </view>
@@ -210,7 +209,18 @@ const exposureView = computed(() => {
 
 const remittedFenEffective = computed(() => (form.hasRemittance ? yuanToFen(form.remittedYuan) : 0));
 
-const unpaidYuan = computed(() => fenToYuan(Math.max(0, yuanToFen(form.amountYuan) - remittedFenEffective.value)) || '0.00');
+const unpaidYuan = computed({
+  get() {
+    return fenToYuan(Math.max(0, yuanToFen(form.amountYuan) - remittedFenEffective.value)) || '0.00';
+  },
+  set(v: string) {
+    const amount = yuanToFen(form.amountYuan);
+    const unpaid = Math.max(0, yuanToFen(v));
+    const remitted = Math.max(0, amount - unpaid);
+    form.remittedYuan = remitted ? fenToYuan(remitted) : '';
+    form.hasRemittance = remitted > 0;
+  },
+});
 
 onLoad(async (q) => {
   id.value = q?.id || '';
@@ -311,6 +321,10 @@ function datetimeField(v: unknown) {
 function setNoRemittance() {
   form.hasRemittance = false;
   form.remittedYuan = '';
+}
+
+function onRemittedInput() {
+  form.hasRemittance = yuanToFen(form.remittedYuan) > 0;
 }
 
 function stubUpload() {
