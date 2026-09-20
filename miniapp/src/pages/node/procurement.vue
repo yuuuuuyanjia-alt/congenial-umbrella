@@ -588,7 +588,7 @@ async function tryAdvance() {
 .picker-caret {
   margin-top: 10rpx;
   color: #0f3d2e;
-  font-size: 24rpx;
+  font-size: $font-sm;
   font-weight: 650;
 }
 .picker-panel {
@@ -602,6 +602,6 @@ async function tryAdvance() {
   color: #b42318;
   font-weight: 600;
   margin-left: 8rpx;
-  font-size: 22rpx;
+  font-size: $font-xs;
 }
 </style>

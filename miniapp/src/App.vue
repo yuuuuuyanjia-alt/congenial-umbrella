@@ -10,6 +10,7 @@ page {
   background: #f4f1ea;
   color: #1f2933;
   font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Noto Sans SC', sans-serif;
+  font-size: $font-sm;
 }
 .wrap {
   padding: 24rpx;
@@ -22,19 +23,19 @@ page {
   box-shadow: 0 8rpx 24rpx rgba(15, 61, 46, 0.08);
 }
 .h1 {
-  font-size: 40rpx;
+  font-size: $font-h1;
   font-weight: 700;
   color: #0f3d2e;
 }
 .h2 {
-  font-size: 30rpx;
+  font-size: $font-h2;
   font-weight: 650;
   color: #0f3d2e;
   margin-bottom: 12rpx;
 }
 .muted {
   color: #6b7280;
-  font-size: 24rpx;
+  font-size: $font-sm;
   line-height: 1.6;
 }
 .row {
@@ -45,7 +46,7 @@ page {
 }
 .badge {
   display: inline-block;
-  font-size: 22rpx;
+  font-size: $font-xs;
   padding: 6rpx 14rpx;
   border-radius: 999rpx;
   font-weight: 600;
@@ -62,7 +63,7 @@ page {
   text-align: center;
   padding: 20rpx;
   border-radius: 12rpx;
-  font-size: 28rpx;
+  font-size: $font-lg;
   margin-top: 16rpx;
 }
 .btn-ghost {
@@ -77,11 +78,11 @@ page {
   border-radius: 10rpx;
   padding: 16rpx 18rpx;
   margin-top: 10rpx;
-  font-size: 26rpx;
+  font-size: $font-md;
 }
 .label {
   margin-top: 18rpx;
-  font-size: 24rpx;
+  font-size: $font-sm;
   color: #374151;
   font-weight: 600;
 }
@@ -93,7 +94,7 @@ page {
   margin-top: 12rpx;
 }
 .chip {
-  font-size: 22rpx;
+  font-size: $font-xs;
   padding: 8rpx 16rpx;
   background: #e6efe9;
   color: #0f3d2e;
@@ -113,7 +114,7 @@ page {
   border-radius: 12rpx;
   background: #e6efe9;
   color: #0f3d2e;
-  font-size: 28rpx;
+  font-size: $font-lg;
   font-weight: 650;
   border: 2rpx solid #c5d4cb;
   box-sizing: border-box;
@@ -128,7 +129,7 @@ page {
   color: #7a1d16;
   padding: 16rpx;
   border-radius: 12rpx;
-  font-size: 24rpx;
+  font-size: $font-sm;
   margin-top: 12rpx;
   line-height: 1.55;
 }
@@ -137,7 +138,7 @@ page {
   color: #14532d;
   padding: 16rpx;
   border-radius: 12rpx;
-  font-size: 24rpx;
+  font-size: $font-sm;
   margin-top: 12rpx;
 }
 .input[disabled] {

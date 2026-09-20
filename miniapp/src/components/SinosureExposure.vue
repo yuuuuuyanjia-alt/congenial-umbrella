@@ -58,7 +58,7 @@ const showNew = computed(() => {
 }
 .line {
   margin-top: 10rpx;
-  font-size: 26rpx;
+  font-size: $font-md;
 }
 .total {
   font-weight: 700;

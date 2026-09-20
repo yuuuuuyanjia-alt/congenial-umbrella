@@ -19,7 +19,7 @@
     <view class="card">
       <view class="h2">中信保限额与占用</view>
       <view v-if="c.sinosureLimit">
-        <view class="h1" style="font-size: 36rpx">
+        <view class="h1" style="font-size: 40rpx">
           {{ money(c.sinosureLimit.insuredLimitFen, c.sinosureLimit.currency) }}
         </view>
         <view class="muted" style="margin-top: 8rpx">
@@ -140,7 +140,7 @@ function openCase(caseId: string) {
   text-align: center;
 }
 .stat-n {
-  font-size: 32rpx;
+  font-size: $font-stat;
   font-weight: 700;
   color: #0f3d2e;
 }

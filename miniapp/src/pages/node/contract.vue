@@ -36,7 +36,6 @@
       <view class="label">装运日期</view>
       <input class="input" v-model="form.shipmentDate" placeholder="年-月-日，如 2026-08-15" />
       <view class="h2" style="margin-top: 24rpx">货物状态</view>
-      <view class="muted">预计什么时候到达哪个港口</view>
       <view class="label">预计到达日期</view>
       <input class="input" v-model="form.etaDate" placeholder="年-月-日，如 2026-09-20" />
       <view class="label">到达港口</view>
