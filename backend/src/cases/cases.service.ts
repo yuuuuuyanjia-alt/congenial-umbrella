@@ -37,6 +37,7 @@ import {
   signedSalesOptions,
   supplierNameOf,
 } from './sales-link';
+import { presentSalesContract, resolveRemittedFen } from './sales-contract';
 import {
   AckChangeDto,
   CreateCaseDto,
@@ -100,6 +101,7 @@ export class CasesService {
       supplierName: supplierNameOf(c),
       poNo: c.procurementPlan?.poNo || null,
       salesLink: c.procurementPlan?.salesCase ? presentSalesLink(c.procurementPlan.salesCase) : null,
+      contract: presentSalesContract(c.contract),
     }));
   }
 
@@ -137,6 +139,7 @@ export class CasesService {
     return {
       ...c,
       catalog: NODE_CATALOG,
+      contract: presentSalesContract(c.contract),
       sinosureExposure,
       kycReports: c.kycReports.map((k) => ({ ...k, payload: safeJson(k.payload) })),
       documents: c.documents.map((d) => ({ ...d, fields: safeJson(d.fieldsJson) })),
@@ -257,12 +260,27 @@ export class CasesService {
       });
       this.throwGateRefused(limitGate, N3_SINOSURE_UNREGISTERED_REASON);
     }
-    const { deliveryDate, paymentDueAt, ...rest } = dto;
+    const {
+      deliveryDate,
+      paymentDueAt,
+      shipmentDate,
+      etaDate,
+      remittedFen,
+      hasRemittance,
+      customerPickedUp,
+      ...rest
+    } = dto;
     const parsedDelivery = parseDate(deliveryDate);
+    const resolvedRemitted = resolveRemittedFen({ hasRemittance, remittedFen });
     const data = {
       ...rest,
+      hasRemittance: !!hasRemittance,
+      customerPickedUp: customerPickedUp ?? null,
+      remittedFen: resolvedRemitted,
       deliveryDate: parsedDelivery,
       paymentDueAt: parseDate(paymentDueAt) ?? derivePaymentDueAt(parsedDelivery, dto.paymentTerms),
+      shipmentDate: parseDate(shipmentDate),
+      etaDate: parseDate(etaDate),
     };
     const row = await this.prisma.contract.upsert({
       where: { caseId },
@@ -292,7 +310,7 @@ export class CasesService {
       newAmountFen: dto.amountFen ?? undefined,
       newCurrency: dto.currency,
     });
-    return { ...row, sinosureExposure };
+    return { ...presentSalesContract(row), sinosureExposure };
   }
 
   async saveSinosure(caseId: string, nodeCode: string, dto: SaveSinosureDto, actorId?: string) {

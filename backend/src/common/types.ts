@@ -37,6 +37,13 @@ export interface ContractSnap {
   quantity?: number | null;
   unit?: string | null;
   paymentDueAt?: string | Date | null;
+  shipmentPort?: string | null;
+  shipmentDate?: string | Date | null;
+  etaDate?: string | Date | null;
+  arrivalPort?: string | null;
+  customerPickedUp?: boolean | null;
+  hasRemittance?: boolean | null;
+  remittedFen?: number | null;
 }
 
 export interface ShipmentSnap {

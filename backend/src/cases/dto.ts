@@ -37,6 +37,13 @@ export class SaveContractDto {
   @IsOptional() @IsInt() quantity?: number;
   @IsOptional() @IsString() unit?: string;
   @IsOptional() @IsString() paymentDueAt?: string;
+  @IsOptional() @IsString() shipmentPort?: string;
+  @IsOptional() @IsString() shipmentDate?: string;
+  @IsOptional() @IsString() etaDate?: string;
+  @IsOptional() @IsString() arrivalPort?: string;
+  @IsOptional() @IsBoolean() customerPickedUp?: boolean | null;
+  @IsOptional() @IsBoolean() hasRemittance?: boolean;
+  @IsOptional() @IsInt() remittedFen?: number;
 }
 
 export class SaveShipmentDto {

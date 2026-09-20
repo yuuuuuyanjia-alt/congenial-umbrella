@@ -140,4 +140,8 @@ page {
   font-size: 24rpx;
   margin-top: 12rpx;
 }
+.input[disabled] {
+  color: #6b7280;
+  opacity: 1;
+}
 </style>

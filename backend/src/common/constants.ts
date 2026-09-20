@@ -22,7 +22,7 @@ export const NODE_CATALOG = [
     mvp: true,
     isHardGate: false,
     isStub: false,
-    summary: '销售/出口合同与采购合同分开签订。所有权保留与争议解决条款必填；中信保限额未登记不得签订销售合同；须上传保单并登记投保限额；按买方占用测算（未履行完毕未回款+已履行完毕未回款+新签合同），超额分档提示或拦截。',
+    summary: '销售/出口合同与采购合同分开签订。所有权保留与争议解决条款必填；中信保限额未登记不得签订销售合同；须上传保单并登记投保限额；按买方占用测算（未履行完毕未回款+已履行完毕未回款+新签合同），超额分档提示或拦截。CIF/CIP 可登记装运港、装运日期、预计到港货物状态与客户是否提货；约定客户付款日期与是否收汇、收汇/未收汇金额（未收汇=合同总额−收汇金额）。',
   },
   {
     code: 'N4',
@@ -212,6 +212,12 @@ export const BlControlLabel: Record<string, string> = {
  * FOB 为主场景；EXW / FAS / FCA 一并纳入无提单可选路径（与 CIF/CFR 等卖方出单相对）。
  */
 export const BUYER_ARRANGED_FREIGHT_INCOTERMS = ['FOB', 'EXW', 'FAS', 'FCA'] as const;
+
+/**
+ * CIF 条款族：卖方承担主运费与保险，销售合同展示装运港/装运日期/预计到港货物状态。
+ * 与 N6 买方安排运输（FOB 等无提单）互斥；CFR 不含保险，不纳入本族。
+ */
+export const CIF_FAMILY_INCOTERMS = ['CIF', 'CIP'] as const;
 
 export const DocType = {
   CONTRACT: 'CONTRACT',

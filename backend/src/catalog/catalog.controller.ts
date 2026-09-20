@@ -5,6 +5,7 @@ import {
   BearerLabel,
   BlControlLabel,
   BUYER_ARRANGED_FREIGHT_INCOTERMS,
+  CIF_FAMILY_INCOTERMS,
   ChangeFieldLabel,
   ChangeStatusLabel,
   DecisionLabel,
@@ -44,6 +45,7 @@ export class CatalogController {
       risks: RiskLevelLabel,
       blControl: BlControlLabel,
       buyerArrangedFreightIncoterms: BUYER_ARRANGED_FREIGHT_INCOTERMS,
+      cifFamilyIncoterms: CIF_FAMILY_INCOTERMS,
       workbench: WorkbenchActionLabel,
       priceBasis: PriceBasisLabel,
       bearers: BearerLabel,
@@ -57,7 +59,7 @@ export class CatalogController {
       installmentStatus: InstallmentStatusLabel,
       sinosure: {
         label: '中信保',
-        n3: '中信保限额未登记，不得签订合同。须先登记投保限额；占用=未履行完毕未回款+已履行完毕未回款+新签合同。超额1–2万中风险软提示，2–5万高风险审核，5万以上超高风险硬拦截',
+        n3: '中信保限额未登记，不得签订合同。须先登记投保限额；占用=未履行完毕未回款+已履行完毕未回款+新签合同。超额1–2万中风险软提示，2–5万高风险审核，5万以上超高风险硬拦截。CIF/CIP 可登记装运港、装运日期、预计到港与客户是否提货；约定客户付款日期与收汇/未收汇（未收汇=合同总额−收汇金额）',
         n4: '进入变更管理须再次确认或重新上传，并按变更后金额重算买方占用',
         formula: '占用 = 未履行完毕合同未回款 + 已履行完毕合同未回款 + 新签订合同金额',
         bandsUsd: {
@@ -80,6 +82,10 @@ export class CatalogController {
         label: '采购合同/国内备货',
         n5: '销售合同与采购合同分开签订。公司惯例先销售后采购：保存或推进采购须关联一笔已达 N3 且已签的销售/出口合同。登记国内供应商、采购合同/PO、计划到货与付款方式（一次性付清或分期支付；分期每一期须填约定付款时间、付款比例、金额）；供应商须过制裁/不可靠实体筛查；计划到货不得晚于客户合同交期，否则须结构化延期并保留客户同意证据',
         salesFirst: '先销售后采购：不可在未签销售合同时单独保存采购合同',
+      },
+      sales: {
+        label: '销售合同管理',
+        n3: '打开即填写销售合同。CIF/CIP 显示装运港口、装运日期、预计到达日期与到达港口、客户是否提货；FOB 等不显示该区块（N6 无提单路径不变）。任意术语均可登记约定客户付款日期、是否收汇、收汇金额；未收汇金额按合同总额−收汇金额自动计算。',
       },
       hsTemplates: hsTemplates.map((h) => ({
         ...h,
