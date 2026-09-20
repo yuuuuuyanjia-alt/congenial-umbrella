@@ -1077,6 +1077,12 @@ describe('闸门引擎 N5 国内采购/备货', () => {
     expect(evaluateN5(baseSnap()).canProceed).toBe(true);
   });
 
+  it('未填客户合同交货期不再拒绝推进（对照关联销售合同交期，无交期则跳过核对）', () => {
+    const r = evaluateN5(baseSnap({ procurementPlan: plan({ contractDelivery: null }) }));
+    expect(r.canProceed).toBe(true);
+    expect(r.missing).not.toContain('N5_CONTRACT_DELIVERY');
+  });
+
   it('缺少国内供应商拒绝', () => {
     const r = evaluateN5(
       baseSnap({

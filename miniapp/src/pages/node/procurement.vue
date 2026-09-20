@@ -4,7 +4,7 @@
       <view class="h1" style="line-height: 1.35">{{ contractTitle }}</view>
       <view class="muted" style="margin-top: 8rpx">采购合同 / 国内备货</view>
       <view class="muted">
-        销售合同与采购合同分开签订。公司惯例先销售后采购：本页是采购合同，须先从已签订的销售/出口合同中任选一笔关联（不限于本案），否则不得保存或推进。公司无自有产线，向国内供应商采购。须登记供应商、采购合同/PO、计划到货日与货款支付方式（一次性付清或分期支付），并对供应商做制裁/不可靠实体筛查。计划到货不得晚于客户合同交货期；若延期须登记结构化原因并保留客户同意证据。
+        销售合同与采购合同分开签订。公司惯例先销售后采购：本页是采购合同，须先从已签订的销售/出口合同中任选一笔关联（不限于本案），否则不得保存或推进。公司无自有产线，向国内供应商采购。须登记供应商、采购合同/PO、计划到货日与货款支付方式（一次性付清或分期支付），并对供应商做制裁/不可靠实体筛查。计划到货对照关联销售合同交货期；若晚于交期须登记结构化延期并保留客户同意证据。
       </view>
     </view>
 
@@ -79,8 +79,6 @@
       <view class="h2">采购合同 / 备货</view>
       <view class="label">采购订单 / 采购合同编号</view>
       <input class="input" v-model="form.poNo" placeholder="如 PO-2026-011" />
-      <view class="label">客户合同交货期</view>
-      <input class="input" v-model="form.contractDelivery" placeholder="YYYY-MM-DD" />
       <view class="label">供应商计划到货 / 备妥日期</view>
       <input class="input" v-model="form.plannedArrival" placeholder="YYYY-MM-DD" />
       <view class="label">实际到货日期</view>
@@ -219,7 +217,6 @@ const form = reactive({
   supplierAddress: '',
   salesCaseId: '',
   poNo: '',
-  contractDelivery: '2026-11-30',
   plannedArrival: '2026-11-28',
   actualArrival: '',
   amountYuan: '',
@@ -417,14 +414,11 @@ async function reload() {
     form.supplierAddress = supplier.address || '';
   }
   const p = c.value.procurementPlan;
-  const d = c.value.contract?.deliveryDate;
-  if (d) form.contractDelivery = String(d).slice(0, 10);
   const savedSalesId = p?.salesCaseId || p?.salesLink?.id || '';
   form.salesCaseId = savedSalesId;
   pickerOpen.value = !savedSalesId || salesOptions.value.length > 1;
   if (p) {
     form.poNo = p.poNo || form.poNo;
-    form.contractDelivery = String(p.contractDelivery || form.contractDelivery).slice(0, 10);
     form.plannedArrival = String(p.plannedArrival || '').slice(0, 10) || form.plannedArrival;
     form.actualArrival = String(p.actualArrival || '').slice(0, 10);
     form.amountYuan = fenToYuan(p.amountFen);
@@ -442,8 +436,6 @@ async function reload() {
     form.paymentMode = loaded.paymentMode;
     form.installments = loaded.installments;
     form.paymentConditionText = loaded.installments[0]?.conditionText || p.installments?.[0]?.conditionText || '一次性付清';
-  } else if (selectedSales.value?.deliveryDate && !form.contractDelivery) {
-    form.contractDelivery = String(selectedSales.value.deliveryDate).slice(0, 10);
   }
 }
 
@@ -453,7 +445,6 @@ function togglePicker() {
 
 function pickSales(opt: any) {
   form.salesCaseId = opt.id;
-  if (opt.deliveryDate) form.contractDelivery = String(opt.deliveryDate).slice(0, 10);
   ok.value = `已选择销售合同 ${opt.customer} · ${opt.contractNo} · ${money(opt.amountFen, opt.currency)}`;
   err.value = '';
 }

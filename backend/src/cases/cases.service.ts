@@ -783,7 +783,7 @@ export class CasesService {
       salesCaseId: salesCase.id,
       poNo: dto.poNo || null,
       plannedArrival: parseDate(dto.plannedArrival || dto.plannedDelivery),
-      contractDelivery: parseDate(dto.contractDelivery) || contract?.deliveryDate || null,
+      contractDelivery: parseDate(dto.contractDelivery) || contract?.deliveryDate || existingPlan?.contractDelivery || null,
       poEvidenceStub: poStub || null,
       poEvidenceId: poEvidenceId || existingPlan?.poEvidenceId || null,
       delayRegistered: dto.delayRegistered ?? false,
