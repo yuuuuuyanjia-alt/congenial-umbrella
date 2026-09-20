@@ -87,6 +87,101 @@ export function composeTtPaymentTerms(timing?: string | null, daysAfterShipment?
   return 'T/T';
 }
 
+/** 付款条件是否为前/后 T/T 合成文案（取消电汇后应清空，避免再推断时点）。不含普通「T/T 30 days」。 */
+export function isTtPaymentTermsText(raw?: string | null): boolean {
+  return /前\s*T\s*\/\s*T|后\s*T\s*\/\s*T/i.test(String(raw || ''));
+}
+
+/** 显式取消结算方式：null / 空串不得再从 paymentTerms 推断前/后 T/T。省略字段则仍可推断。 */
+export function resolveTtTimingForSave(input: {
+  ttTiming?: string | null;
+  paymentTerms?: string | null;
+  incoterms?: string | null;
+}): TtTiming | null {
+  if (input.ttTiming === null || input.ttTiming === '') return null;
+  return resolveTtTiming(input);
+}
+
+export type SalesContractModeFields = {
+  incoterms?: string | null;
+  ttTiming?: string | null;
+  paymentTerms?: string | null;
+  shipmentPort?: string | null;
+  shipmentDate?: Date | string | null;
+  etaDate?: Date | string | null;
+  arrivalPort?: string | null;
+  domesticPortArrivalAt?: Date | string | null;
+  ttPercentBps?: number | null;
+  ttAdvanceFen?: number | null;
+  ttDaysAfterShipment?: number | null;
+};
+
+function blankToNull(v?: string | null): string | null {
+  const s = String(v ?? '').trim();
+  return s || null;
+}
+
+function keepValue<T>(applies: boolean, value: T | null | undefined): T | null {
+  if (!applies) return null;
+  if (value == null || value === ('' as unknown)) return null;
+  return value;
+}
+
+function keepNumber(applies: boolean, value: number | null | undefined): number | null {
+  if (!applies) return null;
+  if (value == null || (typeof value === 'number' && !Number.isFinite(value))) return null;
+  return value;
+}
+
+/**
+ * 按当前运输术语 / 电汇时点丢掉上一选项专属字段，避免 CIF↔FOB、前/后 T/T 脏数据串台。
+ * 装运日期：CIF 装运块或非 CIF 的电汇节点仍适用则保留。金额、提货、收汇不在此处理。
+ */
+export function sanitizeSalesContractModeFields<T extends SalesContractModeFields>(input: T): T & {
+  incoterms: string | null;
+  ttTiming: TtTiming | null;
+  paymentTerms: string | null;
+  shipmentPort: string | null;
+  shipmentDate: Date | string | null;
+  etaDate: Date | string | null;
+  arrivalPort: string | null;
+  domesticPortArrivalAt: Date | string | null;
+  ttPercentBps: number | null;
+  ttAdvanceFen: number | null;
+  ttDaysAfterShipment: number | null;
+} {
+  const incoterms = blankToNull(normalizeTransportIncoterms(input.incoterms) || input.incoterms);
+  const parsedTerm = resolveTradeTerm(incoterms);
+  const ttTiming = resolveTtTimingForSave({
+    ttTiming: input.ttTiming,
+    paymentTerms: input.paymentTerms,
+    incoterms,
+  });
+  const tradeTerm = parsedTerm || (ttTiming ? TRADE_TERM.FOB : parsedTerm);
+  const cif = tradeTerm === TRADE_TERM.CIF;
+  const fob = tradeTerm === TRADE_TERM.FOB;
+  const shipmentDateApplies = cif || !!ttTiming;
+  const paymentTerms = ttTiming
+    ? composeTtPaymentTerms(ttTiming, ttTiming === TT_TIMING.AFTER ? input.ttDaysAfterShipment : null)
+    : isTtPaymentTermsText(input.paymentTerms)
+      ? null
+      : blankToNull(input.paymentTerms);
+  return {
+    ...input,
+    incoterms,
+    ttTiming,
+    paymentTerms,
+    shipmentPort: cif ? blankToNull(input.shipmentPort) : null,
+    shipmentDate: keepValue(shipmentDateApplies, input.shipmentDate),
+    etaDate: keepValue(cif, input.etaDate),
+    arrivalPort: cif ? blankToNull(input.arrivalPort) : null,
+    domesticPortArrivalAt: keepValue(fob, input.domesticPortArrivalAt),
+    ttPercentBps: keepNumber(ttTiming === TT_TIMING.ADVANCE, input.ttPercentBps),
+    ttAdvanceFen: keepNumber(ttTiming === TT_TIMING.ADVANCE, input.ttAdvanceFen),
+    ttDaysAfterShipment: keepNumber(ttTiming === TT_TIMING.AFTER, input.ttDaysAfterShipment),
+  };
+}
+
 export function resolveTtAdvanceFen(input: {
   ttAdvanceFen?: number | null;
   ttPercentBps?: number | null;

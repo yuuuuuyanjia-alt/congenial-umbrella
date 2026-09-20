@@ -7,13 +7,16 @@ import {
   isSalesPickedUp,
   isSalesRemittanceComplete,
   isSalesShipped,
+  isTtPaymentTermsText,
   normalizeTransportIncoterms,
   presentSalesContract,
   presentSalesShipmentStatus,
   resolveRemittedFen,
   resolveTradeTerm,
   resolveTtTiming,
+  resolveTtTimingForSave,
   salesShipmentBucketOf,
+  sanitizeSalesContractModeFields,
   unpaidRemittanceFen,
 } from './sales-contract';
 
@@ -139,6 +142,161 @@ describe('销售合同 CIF 装运节点与收汇', () => {
     expect(resolveTradeTerm('CIF Hamburg')).toBe('CIF');
     expect(resolveTradeTerm('CIP')).toBe('CIF');
     expect(resolveTradeTerm('FOB Shanghai')).toBe('FOB');
+  });
+});
+
+describe('切换术语清脏字段', () => {
+  it('离开 CIF 清空装运港、装运日、预计到港；不把 FOB 国内到达写回去', () => {
+    const out = sanitizeSalesContractModeFields({
+      incoterms: 'FOB',
+      shipmentPort: 'Shanghai',
+      shipmentDate: '2026-08-15',
+      etaDate: '2026-09-20',
+      arrivalPort: 'Hamburg',
+      domesticPortArrivalAt: null,
+    });
+    expect(out.shipmentPort).toBeNull();
+    expect(out.shipmentDate).toBeNull();
+    expect(out.etaDate).toBeNull();
+    expect(out.arrivalPort).toBeNull();
+    expect(out.domesticPortArrivalAt).toBeNull();
+    expect(out.ttTiming).toBeNull();
+  });
+
+  it('CIF + 后 T/T 改 FOB 时清 CIF 港口/到港，但保留电汇装运日与账期天数', () => {
+    const out = sanitizeSalesContractModeFields({
+      incoterms: 'FOB',
+      ttTiming: 'AFTER',
+      shipmentPort: 'Shanghai',
+      shipmentDate: '2026-08-15',
+      etaDate: '2026-09-20',
+      arrivalPort: 'Hamburg',
+      ttDaysAfterShipment: 30,
+      ttPercentBps: 3000,
+    });
+    expect(out.shipmentPort).toBeNull();
+    expect(out.etaDate).toBeNull();
+    expect(out.arrivalPort).toBeNull();
+    expect(out.shipmentDate).toBe('2026-08-15');
+    expect(out.ttDaysAfterShipment).toBe(30);
+    expect(out.ttPercentBps).toBeNull();
+    expect(out.paymentTerms).toBe('后 T/T 30 days');
+  });
+
+  it('离开 FOB 清空国内口岸到达时间，CIF 装运港可保留', () => {
+    const out = sanitizeSalesContractModeFields({
+      incoterms: 'CIF',
+      domesticPortArrivalAt: '2026-12-08 10:00',
+      shipmentPort: 'Ningbo',
+    });
+    expect(out.domesticPortArrivalAt).toBeNull();
+    expect(out.shipmentPort).toBe('Ningbo');
+  });
+
+  it('前 T/T 改后 T/T 清空预付比例与金额，保留装运日', () => {
+    const out = sanitizeSalesContractModeFields({
+      incoterms: 'FOB',
+      ttTiming: 'AFTER',
+      ttPercentBps: 3000,
+      ttAdvanceFen: 240_000,
+      ttDaysAfterShipment: 30,
+      shipmentDate: '2026-12-01',
+    });
+    expect(out.ttPercentBps).toBeNull();
+    expect(out.ttAdvanceFen).toBeNull();
+    expect(out.ttDaysAfterShipment).toBe(30);
+    expect(out.shipmentDate).toBe('2026-12-01');
+    expect(out.ttTiming).toBe('AFTER');
+  });
+
+  it('后 T/T 改前 T/T 清空账期天数', () => {
+    const out = sanitizeSalesContractModeFields({
+      incoterms: 'CIF',
+      ttTiming: 'ADVANCE',
+      ttDaysAfterShipment: 45,
+      ttPercentBps: 3000,
+      ttAdvanceFen: 240_000,
+      shipmentDate: '2026-08-15',
+      shipmentPort: 'Shanghai',
+    });
+    expect(out.ttDaysAfterShipment).toBeNull();
+    expect(out.ttPercentBps).toBe(3000);
+    expect(out.ttAdvanceFen).toBe(240_000);
+    expect(out.shipmentDate).toBe('2026-08-15');
+    expect(out.shipmentPort).toBe('Shanghai');
+  });
+
+  it('取消 T/T 时显式 ttTiming 空值不再从付款条件回填，并清空电汇专属字段', () => {
+    expect(isTtPaymentTermsText('前 T/T')).toBe(true);
+    expect(isTtPaymentTermsText('后 T/T 30 days')).toBe(true);
+    expect(isTtPaymentTermsText('L/C')).toBe(false);
+    expect(isTtPaymentTermsText('T/T 30 days')).toBe(false);
+    expect(resolveTtTimingForSave({ ttTiming: null, paymentTerms: '前 T/T' })).toBeNull();
+    expect(resolveTtTimingForSave({ paymentTerms: '前 T/T' })).toBe('ADVANCE');
+    const out = sanitizeSalesContractModeFields({
+      incoterms: 'FOB',
+      ttTiming: null,
+      paymentTerms: '前 T/T',
+      ttPercentBps: 3000,
+      ttAdvanceFen: 100_000,
+      shipmentDate: '2026-08-01',
+    });
+    expect(out.ttTiming).toBeNull();
+    expect(out.ttPercentBps).toBeNull();
+    expect(out.ttAdvanceFen).toBeNull();
+    expect(out.shipmentDate).toBeNull();
+    expect(out.paymentTerms).toBeNull();
+  });
+
+  it('未传 ttTiming 时仍可从付款条件推断前 T/T（兼容旧客户端）', () => {
+    const out = sanitizeSalesContractModeFields({
+      incoterms: 'FOB',
+      paymentTerms: '前 T/T',
+      ttPercentBps: 3000,
+    });
+    expect(out.ttTiming).toBe('ADVANCE');
+    expect(out.ttPercentBps).toBe(3000);
+    expect(out.paymentTerms).toBe('前 T/T');
+  });
+
+  it('取消 CIF 电汇时保留 CIF 装运日（装运块仍适用）', () => {
+    const out = sanitizeSalesContractModeFields({
+      incoterms: 'CIF',
+      ttTiming: '',
+      paymentTerms: '后 T/T 30 days',
+      shipmentDate: '2026-08-15',
+      ttDaysAfterShipment: 30,
+    });
+    expect(out.ttTiming).toBeNull();
+    expect(out.ttDaysAfterShipment).toBeNull();
+    expect(out.shipmentDate).toBe('2026-08-15');
+  });
+
+  it('取消电汇时保留普通 T/T 账期文案，只清前/后 T/T 合成句', () => {
+    const keep = sanitizeSalesContractModeFields({
+      incoterms: 'CIF',
+      ttTiming: null,
+      paymentTerms: 'T/T 30 days',
+      shipmentPort: 'Shanghai',
+    });
+    expect(keep.paymentTerms).toBe('T/T 30 days');
+    expect(keep.ttTiming).toBeNull();
+    const drop = sanitizeSalesContractModeFields({
+      incoterms: 'FOB',
+      ttTiming: null,
+      paymentTerms: '前 T/T',
+    });
+    expect(drop.paymentTerms).toBeNull();
+  });
+
+  it('切换术语不改共用金额字段', () => {
+    const out = sanitizeSalesContractModeFields({
+      incoterms: 'FOB',
+      shipmentPort: 'Shanghai',
+      amountFen: 12_800_000,
+    } as Parameters<typeof sanitizeSalesContractModeFields>[0] & { amountFen: number });
+    expect(out.amountFen).toBe(12_800_000);
+    expect(out.shipmentPort).toBeNull();
   });
 });
 

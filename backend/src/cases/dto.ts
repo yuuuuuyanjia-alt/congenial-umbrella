@@ -36,19 +36,19 @@ export class SaveContractDto {
   @IsOptional() @IsString() deliveryDate?: string;
   @IsOptional() @IsInt() quantity?: number;
   @IsOptional() @IsString() unit?: string;
-  @IsOptional() @IsString() paymentDueAt?: string;
-  @IsOptional() @IsString() shipmentPort?: string;
-  @IsOptional() @IsString() shipmentDate?: string;
-  @IsOptional() @IsString() domesticPortArrivalAt?: string;
-  @IsOptional() @IsString() etaDate?: string;
-  @IsOptional() @IsString() arrivalPort?: string;
+  @IsOptional() @IsString() paymentDueAt?: string | null;
+  @IsOptional() @IsString() shipmentPort?: string | null;
+  @IsOptional() @IsString() shipmentDate?: string | null;
+  @IsOptional() @IsString() domesticPortArrivalAt?: string | null;
+  @IsOptional() @IsString() etaDate?: string | null;
+  @IsOptional() @IsString() arrivalPort?: string | null;
   @IsOptional() @IsBoolean() customerPickedUp?: boolean | null;
   @IsOptional() @IsBoolean() hasRemittance?: boolean;
   @IsOptional() @IsInt() remittedFen?: number;
-  @IsOptional() @IsString() ttTiming?: string;
-  @IsOptional() @IsInt() ttPercentBps?: number;
-  @IsOptional() @IsInt() ttAdvanceFen?: number;
-  @IsOptional() @IsInt() ttDaysAfterShipment?: number;
+  @IsOptional() @IsString() ttTiming?: string | null;
+  @IsOptional() @IsInt() ttPercentBps?: number | null;
+  @IsOptional() @IsInt() ttAdvanceFen?: number | null;
+  @IsOptional() @IsInt() ttDaysAfterShipment?: number | null;
 }
 
 export class SaveShipmentDto {

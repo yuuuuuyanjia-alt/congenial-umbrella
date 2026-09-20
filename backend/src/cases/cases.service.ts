@@ -49,11 +49,10 @@ import {
 } from './sales-link';
 import { advanceResponseNextNode, laterNode, resolveAdvance } from './advance-guard';
 import {
-  composeTtPaymentTerms,
   normalizeTransportIncoterms,
   presentSalesContract,
   presentSalesShipmentStatus,
-  resolveTtTiming,
+  sanitizeSalesContractModeFields,
   TT_TIMING,
 } from './sales-contract';
 import {
@@ -343,29 +342,37 @@ export class CasesService {
       ...rest
     } = dto;
     const parsedDelivery = parseDate(deliveryDate);
-    const parsedShipment = parseDate(shipmentDate);
-    const ttTiming = resolveTtTiming({
+    const mode = sanitizeSalesContractModeFields({
+      incoterms: rest.incoterms,
       ttTiming: rest.ttTiming,
       paymentTerms: rest.paymentTerms,
-      incoterms: rest.incoterms,
+      shipmentPort: rest.shipmentPort,
+      shipmentDate: parseDate(shipmentDate),
+      etaDate: parseDate(etaDate),
+      arrivalPort: rest.arrivalPort,
+      domesticPortArrivalAt: parseDate(domesticPortArrivalAt),
+      ttPercentBps: rest.ttPercentBps,
+      ttAdvanceFen: rest.ttAdvanceFen,
+      ttDaysAfterShipment: rest.ttDaysAfterShipment,
     });
-    rest.incoterms = normalizeTransportIncoterms(rest.incoterms);
-    if (ttTiming) {
-      rest.ttTiming = ttTiming;
-      rest.paymentTerms = composeTtPaymentTerms(ttTiming, rest.ttDaysAfterShipment);
-    } else {
-      delete rest.ttTiming;
-    }
-    const dueSource = ttTiming === TT_TIMING.AFTER && parsedShipment ? parsedShipment : parsedDelivery;
+    const dueSource =
+      mode.ttTiming === TT_TIMING.AFTER && mode.shipmentDate ? mode.shipmentDate : parsedDelivery;
     const data = {
       ...rest,
-      ttTiming: ttTiming || null,
+      incoterms: mode.incoterms,
+      paymentTerms: mode.paymentTerms,
+      ttTiming: mode.ttTiming,
+      ttPercentBps: mode.ttPercentBps,
+      ttAdvanceFen: mode.ttAdvanceFen,
+      ttDaysAfterShipment: mode.ttDaysAfterShipment,
+      shipmentPort: mode.shipmentPort,
+      arrivalPort: mode.arrivalPort,
       customerPickedUp: customerPickedUp ?? null,
       deliveryDate: parsedDelivery,
-      paymentDueAt: parseDate(paymentDueAt) ?? derivePaymentDueAt(dueSource, rest.paymentTerms),
-      shipmentDate: parsedShipment,
-      etaDate: parseDate(etaDate),
-      domesticPortArrivalAt: parseDate(domesticPortArrivalAt),
+      paymentDueAt: parseDate(paymentDueAt) ?? derivePaymentDueAt(dueSource, mode.paymentTerms),
+      shipmentDate: mode.shipmentDate ? parseDate(mode.shipmentDate) : null,
+      etaDate: mode.etaDate ? parseDate(mode.etaDate) : null,
+      domesticPortArrivalAt: mode.domesticPortArrivalAt ? parseDate(mode.domesticPortArrivalAt) : null,
     };
     const row = await this.prisma.contract.upsert({
       where: { caseId },

@@ -15,13 +15,13 @@
       <view class="label">相对方</view>
       <input class="input" v-model="form.counterparty" />
       <view class="label">运输术语（Incoterms）<text class="req">必填</text></view>
-      <view class="muted">只选 FOB / CIF 等运输条件。T/T 不是 Incoterm，请在下方结算方式勾选。</view>
+      <view class="muted">只选 FOB / CIF 等运输条件。T/T 不是 Incoterm，请在下方结算方式勾选。切换 FOB / CIF 会清空上一术语的港口、日期等专属字段。</view>
       <view class="choice-row">
         <view class="choice-btn" :class="{ 'choice-btn-on': tradeTerm === 'FOB' }" @click="selectTerm('FOB')">FOB</view>
         <view class="choice-btn" :class="{ 'choice-btn-on': tradeTerm === 'CIF' }" @click="selectTerm('CIF')">CIF</view>
       </view>
       <view class="label">结算方式</view>
-      <view class="muted">与运输术语独立，可组合例如 FOB + 前 T/T。再点一次可取消，改为填写其他付款条件。</view>
+      <view class="muted">与运输术语独立，可组合例如 FOB + 前 T/T。再点一次可取消，改为填写其他付款条件。切换前/后 T/T 会清空另一时点的预付比例、账期天数等；合同金额、交货期、提货与收汇（N9）不受影响。</view>
       <view class="choice-row">
         <view class="choice-btn" :class="{ 'choice-btn-on': form.ttTiming === 'ADVANCE' }" @click="selectTtTiming('ADVANCE')">前 T/T</view>
         <view class="choice-btn" :class="{ 'choice-btn-on': form.ttTiming === 'AFTER' }" @click="selectTtTiming('AFTER')">后 T/T</view>
@@ -393,19 +393,46 @@ function resolveTtTiming(terms?: string | null): TtTiming | '' {
   return '';
 }
 
+function isTtPaymentTermsText(raw?: string | null) {
+  return /前\s*T\s*\/\s*T|后\s*T\s*\/\s*T/i.test(String(raw || ''));
+}
+
+/** 按当前 FOB/CIF 与前/后 T/T 丢掉另一选项的专属字段，避免隐藏值随保存串台。 */
+function clearInapplicableModeFields() {
+  const term = resolveTradeTerm(form.incoterms);
+  const tt = form.ttTiming;
+  if (term !== 'CIF') {
+    form.shipmentPort = '';
+    form.etaDate = '';
+    form.arrivalPort = '';
+  }
+  if (term !== 'CIF' && !tt) form.shipmentDate = '';
+  if (term !== 'FOB') form.domesticPortArrivalAt = '';
+  if (tt !== 'ADVANCE') {
+    form.ttPercent = '';
+    form.ttAdvanceYuan = '';
+  }
+  if (tt !== 'AFTER') form.ttDays = '';
+  if (!tt && isTtPaymentTermsText(form.paymentTerms)) form.paymentTerms = '';
+}
+
 function selectTerm(term: TradeTerm) {
+  const prev = resolveTradeTerm(form.incoterms);
   form.incoterms = term;
+  if (prev !== term) clearInapplicableModeFields();
 }
 
 function selectTtTiming(timing: TtTiming) {
   if (form.ttTiming === timing) {
     form.ttTiming = '';
+    clearInapplicableModeFields();
     return;
   }
   form.ttTiming = timing;
+  clearInapplicableModeFields();
   if (timing === 'ADVANCE' && !form.ttPercent) form.ttPercent = '30';
   if (timing === 'AFTER' && !form.ttDays) form.ttDays = '30';
-  syncAdvanceFromPercent();
+  if (timing === 'ADVANCE') syncAdvanceFromPercent();
 }
 
 function syncAdvanceFromPercent() {
@@ -439,14 +466,14 @@ function gateMessage(e: any) {
   return e?.message || '闸门拒绝';
 }
 
-function ymdOrUndef(v: string) {
+function ymdOrNull(v: string) {
   const s = (v || '').trim();
-  return s || undefined;
+  return s || null;
 }
 
-function intOrUndef(v: string) {
+function intOrNull(v: string) {
   const n = Number(v);
-  return Number.isFinite(n) ? Math.round(n) : undefined;
+  return Number.isFinite(n) ? Math.round(n) : null;
 }
 
 async function save() {
@@ -454,15 +481,20 @@ async function save() {
   ok.value = '';
   try {
     const term = tradeTerm.value || (isTtOnly(form.incoterms) ? 'FOB' : form.incoterms);
-    const ttTiming = form.ttTiming || undefined;
+    const cif = term === 'CIF';
+    const fob = term === 'FOB';
+    const ttTiming = form.ttTiming || null;
+    const shipmentDateApplies = cif || !!ttTiming;
+    const paymentTerms =
+      ttTiming || !isTtPaymentTermsText(form.paymentTerms) ? form.paymentTerms : null;
     await api.saveContract(id.value, {
       counterparty: form.counterparty,
       incoterms: term || 'FOB',
-      paymentTerms: form.paymentTerms,
-      ttTiming: ttTiming || null,
-      ttPercentBps: ttTiming === 'ADVANCE' && form.ttPercent ? Math.round(Number(form.ttPercent) * 100) : undefined,
-      ttAdvanceFen: ttTiming === 'ADVANCE' ? yuanToFen(form.ttAdvanceYuan) : undefined,
-      ttDaysAfterShipment: ttTiming === 'AFTER' ? intOrUndef(form.ttDays) : undefined,
+      paymentTerms,
+      ttTiming,
+      ttPercentBps: ttTiming === 'ADVANCE' && form.ttPercent ? Math.round(Number(form.ttPercent) * 100) : null,
+      ttAdvanceFen: ttTiming === 'ADVANCE' && form.ttAdvanceYuan ? yuanToFen(form.ttAdvanceYuan) : null,
+      ttDaysAfterShipment: ttTiming === 'AFTER' ? intOrNull(form.ttDays) : null,
       hasRetentionOfTitle: form.hasRetentionOfTitle,
       hasDisputeClause: form.hasDisputeClause,
       deliveryDate: form.deliveryDate,
@@ -470,13 +502,13 @@ async function save() {
       unit: form.unit,
       amountFen: yuanToFen(form.amountYuan),
       currency: form.currency,
-      shipmentPort: form.shipmentPort,
-      shipmentDate: ymdOrUndef(form.shipmentDate),
-      etaDate: ymdOrUndef(form.etaDate),
-      arrivalPort: form.arrivalPort,
-      domesticPortArrivalAt: ymdOrUndef(form.domesticPortArrivalAt),
+      shipmentPort: cif ? form.shipmentPort || null : null,
+      shipmentDate: shipmentDateApplies ? ymdOrNull(form.shipmentDate) : null,
+      etaDate: cif ? ymdOrNull(form.etaDate) : null,
+      arrivalPort: cif ? form.arrivalPort || null : null,
+      domesticPortArrivalAt: fob ? ymdOrNull(form.domesticPortArrivalAt) : null,
       customerPickedUp: form.customerPickedUp,
-      paymentDueAt: ymdOrUndef(form.paymentDueAt),
+      paymentDueAt: ymdOrNull(form.paymentDueAt),
     });
     c.value = await api.case(id.value);
     applyContractRemittance(c.value?.contract);
