@@ -77,7 +77,11 @@ export class GateService {
         ? {
             poNo: c.procurementPlan.poNo,
             plannedArrival: c.procurementPlan.plannedArrival,
-            contractDelivery: c.procurementPlan.contractDelivery,
+            contractDelivery:
+              c.procurementPlan.contractDelivery ||
+              c.procurementPlan.salesCase?.contract?.deliveryDate ||
+              c.contract?.deliveryDate ||
+              null,
             poEvidenceStub: c.procurementPlan.poEvidenceStub,
             poEvidenceId: c.procurementPlan.poEvidenceId,
             delayRegistered: c.procurementPlan.delayRegistered,

@@ -96,6 +96,6 @@ describe('收汇按期判断', () => {
       now: '2026-09-16',
     });
     expect(r.code).toBe(RemittanceStatus.OVERDUE);
-    expect(r.note).toContain('实际到货');
+    expect(r.note).toContain('实际交付');
   });
 });
