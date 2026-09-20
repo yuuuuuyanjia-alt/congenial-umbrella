@@ -44,6 +44,7 @@ import {
   ExposureBand,
   evaluateOccupancy,
   moneyLabel,
+  newContractFenForNode,
 } from '../customers/sinosure-exposure';
 import {
   OccupancyReviewStatus,
@@ -1029,7 +1030,7 @@ function applySinosureGate(
   const exp = evaluateOccupancy({
     openUnpaidFen: snap.sinosureOccupancy?.openUnpaidFen ?? 0,
     fulfilledUnpaidFen: snap.sinosureOccupancy?.fulfilledUnpaidFen ?? 0,
-    newContractFen: Math.max(0, totalFen || 0),
+    newContractFen: newContractFenForNode({ nodeCode, nodes: snap.nodes, totalFen }),
     insuredLimitFen: pol?.insuredLimitFen ?? 0,
     currency: pol?.currency || currency || 'USD',
     limitCurrency: pol?.currency || null,

@@ -114,6 +114,65 @@ export function isUsd(currency?: string | null): boolean {
   return String(currency || '').trim().toUpperCase() === EXPOSURE_CURRENCY;
 }
 
+function nodeStatusOf(
+  nodes: Array<{ code: string; status: string }> | null | undefined,
+  code: string,
+): string | null {
+  return (nodes || []).find((n) => n.code === code)?.status ?? null;
+}
+
+/**
+ * 新签占用只在 N3/N4 尚未通过时计入一次。
+ * N3 已 PASSED 后本案改走未履行/已履行未回款，避免与新签金额叠算。
+ */
+export function shouldTreatAsNewContract(input: {
+  currentNode?: string | null;
+  nodes?: Array<{ code: string; status: string }> | null;
+}): boolean {
+  const current = String(input.currentNode || '').toUpperCase();
+  if (current === 'N4') return nodeStatusOf(input.nodes, 'N4') !== 'PASSED';
+  if (current === 'N3') return nodeStatusOf(input.nodes, 'N3') !== 'PASSED';
+  return false;
+}
+
+/** 该节点已通过则新签金额为 0，防止闸门把本案再加一遍。 */
+export function newContractFenForNode(input: {
+  nodeCode: string;
+  nodes?: Array<{ code: string; status: string }> | null;
+  totalFen?: number | null;
+}): number {
+  if (nodeStatusOf(input.nodes, input.nodeCode) === 'PASSED') return 0;
+  return Math.max(0, Number(input.totalFen) || 0);
+}
+
+export function occupancyNewContractOpts(
+  self: {
+    id: string;
+    currentNode?: string | null;
+    nodes?: Array<{ code: string; status: string }> | null;
+    contract?: { amountFen?: number | null; currency?: string | null } | null;
+    amountFen?: number | null;
+    currency?: string | null;
+  },
+  override?: { newAmountFen?: number | null; newCurrency?: string | null },
+): {
+  newCaseId: string | null;
+  newAmountFen: number;
+  newCurrency: string;
+} {
+  const treatAsNew = shouldTreatAsNewContract(self);
+  const amountFen =
+    override?.newAmountFen != null
+      ? override.newAmountFen
+      : self.contract?.amountFen ?? self.amountFen ?? 0;
+  const currency = override?.newCurrency || self.contract?.currency || self.currency || EXPOSURE_CURRENCY;
+  return {
+    newCaseId: treatAsNew ? self.id : null,
+    newAmountFen: treatAsNew ? Math.max(0, Number(amountFen) || 0) : 0,
+    newCurrency: currency,
+  };
+}
+
 /** 已装运（N6 已过）或案件已完成 → 出口合同已履行完毕 */
 export function isExportFulfilled(input: {
   status?: string | null;

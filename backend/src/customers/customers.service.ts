@@ -13,6 +13,7 @@ import {
   ExposureContractInput,
   evaluateBuyerOccupancy,
   isExportFulfilled,
+  occupancyNewContractOpts,
   receivedFenOf,
 } from './sinosure-exposure';
 
@@ -192,16 +193,8 @@ export class CustomersService {
     }
     if (!seen.has(self.id)) cases.push(self);
 
-    const treatAsNew = self.currentNode === 'N3' || self.currentNode === 'N4';
-    const amountFen =
-      override?.newAmountFen != null
-        ? override.newAmountFen
-        : self.contract?.amountFen ?? self.amountFen;
-    const currency = override?.newCurrency || self.contract?.currency || self.currency || 'USD';
     return this.occupancyFromCases(cases as unknown as ReturnType<CustomersService['casesOf']>, {
-      newCaseId: treatAsNew ? self.id : null,
-      newAmountFen: treatAsNew ? amountFen : 0,
-      newCurrency: currency,
+      ...occupancyNewContractOpts(self, override),
     });
   }
 
