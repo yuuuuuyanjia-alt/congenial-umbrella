@@ -4,6 +4,7 @@ import { CaseSnapshot, CustomsSnap, DocSnap, GateResult, HsTemplateSnap } from '
 import { evaluateNode } from './gate.engine';
 import { CustomersService } from '../customers/customers.service';
 import { isSalesContractSigned, n3StatusOf } from '../cases/sales-link';
+import { OccupancyReviewStatus, occupancyFingerprint, planOccupancyReviewSync } from '../workbench/occupancy-review';
 
 @Injectable()
 export class GateService {
@@ -30,6 +31,7 @@ export class GateService {
         procurementPlan: { include: { salesCase: { include: { contract: true, nodes: true, parties: true } } } },
         customs: true,
         sinosurePolicies: { orderBy: { createdAt: 'asc' } },
+        occupancyReviews: { orderBy: { createdAt: 'asc' } },
       },
     });
     const goodsKey = normGoods(c.goodsDesc);
@@ -117,12 +119,25 @@ export class GateService {
         openUnpaidFen: occ.openUnpaidFen,
         fulfilledUnpaidFen: occ.fulfilledUnpaidFen,
       },
+      occupancyReviews: (c.occupancyReviews || []).map((row) => ({
+        id: row.id,
+        nodeCode: row.nodeCode,
+        status: row.status,
+        band: row.band,
+        occupancyFen: row.occupancyFen,
+        excessFen: row.excessFen,
+        insuredLimitFen: row.insuredLimitFen,
+        fingerprint: row.fingerprint,
+        claimedById: row.claimedById,
+        comment: row.comment,
+      })),
     };
   }
 
   async evaluateAndPersist(caseId: string, nodeCode: string): Promise<GateResult> {
     const snap = await this.snapshot(caseId);
     const result = evaluateNode(nodeCode, snap);
+    await this.syncOccupancyReview(caseId, result, snap.occupancyReviews);
     await this.prisma.gateCheck.create({
       data: {
         caseId,
@@ -134,6 +149,48 @@ export class GateService {
       },
     });
     return result;
+  }
+
+  async refreshOccupancyReview(caseId: string, nodeCode: string): Promise<GateResult> {
+    const snap = await this.snapshot(caseId);
+    const result = evaluateNode(nodeCode, snap);
+    await this.syncOccupancyReview(caseId, result, snap.occupancyReviews);
+    return result;
+  }
+
+  private async syncOccupancyReview(
+    caseId: string,
+    result: GateResult,
+    reviews: CaseSnapshot['occupancyReviews'],
+  ) {
+    if (result.nodeCode !== 'N3' && result.nodeCode !== 'N4') return;
+    const exp = result.exposure;
+    if (!exp) {
+      const plan = planOccupancyReviewSync(reviews, result.nodeCode, { band: null });
+      if (plan.supersedeIds.length) {
+        await this.prisma.occupancyReview.updateMany({
+          where: { id: { in: plan.supersedeIds } },
+          data: { status: OccupancyReviewStatus.SUPERSEDED },
+        });
+      }
+      return;
+    }
+    const plan = planOccupancyReviewSync(reviews, result.nodeCode, exp);
+    if (plan.supersedeIds.length) {
+      await this.prisma.occupancyReview.updateMany({
+        where: { id: { in: plan.supersedeIds } },
+        data: { status: OccupancyReviewStatus.SUPERSEDED },
+      });
+    }
+    if (plan.create) {
+      await this.prisma.occupancyReview.create({
+        data: {
+          caseId,
+          ...plan.create,
+          fingerprint: plan.create.fingerprint || occupancyFingerprint(plan.create),
+        },
+      });
+    }
   }
 }
 

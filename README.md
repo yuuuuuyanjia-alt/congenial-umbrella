@@ -136,7 +136,7 @@ DEMO_FORCE_SEED=1 docker compose up -d --force-recreate api
 npm test
 ```
 
-覆盖：N1 高置信硬拦截 / 低置信软提示；N2 模糊报价拒绝与成本底线偏离；N3 缺条款拒绝、**中信保限额未登记不得签订合同 / 缺保单/占用超高风险拒绝、高风险审核、中风险软提示**、**CIF/CIP 装运节点**；N4 变更确认链、**变更后占用复核**、无变更跳过且不要求 N4 中信保；N5 **须关联已签销售合同**、供应商高置信硬拦截、采购到货延期无同意中风险；**N6 正本/电放二选一、FOB 无提单路径、缺证据拒绝**；N7 / N9 缺证据拒绝推进；N8 HS/申报要素缺口禁止申报；**采购货款一次性付清或分期支付（每期约定付款时间、付款比例、金额）与按期次逾期**；**先销售后采购：未签销售合同不得作为采购关联对象，已签合同可任选、不自动锁定本案**；**销售/采购合同列表按 N3 / N5 过滤，不混用采购 PO 作为销售合同条目**；**已回款单一事实源：列表已完成与占用释放均认 N9 水单/到账，勾选 N3 是否收汇不能假装完成**。
+覆盖：N1 高置信硬拦截 / 低置信软提示；N2 模糊报价拒绝与成本底线偏离；N3 缺条款拒绝、**中信保限额未登记不得签订合同 / 缺保单/占用超高风险拒绝、高风险工作台领取/放行/驳回、中风险软提示**、**CIF/CIP 装运节点**；N4 变更确认链、**变更后占用复核（高风险同样工作台审核）**、无变更跳过且不要求 N4 中信保；N5 **须关联已签销售合同**、供应商高置信硬拦截、采购到货延期无同意中风险；**N6 正本/电放二选一、FOB 无提单路径、缺证据拒绝**；N7 / N9 缺证据拒绝推进；N8 HS/申报要素缺口禁止申报；**采购货款一次性付清或分期支付（每期约定付款时间、付款比例、金额）与按期次逾期**；**先销售后采购：未签销售合同不得作为采购关联对象，已签合同可任选、不自动锁定本案**；**销售/采购合同列表按 N3 / N5 过滤，不混用采购 PO 作为销售合同条目**；**已回款单一事实源：列表已完成与占用释放均认 N9 水单/到账，勾选 N3 是否收汇不能假装完成**。
 
 ## 种子案件
 
@@ -151,7 +151,7 @@ npm test
 | `DEMO-FOB` | FOB 无提单 | Pacific Tools，FOB 买方订舱；N3 已填国内段到达口岸/港口时间（2026-12-08 10:00，完成国内交付）；N6 走「无提单」路径（书面指示 + 内部审批 + 装船通知依据），已过闸停在 N7；采购 `PO-PT-FOB-004` **关联销售合同 DEMO-FOB**。销售列表归入 **已出运** |
 | `DEMO-LIMIT` | 中信保超高风险 | Pacific Gear Ltd，新签 80,000 USD，限额 30,000 USD，超额正好 50,000 USD → **超高风险硬拦截**，停在 N3；推进应 **409 GATE_REFUSED**，`missing` 含 `N3_SINOSURE_OVER_LIMIT` |
 | `DEMO-LIMIT-MED` | 中信保中风险 | Helios Marine Ltd：已履行未回款 20,000 + 未履行未回款 8,000 + 新签 25,000 = 占用 53,000，限额 40,000，超额 13,000 → **中风险软提示，可推进** |
-| `DEMO-LIMIT-HIGH` | 中信保高风险 | Caspian Spare Ltd，新签 75,000 USD，限额 50,000 USD，超额 25,000 → **高风险审核队列**，N3 不得直接推进 |
+| `DEMO-LIMIT-HIGH` | 中信保高风险 | Caspian Spare Ltd，新签 75,000 USD，限额 50,000 USD，超额 25,000 → **高风险工作台审核**（领取 / 放行 / 驳回）。放行后可推进，驳回后仍阻断；无需改金额。超高风险不走此路径 |
 | `DEMO-NOLIMIT` | 中信保未登记 | Cedar Trade Ltd，已到 N3 尚无合同、未登记限额；保存合同或推进应 **409 GATE_REFUSED**，文案「尚未登记中信保限额，不得签订合同」 |
 | `DEMO-SUPPLIER` | 供应商硬拦截 | 国外买方 Rhein Parts 筛查通过；国内供应商「某不可靠实体贸易有限公司」高置信命中模拟不可靠实体清单，N5 拒绝；采购 `PO-UNREL-2026-001` **已关联销售合同 DEMO-SUPPLIER** |
 | `DEMO-NORD-LATE` | 逾期收汇 | 同为 Nordlicht 历史订单，约定到期 2026-04-14，到账 2026-05-20，**逾期**；N9 仅部分到账 20,000 / 合同 45,000，占用仍计已履行未回款；销售列表 **已出运**（已提货但未收齐）。采购 `PO-BH-2026-003` **关联 DEMO-NORD-LATE** |
@@ -269,7 +269,22 @@ curl -s -X POST http://127.0.0.1:3000/api/cases/<DEMO-NOLIMIT的id>/nodes/N3/adv
 curl -s -X POST http://127.0.0.1:3000/api/cases/<DEMO-LIMIT的id>/nodes/N3/advance
 ```
 
-报价含模糊用语、变更单未确认、采购未关联已签销售合同、采购到货延期无客户同意、HS 申报要素缺口，分别对 N2 / N4 / N5 / N8 `advance` 同样拒绝。国内供应商高置信命中时 N5 `advance` 返回 **409** 且 `missing` 含 `N5_HIGH_CONFIDENCE_HIT`。未关联销售合同时 N5 保存或推进返回 **409**，`missing` 含 `N5_SALES_LINK`（或关联对象尚未签订销售合同时为 `N5_SALES_NOT_SIGNED`）。进入 N4 后若未再次确认中信保，或变更后占用属超高风险，N4 `advance` 也会拒绝。高风险占用进入审核队列（`REVIEW`，`missing` 含 `N3_SINOSURE_EXPOSURE_HIGH` / `N4_SINOSURE_EXPOSURE_HIGH`）。无变更单时 N3 通过后直接进入 N5，不要求 N4 中信保。
+对 `DEMO-LIMIT-HIGH`（超额 25,000 USD，高风险）直接推进 N3 返回 **409** 且 `missing` 含 `N3_SINOSURE_EXPOSURE_HIGH`。工作台领取并放行后即可推进，**不必改合同金额**：
+
+```bash
+curl -s http://127.0.0.1:3000/api/workbench/queue
+curl -s -X POST http://127.0.0.1:3000/api/workbench/<DEMO-LIMIT-HIGH的id>/action \
+  -H 'Content-Type: application/json' \
+  -d '{"reviewId":"<queue中OCCUPANCY_HIGH的id>","action":"CLAIM","comment":"领取占用高风险"}'
+curl -s -X POST http://127.0.0.1:3000/api/workbench/<DEMO-LIMIT-HIGH的id>/action \
+  -H 'Content-Type: application/json' \
+  -d '{"reviewId":"<同上>","action":"APPROVE","comment":"合规放行"}'
+curl -s -X POST http://127.0.0.1:3000/api/cases/<DEMO-LIMIT-HIGH的id>/nodes/N3/advance
+```
+
+`REJECT` 后再次 `advance` 仍为 **409**。超高风险 `DEMO-LIMIT` 不会出现在该占用审核队列。
+
+报价含模糊用语、变更单未确认、采购未关联已签销售合同、采购到货延期无客户同意、HS 申报要素缺口，分别对 N2 / N4 / N5 / N8 `advance` 同样拒绝。国内供应商高置信命中时 N5 `advance` 返回 **409** 且 `missing` 含 `N5_HIGH_CONFIDENCE_HIT`。未关联销售合同时 N5 保存或推进返回 **409**，`missing` 含 `N5_SALES_LINK`（或关联对象尚未签订销售合同时为 `N5_SALES_NOT_SIGNED`）。进入 N4 后若未再次确认中信保，或变更后占用属超高风险，N4 `advance` 也会拒绝。高风险占用进入工作台审核队列（`REVIEW`，`missing` 含 `N3_SINOSURE_EXPOSURE_HIGH` / `N4_SINOSURE_EXPOSURE_HIGH`）：`GET /api/workbench/queue` 可见占用高风险任务，`POST /api/workbench/:caseId/action` 传 `reviewId` + `CLAIM` / `APPROVE` / `REJECT`。**放行后** N3/N4 可推进；**驳回后**仍阻断；**无需改合同金额**。超高风险不进工作台。无变更单时 N3 通过后直接进入 N5，不要求 N4 中信保。
 
 常用接口：
 
@@ -291,8 +306,8 @@ curl -s -X POST http://127.0.0.1:3000/api/cases/<DEMO-LIMIT的id>/nodes/N3/advan
 - `POST /api/cases/:id/nodes/N8/eport-sync` 模拟电子口岸同步
 - `GET /api/cases/:id/nodes/:code/gate` 预览闸门
 - `POST /api/cases/:id/nodes/:code/advance` 过闸
-- `GET /api/workbench/queue` 命中队列
-- `POST /api/workbench/:caseId/action` 工作台处置
+- `GET /api/workbench/queue` 审核队列（筛查命中 + 占用高风险）
+- `POST /api/workbench/:caseId/action` 工作台处置（筛查命中用 `hitId`；占用高风险用 `reviewId` + `CLAIM`/`APPROVE`/`REJECT`）
 - `GET /api/cases/:id/audit` 审计轨迹
 - `GET /api/customers` 客户列表（仅 N3+ 买方；中信保限额、占用/剩余或超额分档、合同数、已收汇/未收汇、约定收款日）
 - `GET /api/customers/:id` 客户详情（限额、占用拆分、合同、历次 N3+ 交易、收汇与收款日）
@@ -310,11 +325,11 @@ curl -s -X POST http://127.0.0.1:3000/api/cases/<DEMO-LIMIT的id>/nodes/N3/advan
 - **变更证据链**：变更单号 → diff → 客户确认证据 → 内部确认（敏感则审批）→ 合同新版本
 - **提单控制**：正本提单 **或** 电放提单（并列二选一，不必同时具备）
 - **无提单路径**：FOB / EXW / FAS / FCA 等买方安排运输时，不要求提单号与正本/电放；须选择「无提单」并记录装船通知 / 订舱 / 买方运输安排。CIF/CFR 等卖方出单仍须正本或电放。合同术语由 N3 带入 N6，可在 N6 手工改术语后过闸。
-- **工作台动作**：误报排除、确认真实、补充信息、持续监控
+- **工作台动作**：筛查命中为误报排除、确认真实、补充信息、持续监控；占用高风险为领取、放行、驳回（写入审计）
 - **硬闸门**：N6 / N7 / N9，证据缺失即拒绝推进
 - **中信保限额**：限额未登记不得签订合同
 - **中信保占用**：占用 = **未履行完毕合同未回款**（已签但尚未装运/N6 未过）+ **已履行完毕合同未回款**（已装运或案件已完成，仍有应收）+ **新签订合同金额**（N3/N4 本笔）。客户详情不计入「新签」项，在手 N3 合同计入未履行完毕。
-- **超额分档（美元，左闭右开）**：[10,000, 20,000) 中风险软提示可推进（`SOFT_ALERT`）；[20,000, 50,000) 高风险审核队列（`REVIEW`，N3 不得直接推进）；[50,000, ∞) 超高风险硬拦截（`HARD_BLOCK`，`N3_SINOSURE_OVER_LIMIT`）。正好 1 万→中，正好 2 万→高，正好 5 万→超高。超额不足 1 万美元仍显示超额，按软提示。额度内显示剩余额度。
+- **超额分档（美元，左闭右开）**：[10,000, 20,000) 中风险软提示可推进（`SOFT_ALERT`）；[20,000, 50,000) 高风险真实工作台审核（`REVIEW`，领取/放行/驳回；放行后可推进，驳回后仍阻断，无需改金额）；[50,000, ∞) 超高风险硬拦截（`HARD_BLOCK`，`N3_SINOSURE_OVER_LIMIT`，不进工作台）。正好 1 万→中，正好 2 万→高，正好 5 万→超高。超额不足 1 万美元仍显示超额，按软提示。额度内显示剩余额度。
 - **币种**：演示环境占用与分档 **只按美元加总**，沿用 `SinosurePolicy.currency`；非美元不自动换算，超额一律按超高风险硬拦截。限额币种须与合同一致。
 - **约定收款日 / 按期回款**：出口合同收款是否按期；对照到期日与收汇到账，并统计已收汇/未收汇
 - **国内供应商货款**：采购合同须选择一次性付清或分期支付；分期每一期登记约定付款时间、付款比例、金额，分别统计已付未付与是否逾期

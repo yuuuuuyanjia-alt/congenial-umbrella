@@ -58,7 +58,7 @@
     },
     {
       "path": "pages/workbench/index",
-      "style": { "navigationBarTitleText": "命中处置" }
+      "style": { "navigationBarTitleText": "审核工作台" }
     },
     {
       "path": "pages/customer/list",

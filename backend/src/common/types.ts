@@ -249,6 +249,21 @@ export interface CaseSnapshot {
   sinosurePolicies: SinosurePolicySnap[];
   /** 买方其余合同未回款（不含本笔新签金额） */
   sinosureOccupancy?: SinosureOccupancySnap | null;
+  /** 中信保占用高风险工作台审核（领取 / 放行 / 驳回） */
+  occupancyReviews?: OccupancyReviewSnap[] | null;
+}
+
+export interface OccupancyReviewSnap {
+  id?: string;
+  nodeCode: string;
+  status: string;
+  band?: string | null;
+  occupancyFen: number;
+  excessFen: number;
+  insuredLimitFen: number;
+  fingerprint?: string | null;
+  claimedById?: string | null;
+  comment?: string | null;
 }
 
 export interface GateResult {

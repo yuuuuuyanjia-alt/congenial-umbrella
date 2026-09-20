@@ -24,6 +24,7 @@ import {
   RiskLevelLabel,
   WorkbenchActionLabel,
 } from '../common/constants';
+import { OccupancyWorkbenchActionLabel } from '../workbench/occupancy-review';
 
 @Controller()
 export class CatalogController {
@@ -52,6 +53,7 @@ export class CatalogController {
       incotermsCodes: INCOTERMS_CODES,
       n6MissingTransportFallback: N6_MISSING_TRANSPORT_FALLBACK,
       workbench: WorkbenchActionLabel,
+      occupancyWorkbench: OccupancyWorkbenchActionLabel,
       priceBasis: PriceBasisLabel,
       bearers: BearerLabel,
       changeFields: ChangeFieldLabel,
@@ -64,13 +66,13 @@ export class CatalogController {
       installmentStatus: InstallmentStatusLabel,
       sinosure: {
         label: '中信保',
-        n3: '中信保限额未登记，不得签订合同。须先登记投保限额；占用=未履行完毕未回款+已履行完毕未回款+新签合同。超额1–2万中风险软提示，2–5万高风险审核，5万以上超高风险硬拦截。CIF/CIP 可登记装运港、装运日期、预计到港与客户是否提货；约定客户付款日期与收汇/未收汇（未收汇=合同总额−收汇金额）',
-        n4: '进入变更管理须再次确认或重新上传，并按变更后金额重算买方占用',
+        n3: '中信保限额未登记，不得签订合同。须先登记投保限额；占用=未履行完毕未回款+已履行完毕未回款+新签合同。超额1–2万中风险软提示，2–5万高风险须工作台领取/放行/驳回，5万以上超高风险硬拦截。CIF/CIP 可登记装运港、装运日期、预计到港与客户是否提货；约定客户付款日期与收汇/未收汇（未收汇=合同总额−收汇金额）',
+        n4: '进入变更管理须再次确认或重新上传，并按变更后金额重算买方占用；高风险占用同样走工作台审核',
         formula: '占用 = 未履行完毕合同未回款 + 已履行完毕合同未回款 + 新签订合同金额',
         bandsUsd: {
           medium: '[10000, 20000) 中风险，软提示可推进',
-          high: '[20000, 50000) 高风险，审核队列',
-          ultraHigh: '[50000, ∞) 超高风险，硬拦截',
+          high: '[20000, 50000) 高风险，工作台领取/放行/驳回；放行后可推进，驳回后仍阻断',
+          ultraHigh: '[50000, ∞) 超高风险，硬拦截，不进工作台',
           belowMedium: '(0, 10000) 仍显示超额，软提示',
           currency: '演示环境分档以美元计，不自动换算',
         },

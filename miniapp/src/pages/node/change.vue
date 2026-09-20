@@ -36,6 +36,11 @@
       <view class="h2">中信保（变更后核对）</view>
       <view class="muted">有变更单时须再次上传保单，或确认沿用当前保单，并按变更后合同金额重算买方占用。</view>
       <SinosureExposure :exposure="c.sinosureExposure" :show-new="true" />
+      <view class="err" v-if="occupancyNeedsReview" style="margin-top: 12rpx">
+        变更后占用属高风险，请到审核工作台领取并放行后再推进，无需改金额。
+      </view>
+      <view class="ok" v-if="occupancyApproved" style="margin-top: 12rpx">工作台已放行该高风险占用，可以推进。</view>
+      <view class="btn btn-ghost" v-if="occupancyNeedsReview || occupancyRejected" @click="goWorkbench">去审核工作台</view>
       <view class="muted" v-if="n3Hint">合同环节：{{ n3Hint }}</view>
       <view class="muted" v-if="n4Hint">本节点已登记：{{ n4Hint }}</view>
       <view class="label">处理方式</view>
@@ -100,6 +105,23 @@ const sino = reactive({
 
 const n3Hint = computed(() => formatPolicy(latestSinosure(c.value?.sinosurePolicies, 'N3')));
 const n4Hint = computed(() => formatPolicy(latestSinosure(c.value?.sinosurePolicies, 'N4')));
+const occupancyReview = computed(() =>
+  (c.value?.occupancyReviews || []).find((r: any) => r.nodeCode === 'N4' && r.status !== 'SUPERSEDED'),
+);
+const occupancyNeedsReview = computed(() => {
+  if (c.value?.sinosureExposure?.band !== 'HIGH') return false;
+  const st = occupancyReview.value?.status;
+  return !st || st === 'OPEN' || st === 'CLAIMED';
+});
+const occupancyApproved = computed(
+  () => c.value?.sinosureExposure?.band === 'HIGH' && occupancyReview.value?.status === 'APPROVED',
+);
+const occupancyRejected = computed(
+  () => c.value?.sinosureExposure?.band === 'HIGH' && occupancyReview.value?.status === 'REJECTED',
+);
+function goWorkbench() {
+  uni.navigateTo({ url: '/pages/workbench/index' });
+}
 
 onLoad(async (q) => {
   id.value = q?.id || '';
@@ -191,6 +213,9 @@ async function tryAdvance() {
     ok.value = `已推进至 ${r.nextNode}`;
   } catch (e: any) {
     err.value = (e?.reasons || []).join('；') || e?.message || '闸门拒绝';
+    if (Array.isArray(e?.missing) && e.missing.some((m: string) => String(m).includes('SINOSURE_EXPOSURE_HIGH'))) {
+      err.value = `${err.value}。请到审核工作台领取并放行，无需修改合同金额。`;
+    }
   }
 }
 </script>

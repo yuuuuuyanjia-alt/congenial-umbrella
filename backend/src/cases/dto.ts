@@ -97,6 +97,7 @@ export class SaveSettlementDto {
 
 export class WorkbenchDto {
   @IsOptional() @IsString() hitId?: string;
+  @IsOptional() @IsString() reviewId?: string;
   @IsString() action: string;
   @IsOptional() @IsString() comment?: string;
 }
