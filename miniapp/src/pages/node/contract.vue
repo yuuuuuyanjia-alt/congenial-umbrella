@@ -165,7 +165,7 @@
 </template>
 
 <script setup lang="ts">
-import { onLoad } from '@dcloudio/uni-app';
+import { onLoad, onShow } from '@dcloudio/uni-app';
 import { computed, reactive, ref } from 'vue';
 import { api, fenToYuan, latestSinosure, previewExposure, yuanToFen } from '../../api';
 import SinosureExposure from '../../components/SinosureExposure.vue';
@@ -228,9 +228,16 @@ const exposureView = computed(() => {
   return previewExposure(base, yuanToFen(form.amountYuan)) || base;
 });
 
-const occupancyReview = computed(() =>
-  (c.value?.occupancyReviews || []).find((r: any) => r.nodeCode === 'N3' && r.status !== 'SUPERSEDED'),
-);
+const occupancyReview = computed(() => {
+  const rows = (c.value?.occupancyReviews || []).filter(
+    (r: any) => r.nodeCode === 'N3' && r.status !== 'SUPERSEDED',
+  );
+  return (
+    rows.find((r: any) => r.status === 'APPROVED') ||
+    rows.find((r: any) => r.status === 'REJECTED') ||
+    rows[0]
+  );
+});
 
 const occupancyNeedsReview = computed(() => {
   if (exposureView.value?.band !== 'HIGH') return false;
@@ -294,6 +301,15 @@ onLoad(async (q) => {
     sino.currency = p.currency || form.currency;
   } else {
     sino.currency = form.currency;
+  }
+});
+
+onShow(async () => {
+  if (!id.value) return;
+  try {
+    c.value = await api.case(id.value);
+  } catch {
+    /* 首次 onLoad 可能尚未写入 id；忽略 */
   }
 });
 

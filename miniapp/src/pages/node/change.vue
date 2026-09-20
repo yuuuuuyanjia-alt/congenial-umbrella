@@ -76,7 +76,7 @@
 </template>
 
 <script setup lang="ts">
-import { onLoad } from '@dcloudio/uni-app';
+import { onLoad, onShow } from '@dcloudio/uni-app';
 import { computed, reactive, ref } from 'vue';
 import { api, fenToYuan, latestSinosure, yuanToFen } from '../../api';
 import SinosureExposure from '../../components/SinosureExposure.vue';
@@ -105,9 +105,16 @@ const sino = reactive({
 
 const n3Hint = computed(() => formatPolicy(latestSinosure(c.value?.sinosurePolicies, 'N3')));
 const n4Hint = computed(() => formatPolicy(latestSinosure(c.value?.sinosurePolicies, 'N4')));
-const occupancyReview = computed(() =>
-  (c.value?.occupancyReviews || []).find((r: any) => r.nodeCode === 'N4' && r.status !== 'SUPERSEDED'),
-);
+const occupancyReview = computed(() => {
+  const rows = (c.value?.occupancyReviews || []).filter(
+    (r: any) => r.nodeCode === 'N4' && r.status !== 'SUPERSEDED',
+  );
+  return (
+    rows.find((r: any) => r.status === 'APPROVED') ||
+    rows.find((r: any) => r.status === 'REJECTED') ||
+    rows[0]
+  );
+});
 const occupancyNeedsReview = computed(() => {
   if (c.value?.sinosureExposure?.band !== 'HIGH') return false;
   const st = occupancyReview.value?.status;
@@ -126,6 +133,15 @@ function goWorkbench() {
 onLoad(async (q) => {
   id.value = q?.id || '';
   await reload();
+});
+
+onShow(async () => {
+  if (!id.value) return;
+  try {
+    await reload();
+  } catch {
+    /* ignore */
+  }
 });
 
 function formatPolicy(p: any) {
