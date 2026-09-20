@@ -1,5 +1,10 @@
-import { CaseStatus, NODE_FLOW, NodeCode, NodeStatus } from '../common/constants';
-import { isBuyerArrangedFreight, isCifFamilyIncoterms } from '../gates/gate.engine';
+import { CaseStatus, N6_MISSING_TRANSPORT_FALLBACK, NODE_FLOW, NodeCode, NodeStatus } from '../common/constants';
+import {
+  isBuyerArrangedFreight,
+  isCifFamilyIncoterms,
+  isSettlementOnlyIncoterms,
+  parseIncotermsCode,
+} from '../gates/gate.engine';
 import {
   isSettlementPaid,
   receivedFenOf,
@@ -8,15 +13,15 @@ import {
 
 export { isBuyerArrangedFreight, isCifFamilyIncoterms };
 
+/** 运输术语（Incoterms）。T/T 不是运输术语。 */
 export const TRADE_TERM = {
   FOB: 'FOB',
   CIF: 'CIF',
-  TT: 'T/T',
 } as const;
 
 export type TradeTerm = (typeof TRADE_TERM)[keyof typeof TRADE_TERM];
 
-export const TRADE_TERM_OPTIONS: TradeTerm[] = [TRADE_TERM.FOB, TRADE_TERM.CIF, TRADE_TERM.TT];
+export const TRADE_TERM_OPTIONS: TradeTerm[] = [TRADE_TERM.FOB, TRADE_TERM.CIF];
 
 export const TT_TIMING = {
   ADVANCE: 'ADVANCE',
@@ -30,16 +35,9 @@ export const TtTimingLabel: Record<TtTiming, string> = {
   AFTER: '后 T/T',
 };
 
-/** FOB / CIF / T/T 三选一。CIP 归 CIF；EXW/FAS/FCA 归 FOB。T/T 不是独立结算方式。 */
+/** CIP 归 CIF 族展示；EXW/FAS/FCA 归 FOB 族。T/T 不从 incoterms 解析。 */
 export function resolveTradeTerm(raw?: string | null): TradeTerm | null {
-  const s = String(raw || '').trim();
-  if (!s) return null;
-  if (/t\s*\/\s*t/i.test(s) || /^tt(?:\b|\s|$)/i.test(s)) return TRADE_TERM.TT;
-  const code = s
-    .toUpperCase()
-    .replace(/^INCOTERMS(?:\s*20\d{2})?\s+/i, '')
-    .split(/[\s,;:：-]+/)[0]
-    .replace(/\/.*$/, '');
+  const code = parseIncotermsCode(raw);
   if (code === 'CIF' || code === 'CIP') return TRADE_TERM.CIF;
   if (code === 'FOB' || code === 'EXW' || code === 'FAS' || code === 'FCA') return TRADE_TERM.FOB;
   return null;
@@ -48,7 +46,8 @@ export function resolveTradeTerm(raw?: string | null): TradeTerm | null {
 export function resolveTtTiming(input: {
   ttTiming?: string | null;
   paymentTerms?: string | null;
-  contract?: { ttTiming?: string | null; paymentTerms?: string | null } | null;
+  incoterms?: string | null;
+  contract?: { ttTiming?: string | null; paymentTerms?: string | null; incoterms?: string | null } | null;
 }): TtTiming | null {
   const raw = String(input.ttTiming || input.contract?.ttTiming || '').trim().toUpperCase();
   if (raw === TT_TIMING.ADVANCE || raw === '前' || raw === '前T/T') return TT_TIMING.ADVANCE;
@@ -56,7 +55,27 @@ export function resolveTtTiming(input: {
   const terms = String(input.paymentTerms || input.contract?.paymentTerms || '');
   if (/前\s*T\s*\/\s*T|in\s*advance|预付/i.test(terms)) return TT_TIMING.ADVANCE;
   if (/后\s*T\s*\/\s*T|after\s*shipment|装运后/i.test(terms)) return TT_TIMING.AFTER;
+  if (isSettlementOnlyIncoterms(input.incoterms || input.contract?.incoterms)) return TT_TIMING.ADVANCE;
   return null;
+}
+
+/** 是否电汇结算（前/后 T/T）。与运输术语独立。 */
+export function isTtSettlement(input: {
+  ttTiming?: string | null;
+  paymentTerms?: string | null;
+  incoterms?: string | null;
+}): boolean {
+  return !!resolveTtTiming(input);
+}
+
+/**
+ * 保存时规范化运输术语：T/T 等结算原文不得写入 incoterms，回退为 FOB。
+ */
+export function normalizeTransportIncoterms(raw?: string | null): string | undefined {
+  const s = String(raw || '').trim();
+  if (parseIncotermsCode(s)) return s;
+  if (isSettlementOnlyIncoterms(s)) return N6_MISSING_TRANSPORT_FALLBACK;
+  return s || undefined;
 }
 
 export function composeTtPaymentTerms(timing?: string | null, daysAfterShipment?: number | null): string {
@@ -163,6 +182,7 @@ export function presentSalesContract<
   tradeTerm: TradeTerm | null;
   ttTiming: TtTiming | null;
   ttAdvanceFen: number;
+  transportFallbackApplied: boolean;
 };
 export function presentSalesContract<
   T extends {
@@ -189,6 +209,7 @@ export function presentSalesContract<
       tradeTerm: TradeTerm | null;
       ttTiming: TtTiming | null;
       ttAdvanceFen: number;
+      transportFallbackApplied: boolean;
     })
   | null;
 export function presentSalesContract<
@@ -216,14 +237,18 @@ export function presentSalesContract<
       tradeTerm: TradeTerm | null;
       ttTiming: TtTiming | null;
       ttAdvanceFen: number;
+      transportFallbackApplied: boolean;
     })
   | null {
   if (!row) return null;
   const amountFen = Math.max(0, Number(row.amountFen) || 0);
   const remittedFen = receivedFenOf(settlement, amountFen);
   const hasRemittance = !!(settlement && (settlement.receivedAt || settlement.hasRemittanceMemo));
-  const tradeTerm = resolveTradeTerm(row.incoterms);
+  const parsedTerm = resolveTradeTerm(row.incoterms);
   const ttTiming = resolveTtTiming(row);
+  const ttVisible = !!ttTiming;
+  const transportFallbackApplied = !parsedTerm && ttVisible;
+  const tradeTerm = parsedTerm || (transportFallbackApplied ? TRADE_TERM.FOB : null);
   return {
     ...row,
     hasRemittance,
@@ -233,8 +258,9 @@ export function presentSalesContract<
     ttTiming,
     cifShippingVisible: tradeTerm === TRADE_TERM.CIF,
     fobDomesticVisible: tradeTerm === TRADE_TERM.FOB,
-    ttVisible: tradeTerm === TRADE_TERM.TT,
+    ttVisible,
     ttAdvanceFen: resolveTtAdvanceFen(row),
+    transportFallbackApplied,
   };
 }
 

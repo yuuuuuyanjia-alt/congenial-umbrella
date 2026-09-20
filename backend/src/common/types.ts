@@ -64,7 +64,7 @@ export interface ShipmentSnap {
   noBlRef?: string | null;
   /** 演示上传占位（文件名或附件编号） */
   noBlEvidenceStub?: string | null;
-  /** N6 手工覆盖合同贸易术语；空则沿用 N3 contract.incoterms */
+  /** N6 手工覆盖合同运输术语；空则沿用 N3 contract.incoterms。不得写入 T/T */
   incotermsOverride?: string | null;
 }
 

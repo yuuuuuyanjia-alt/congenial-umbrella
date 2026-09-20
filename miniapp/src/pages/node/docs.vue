@@ -52,6 +52,17 @@ function blank() {
   return { buyerName: '', consigneeName: '', goodsDesc: '', amountFen: 0, currency: 'USD', incoterms: 'CIF' };
 }
 
+function transportIncoterms(raw?: string | null) {
+  const s = String(raw || '').trim();
+  const known = ['EXW', 'FCA', 'FAS', 'FOB', 'CFR', 'CIF', 'CPT', 'CIP', 'DAP', 'DPU', 'DDP'];
+  const found = s.toUpperCase().match(/[A-Z]{3}/g) || [];
+  for (const code of found) {
+    if (known.includes(code)) return s;
+  }
+  if (/t\s*\/\s*t/i.test(s) || /^tt(?:\b|\s|$)/i.test(s)) return 'FOB';
+  return s || 'CIF';
+}
+
 onLoad(async (q) => {
   id.value = q?.id || '';
   const c = await api.case(id.value);
@@ -69,7 +80,7 @@ onLoad(async (q) => {
     t.fields.consigneeName = c.contract.consigneeName || '';
     t.fields.goodsDesc = c.contract.goodsDesc || c.goodsDesc;
     t.fields.amountFen = c.contract.amountFen || c.amountFen;
-    t.fields.incoterms = c.contract.incoterms || 'CIF';
+    t.fields.incoterms = transportIncoterms(c.contract.incoterms);
   }
 });
 

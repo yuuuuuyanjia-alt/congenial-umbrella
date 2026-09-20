@@ -40,11 +40,10 @@ import {
 } from './sales-link';
 import {
   composeTtPaymentTerms,
+  normalizeTransportIncoterms,
   presentSalesContract,
   presentSalesShipmentStatus,
-  resolveTradeTerm,
   resolveTtTiming,
-  TRADE_TERM,
   TT_TIMING,
 } from './sales-contract';
 import {
@@ -328,16 +327,22 @@ export class CasesService {
     } = dto;
     const parsedDelivery = parseDate(deliveryDate);
     const parsedShipment = parseDate(shipmentDate);
-    const ttTiming = resolveTtTiming({ ttTiming: rest.ttTiming, paymentTerms: rest.paymentTerms });
-    if (resolveTradeTerm(rest.incoterms) === TRADE_TERM.TT) {
-      rest.incoterms = TRADE_TERM.TT;
-      rest.ttTiming = ttTiming || TT_TIMING.ADVANCE;
-      rest.paymentTerms = composeTtPaymentTerms(rest.ttTiming, rest.ttDaysAfterShipment);
+    const ttTiming = resolveTtTiming({
+      ttTiming: rest.ttTiming,
+      paymentTerms: rest.paymentTerms,
+      incoterms: rest.incoterms,
+    });
+    rest.incoterms = normalizeTransportIncoterms(rest.incoterms);
+    if (ttTiming) {
+      rest.ttTiming = ttTiming;
+      rest.paymentTerms = composeTtPaymentTerms(ttTiming, rest.ttDaysAfterShipment);
+    } else {
+      delete rest.ttTiming;
     }
-    const dueSource =
-      rest.ttTiming === TT_TIMING.AFTER && parsedShipment ? parsedShipment : parsedDelivery;
+    const dueSource = ttTiming === TT_TIMING.AFTER && parsedShipment ? parsedShipment : parsedDelivery;
     const data = {
       ...rest,
+      ttTiming: ttTiming || null,
       customerPickedUp: customerPickedUp ?? null,
       deliveryDate: parsedDelivery,
       paymentDueAt: parseDate(paymentDueAt) ?? derivePaymentDueAt(dueSource, rest.paymentTerms),
@@ -999,7 +1004,7 @@ export class CasesService {
       noBlReason: dto.noBlReason || null,
       noBlRef: dto.noBlRef || null,
       noBlEvidenceStub: dto.noBlEvidenceStub || null,
-      incotermsOverride: dto.incotermsOverride || null,
+      incotermsOverride: normalizeTransportIncoterms(dto.incotermsOverride) || null,
     };
     const row = await this.prisma.shipment.upsert({
       where: { caseId },

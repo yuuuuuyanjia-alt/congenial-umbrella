@@ -22,7 +22,7 @@ export const NODE_CATALOG = [
     mvp: true,
     isHardGate: false,
     isStub: false,
-    summary: '销售/出口合同与采购合同分开签订。所有权保留与争议解决条款必填；中信保限额未登记不得签订销售合同；须上传保单并登记投保限额；按买方占用测算（未履行完毕未回款+已履行完毕未回款+新签合同），超额分档提示或拦截。贸易条件 FOB / CIF / T/T 三选一：CIF 填装运港与装运日期；FOB 填国内段到达口岸/港口时间；T/T 再选前 T/T 或后 T/T 并填收汇节点。客户是否提货可填；收汇金额以收汇对账（N9）水单/到账为唯一事实源，本节点只读。销售合同列表按未出运/已出运/已完成分组。',
+    summary: '销售/出口合同与采购合同分开签订。所有权保留与争议解决条款必填；中信保限额未登记不得签订销售合同；须上传保单并登记投保限额；按买方占用测算（未履行完毕未回款+已履行完毕未回款+新签合同），超额分档提示或拦截。运输术语（Incoterms）与结算方式独立：FOB / CIF（及 CIP 等）只表示运输；前 T/T / 后 T/T 只表示结算，可与 FOB/CIF 组合。CIF/CIP 填装运港与装运日期；FOB 填国内段到达口岸/港口时间；T/T 填对应收汇节点。客户是否提货可填；收汇金额以收汇对账（N9）水单/到账为唯一事实源，本节点只读。销售合同列表按未出运/已出运/已完成分组。',
   },
   {
     code: 'N4',
@@ -46,7 +46,7 @@ export const NODE_CATALOG = [
     mvp: true,
     isHardGate: true,
     isStub: false,
-    summary: '硬闸门：客户书面指示 + 内部审批；CIF/CFR 等须正本或电放其一；FOB/EXW/FAS/FCA 可走无提单路径。',
+    summary: '硬闸门：客户书面指示 + 内部审批。装运规则跟随所选运输术语：CIF/CFR 等须正本或电放其一；FOB/EXW/FAS/FCA 可走无提单路径。T/T 是结算方式不是 Incoterm；无有效运输术语时回退按 FOB（买方安排运输）执行。',
   },
   {
     code: 'N7',
@@ -54,7 +54,7 @@ export const NODE_CATALOG = [
     mvp: true,
     isHardGate: true,
     isStub: false,
-    summary: '硬闸门：终稿合同 + 合同/发票/装箱单/提单字段一致 + 不符点修改记录。',
+    summary: '硬闸门：终稿合同 + 合同/发票/装箱单/提单字段一致 + 不符点修改记录。运输术语按 Incoterms 比对，T/T 结算方式不参与；装运规则与 N6 相同，跟随所选运输术语。',
   },
   {
     code: 'N8',
@@ -207,6 +207,21 @@ export const BlControlLabel: Record<string, string> = {
   FOB_NO_BL: '无提单（FOB）',
 };
 
+/** 国际商会 Incoterms 运输术语代码。电汇 T/T 等结算方式不在此列。 */
+export const INCOTERMS_CODES = [
+  'EXW',
+  'FCA',
+  'FAS',
+  'FOB',
+  'CFR',
+  'CIF',
+  'CPT',
+  'CIP',
+  'DAP',
+  'DPU',
+  'DDP',
+] as const;
+
 /**
  * 买方安排主运、卖方通常不控提单的贸易术语。
  * FOB 为主场景；EXW / FAS / FCA 一并纳入无提单可选路径（与 CIF/CFR 等卖方出单相对）。
@@ -218,6 +233,13 @@ export const BUYER_ARRANGED_FREIGHT_INCOTERMS = ['FOB', 'EXW', 'FAS', 'FCA'] as 
  * 与 N6 买方安排运输（FOB 等无提单）互斥；CFR 不含保险，不纳入本族。
  */
 export const CIF_FAMILY_INCOTERMS = ['CIF', 'CIP'] as const;
+
+/**
+ * 无有效运输术语时，N6/N7 装运规则的明确回退：FOB（买方安排运输）。
+ * 用于历史把 T/T 写入 incoterms、或已选前/后 T/T 却未填运输术语的合同。
+ * 不得把 T/T 切成 T 后误走卖方提单路径。
+ */
+export const N6_MISSING_TRANSPORT_FALLBACK = 'FOB';
 
 export const DocType = {
   CONTRACT: 'CONTRACT',
