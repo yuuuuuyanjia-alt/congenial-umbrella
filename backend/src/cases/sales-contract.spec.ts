@@ -1,6 +1,7 @@
 import { CIF_FAMILY_INCOTERMS } from '../common/constants';
 import { isBuyerArrangedFreight, parseIncotermsCode } from '../gates/gate.engine';
 import {
+  composeTtPaymentTerms,
   groupSalesByShipmentBucket,
   isCifFamilyIncoterms,
   isSalesPickedUp,
@@ -9,6 +10,8 @@ import {
   presentSalesContract,
   presentSalesShipmentStatus,
   resolveRemittedFen,
+  resolveTradeTerm,
+  resolveTtTiming,
   salesShipmentBucketOf,
   unpaidRemittanceFen,
 } from './sales-contract';
@@ -68,6 +71,27 @@ describe('销售合同 CIF 装运节点与收汇', () => {
     expect(fob?.remittedFen).toBe(0);
     expect(fob?.unpaidFen).toBe(3_600_000);
     expect(cif?.fobDomesticVisible).toBe(false);
+    expect(cif?.tradeTerm).toBe('CIF');
+    expect(cif?.ttVisible).toBe(false);
+    expect(fob?.tradeTerm).toBe('FOB');
+  });
+
+  it('FOB / CIF / T/T 为并列三选一，T/T 再分前/后', () => {
+    expect(resolveTradeTerm('CIF Hamburg')).toBe('CIF');
+    expect(resolveTradeTerm('CIP')).toBe('CIF');
+    expect(resolveTradeTerm('FOB Shanghai')).toBe('FOB');
+    expect(resolveTradeTerm('T/T')).toBe('T/T');
+    expect(resolveTradeTerm('t/t 预付')).toBe('T/T');
+    const tt = presentSalesContract({ incoterms: 'T/T', amountFen: 800_000, ttTiming: 'ADVANCE', ttPercentBps: 3000 });
+    expect(tt?.ttVisible).toBe(true);
+    expect(tt?.cifShippingVisible).toBe(false);
+    expect(tt?.fobDomesticVisible).toBe(false);
+    expect(tt?.ttTiming).toBe('ADVANCE');
+    expect(tt?.ttAdvanceFen).toBe(240_000);
+    expect(composeTtPaymentTerms('AFTER', 30)).toBe('后 T/T 30 days');
+    expect(composeTtPaymentTerms('ADVANCE')).toBe('前 T/T');
+    expect(resolveTtTiming({ paymentTerms: '前 T/T' })).toBe('ADVANCE');
+    expect(resolveTtTiming({ paymentTerms: '后 T/T 30 days' })).toBe('AFTER');
   });
 });
 
@@ -147,6 +171,17 @@ describe('销售合同出运/履约分组', () => {
         customerPickedUp: false,
         hasRemittance: false,
         amountFen: 3_600_000,
+      }),
+    ).toBe('shipped');
+
+    expect(
+      salesShipmentBucketOf({
+        shipmentDate: '2026-12-01',
+        currentNode: 'N3',
+        customerPickedUp: false,
+        hasRemittance: true,
+        remittedFen: 240_000,
+        amountFen: 800_000,
       }),
     ).toBe('shipped');
 

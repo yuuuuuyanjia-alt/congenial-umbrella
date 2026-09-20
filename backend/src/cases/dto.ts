@@ -45,6 +45,10 @@ export class SaveContractDto {
   @IsOptional() @IsBoolean() customerPickedUp?: boolean | null;
   @IsOptional() @IsBoolean() hasRemittance?: boolean;
   @IsOptional() @IsInt() remittedFen?: number;
+  @IsOptional() @IsString() ttTiming?: string;
+  @IsOptional() @IsInt() ttPercentBps?: number;
+  @IsOptional() @IsInt() ttAdvanceFen?: number;
+  @IsOptional() @IsInt() ttDaysAfterShipment?: number;
 }
 
 export class SaveShipmentDto {

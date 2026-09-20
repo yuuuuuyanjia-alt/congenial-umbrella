@@ -1751,6 +1751,10 @@ async function seedBareExport(opts: {
   approverId?: string;
   shipmentDate?: Date | null;
   customerPickedUp?: boolean | null;
+  ttTiming?: string | null;
+  ttPercentBps?: number | null;
+  ttAdvanceFen?: number | null;
+  ttDaysAfterShipment?: number | null;
   deliveryDate?: Date;
   quantity?: number;
   unit?: string;
@@ -1796,6 +1800,10 @@ async function seedBareExport(opts: {
           destination: opts.destination,
           shipmentDate: opts.shipmentDate ?? null,
           customerPickedUp: opts.customerPickedUp ?? null,
+          ttTiming: opts.ttTiming ?? null,
+          ttPercentBps: opts.ttPercentBps ?? null,
+          ttAdvanceFen: opts.ttAdvanceFen ?? null,
+          ttDaysAfterShipment: opts.ttDaysAfterShipment ?? null,
           hasRemittance: (opts.receivedFen ?? 0) > 0,
           remittedFen: opts.receivedFen ?? 0,
         },
@@ -1880,7 +1888,7 @@ async function seedBareExport(opts: {
 async function seedNordlichtWipCase(salesId: string) {
   return seedBareExport({
     caseNo: 'DEMO-NORD-WIP',
-    title: '北海机电出口德国 Nordlicht（在手未装运，未履行完毕）',
+    title: '北海机电出口德国 Nordlicht（后 T/T，在手未装运）',
     scenario: 'OPEN_UNFULFILLED',
     status: 'IN_PROGRESS',
     currentNode: 'N5',
@@ -1889,6 +1897,10 @@ async function seedNordlichtWipCase(salesId: string) {
     goodsDesc: '数控机床配件',
     destination: 'Hamburg, DE',
     amountFen: 1_800_000,
+    incoterms: 'T/T',
+    paymentTerms: '后 T/T 30 days',
+    ttTiming: 'AFTER',
+    ttDaysAfterShipment: 30,
     limitFen: 15_000_000,
     limitRef: 'SIN-NL-2026',
     fileName: '中信保限额批注-Nordlicht.pdf',
@@ -1939,7 +1951,7 @@ async function seedHeliosMediumBundle(salesId: string, approverId: string) {
   });
   const wip = await seedBareExport({
     caseNo: 'DEMO-HELIOS-WIP',
-    title: '闽南泵业出口 Helios（未履行完毕未回款）',
+    title: '闽南泵业出口 Helios（前 T/T，未履行完毕未回款）',
     scenario: 'EXPOSURE_OPEN_UNPAID',
     status: 'IN_PROGRESS',
     currentNode: 'N5',
@@ -1948,6 +1960,11 @@ async function seedHeliosMediumBundle(salesId: string, approverId: string) {
     goodsDesc: '工业泵',
     destination: 'Piraeus, GR',
     amountFen: 800_000,
+    incoterms: 'T/T',
+    paymentTerms: '前 T/T',
+    ttTiming: 'ADVANCE',
+    ttPercentBps: 3_000,
+    ttAdvanceFen: 240_000,
     limitFen,
     limitRef: 'SIN-HELIOS-2026',
     fileName: '中信保限额批注-Helios.pdf',

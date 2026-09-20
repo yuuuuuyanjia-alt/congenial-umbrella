@@ -45,6 +45,10 @@ export interface ContractSnap {
   customerPickedUp?: boolean | null;
   hasRemittance?: boolean | null;
   remittedFen?: number | null;
+  ttTiming?: string | null;
+  ttPercentBps?: number | null;
+  ttAdvanceFen?: number | null;
+  ttDaysAfterShipment?: number | null;
 }
 
 export interface ShipmentSnap {

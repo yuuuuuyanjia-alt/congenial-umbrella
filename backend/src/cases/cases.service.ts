@@ -38,7 +38,16 @@ import {
   signedSalesOptions,
   supplierNameOf,
 } from './sales-link';
-import { presentSalesContract, presentSalesShipmentStatus, resolveRemittedFen } from './sales-contract';
+import {
+  composeTtPaymentTerms,
+  presentSalesContract,
+  presentSalesShipmentStatus,
+  resolveRemittedFen,
+  resolveTradeTerm,
+  resolveTtTiming,
+  TRADE_TERM,
+  TT_TIMING,
+} from './sales-contract';
 import {
   AckChangeDto,
   CreateCaseDto,
@@ -305,6 +314,15 @@ export class CasesService {
       ...rest
     } = dto;
     const parsedDelivery = parseDate(deliveryDate);
+    const parsedShipment = parseDate(shipmentDate);
+    const ttTiming = resolveTtTiming({ ttTiming: rest.ttTiming, paymentTerms: rest.paymentTerms });
+    if (resolveTradeTerm(rest.incoterms) === TRADE_TERM.TT) {
+      rest.incoterms = TRADE_TERM.TT;
+      rest.ttTiming = ttTiming || TT_TIMING.ADVANCE;
+      rest.paymentTerms = composeTtPaymentTerms(rest.ttTiming, rest.ttDaysAfterShipment);
+    }
+    const dueSource =
+      rest.ttTiming === TT_TIMING.AFTER && parsedShipment ? parsedShipment : parsedDelivery;
     const resolvedRemitted = resolveRemittedFen({ hasRemittance, remittedFen });
     const data = {
       ...rest,
@@ -312,8 +330,8 @@ export class CasesService {
       customerPickedUp: customerPickedUp ?? null,
       remittedFen: resolvedRemitted,
       deliveryDate: parsedDelivery,
-      paymentDueAt: parseDate(paymentDueAt) ?? derivePaymentDueAt(parsedDelivery, dto.paymentTerms),
-      shipmentDate: parseDate(shipmentDate),
+      paymentDueAt: parseDate(paymentDueAt) ?? derivePaymentDueAt(dueSource, rest.paymentTerms),
+      shipmentDate: parsedShipment,
       etaDate: parseDate(etaDate),
       domesticPortArrivalAt: parseDate(domesticPortArrivalAt),
     };

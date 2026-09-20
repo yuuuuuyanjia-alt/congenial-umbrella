@@ -3,6 +3,78 @@ import { isBuyerArrangedFreight, isCifFamilyIncoterms } from '../gates/gate.engi
 
 export { isBuyerArrangedFreight, isCifFamilyIncoterms };
 
+export const TRADE_TERM = {
+  FOB: 'FOB',
+  CIF: 'CIF',
+  TT: 'T/T',
+} as const;
+
+export type TradeTerm = (typeof TRADE_TERM)[keyof typeof TRADE_TERM];
+
+export const TRADE_TERM_OPTIONS: TradeTerm[] = [TRADE_TERM.FOB, TRADE_TERM.CIF, TRADE_TERM.TT];
+
+export const TT_TIMING = {
+  ADVANCE: 'ADVANCE',
+  AFTER: 'AFTER',
+} as const;
+
+export type TtTiming = (typeof TT_TIMING)[keyof typeof TT_TIMING];
+
+export const TtTimingLabel: Record<TtTiming, string> = {
+  ADVANCE: '前 T/T',
+  AFTER: '后 T/T',
+};
+
+/** FOB / CIF / T/T 三选一。CIP 归 CIF；EXW/FAS/FCA 归 FOB。T/T 不是独立结算方式。 */
+export function resolveTradeTerm(raw?: string | null): TradeTerm | null {
+  const s = String(raw || '').trim();
+  if (!s) return null;
+  if (/t\s*\/\s*t/i.test(s) || /^tt(?:\b|\s|$)/i.test(s)) return TRADE_TERM.TT;
+  const code = s
+    .toUpperCase()
+    .replace(/^INCOTERMS(?:\s*20\d{2})?\s+/i, '')
+    .split(/[\s,;:：-]+/)[0]
+    .replace(/\/.*$/, '');
+  if (code === 'CIF' || code === 'CIP') return TRADE_TERM.CIF;
+  if (code === 'FOB' || code === 'EXW' || code === 'FAS' || code === 'FCA') return TRADE_TERM.FOB;
+  return null;
+}
+
+export function resolveTtTiming(input: {
+  ttTiming?: string | null;
+  paymentTerms?: string | null;
+  contract?: { ttTiming?: string | null; paymentTerms?: string | null } | null;
+}): TtTiming | null {
+  const raw = String(input.ttTiming || input.contract?.ttTiming || '').trim().toUpperCase();
+  if (raw === TT_TIMING.ADVANCE || raw === '前' || raw === '前T/T') return TT_TIMING.ADVANCE;
+  if (raw === TT_TIMING.AFTER || raw === '后' || raw === '后T/T') return TT_TIMING.AFTER;
+  const terms = String(input.paymentTerms || input.contract?.paymentTerms || '');
+  if (/前\s*T\s*\/\s*T|in\s*advance|预付/i.test(terms)) return TT_TIMING.ADVANCE;
+  if (/后\s*T\s*\/\s*T|after\s*shipment|装运后/i.test(terms)) return TT_TIMING.AFTER;
+  return null;
+}
+
+export function composeTtPaymentTerms(timing?: string | null, daysAfterShipment?: number | null): string {
+  if (timing === TT_TIMING.ADVANCE) return '前 T/T';
+  if (timing === TT_TIMING.AFTER) {
+    const days = Number(daysAfterShipment);
+    return Number.isFinite(days) && days > 0 ? `后 T/T ${Math.round(days)} days` : '后 T/T';
+  }
+  return 'T/T';
+}
+
+export function resolveTtAdvanceFen(input: {
+  ttAdvanceFen?: number | null;
+  ttPercentBps?: number | null;
+  amountFen?: number | null;
+}): number {
+  const explicit = Number(input.ttAdvanceFen);
+  if (Number.isFinite(explicit) && explicit > 0) return Math.round(explicit);
+  const bps = Math.max(0, Number(input.ttPercentBps) || 0);
+  const amount = Math.max(0, Number(input.amountFen) || 0);
+  return Math.round((amount * bps) / 10_000);
+}
+
 /** 销售合同列表出运/履约分组（中文标签固定）。 */
 export const SALES_SHIPMENT_BUCKET = {
   UNSHIPPED: 'unshipped',
@@ -77,35 +149,80 @@ export function presentSalesContract<
     hasRemittance?: boolean | null;
     remittedFen?: number | null;
   },
->(row: T): T & { remittedFen: number; unpaidFen: number; cifShippingVisible: boolean; fobDomesticVisible: boolean };
+>(row: T): T & {
+  remittedFen: number;
+  unpaidFen: number;
+  cifShippingVisible: boolean;
+  fobDomesticVisible: boolean;
+  ttVisible: boolean;
+  tradeTerm: TradeTerm | null;
+  ttTiming: TtTiming | null;
+  ttAdvanceFen: number;
+};
 export function presentSalesContract<
   T extends {
     incoterms?: string | null;
     amountFen?: number | null;
     hasRemittance?: boolean | null;
     remittedFen?: number | null;
+    ttTiming?: string | null;
+    paymentTerms?: string | null;
+    ttPercentBps?: number | null;
+    ttAdvanceFen?: number | null;
   },
 >(
   row: T | null | undefined,
-): (T & { remittedFen: number; unpaidFen: number; cifShippingVisible: boolean; fobDomesticVisible: boolean }) | null;
+):
+  | (T & {
+      remittedFen: number;
+      unpaidFen: number;
+      cifShippingVisible: boolean;
+      fobDomesticVisible: boolean;
+      ttVisible: boolean;
+      tradeTerm: TradeTerm | null;
+      ttTiming: TtTiming | null;
+      ttAdvanceFen: number;
+    })
+  | null;
 export function presentSalesContract<
   T extends {
     incoterms?: string | null;
     amountFen?: number | null;
     hasRemittance?: boolean | null;
     remittedFen?: number | null;
+    ttTiming?: string | null;
+    paymentTerms?: string | null;
+    ttPercentBps?: number | null;
+    ttAdvanceFen?: number | null;
   },
 >(
   row: T | null | undefined,
-): (T & { remittedFen: number; unpaidFen: number; cifShippingVisible: boolean; fobDomesticVisible: boolean }) | null {
+):
+  | (T & {
+      remittedFen: number;
+      unpaidFen: number;
+      cifShippingVisible: boolean;
+      fobDomesticVisible: boolean;
+      ttVisible: boolean;
+      tradeTerm: TradeTerm | null;
+      ttTiming: TtTiming | null;
+      ttAdvanceFen: number;
+    })
+  | null {
   if (!row) return null;
   const remittedFen = resolveRemittedFen(row);
+  const tradeTerm = resolveTradeTerm(row.incoterms);
+  const ttTiming = resolveTtTiming(row);
   return {
     ...row,
     remittedFen,
     unpaidFen: unpaidRemittanceFen(row.amountFen, remittedFen),
-    cifShippingVisible: isCifFamilyIncoterms(row.incoterms),
-    fobDomesticVisible: isBuyerArrangedFreight(row.incoterms),
+    tradeTerm,
+    ttTiming,
+    cifShippingVisible: tradeTerm === TRADE_TERM.CIF,
+    fobDomesticVisible: tradeTerm === TRADE_TERM.FOB,
+    ttVisible: tradeTerm === TRADE_TERM.TT,
+    ttAdvanceFen: resolveTtAdvanceFen(row),
   };
 }
 

@@ -1,5 +1,5 @@
 import { Controller, Get } from '@nestjs/common';
-import { SALES_SHIPMENT_BUCKET_ORDER, SalesShipmentBucketLabel } from '../cases/sales-contract';
+import { SALES_SHIPMENT_BUCKET_ORDER, SalesShipmentBucketLabel, TRADE_TERM_OPTIONS, TtTimingLabel } from '../cases/sales-contract';
 import { RemittanceStatusLabel } from '../customers/remittance';
 import { PrismaService } from '../prisma/prisma.service';
 import {
@@ -89,8 +89,10 @@ export class CatalogController {
         buckets: SalesShipmentBucketLabel,
         bucketOrder: SALES_SHIPMENT_BUCKET_ORDER,
         grouping:
-          '列表按未出运 / 已出运 / 已完成分组。已出运：CIF 装运日期已填，或 FOB 国内段到达口岸/港口时间已填，或 N6 已通过/已过装运节点，或已有提单号，或 FOB 等无提单路径已登记。已完成：已出运且客户已提货且已收汇且未收汇金额为 0。已出运列不含已完成。',
-        n3: '打开即填写销售合同。CIF/CIP 显示装运港口、装运日期、预计到达日期与到达港口；FOB/EXW/FAS/FCA 显示国内段到达口岸/港口时间（到达即完成国内交付），装运/提单仍在 N6。客户是否提货与收汇适用于全部术语。任意术语均可登记约定客户付款日期、是否收汇、收汇金额；未收汇金额按合同总额−收汇金额自动计算。',
+          '列表按未出运 / 已出运 / 已完成分组。已出运：CIF 装运日期已填，或 FOB 国内段到达口岸/港口时间已填，或 T/T 路径下装运日期已填，或 N6 已通过/已过装运节点，或已有提单号，或 FOB 等无提单路径已登记。已完成：已出运且客户已提货且已收汇且未收汇金额为 0。已出运列不含已完成。',
+        n3: '贸易条件为 FOB / CIF / T/T 三选一。CIF 填写装运港口、装运日期、预计到港；FOB 填写国内段到达口岸/港口时间；T/T 再选前 T/T 或后 T/T 并填写对应收汇节点。客户是否提货与收汇金额在所选条件路径下均可填写。',
+        tradeTerms: TRADE_TERM_OPTIONS,
+        ttTiming: TtTimingLabel,
       },
       hsTemplates: hsTemplates.map((h) => ({
         ...h,

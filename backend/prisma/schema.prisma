@@ -207,6 +207,14 @@ model Contract {
   shipmentDate        DateTime?
   /// FOB/EXW/FAS/FCA：国内段到达口岸/港口时间；到达即完成国内交付
   domesticPortArrivalAt DateTime?
+  /// T/T 子类：ADVANCE 前 T/T / AFTER 后 T/T（与 FOB、CIF 并列的贸易条件，不是独立结算方式）
+  ttTiming            String?
+  /// 前 T/T 预付款比例（基点，10000=100%）
+  ttPercentBps        Int?
+  /// 前 T/T 约定预付款金额（分）；空则按比例×合同额
+  ttAdvanceFen        Int?
+  /// 后 T/T 装运后付款天数
+  ttDaysAfterShipment Int?
   /// 货物状态：预计到达日期
   etaDate             DateTime?
   /// 货物状态：到达港口（预计到达哪个港口）
