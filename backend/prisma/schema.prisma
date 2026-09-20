@@ -199,8 +199,22 @@ model Contract {
   deliveryDate        DateTime?
   quantity            Int?
   unit                String?
-  /// 约定收汇到期日。优先手填；否则由交货期 + 付款条件中的账期天数推算（如 T/T 30 days）
+  /// 约定客户付款日期 / 约定收汇到期日。优先手填；否则由交货期 + 付款条件中的账期天数推算（如 T/T 30 days）
   paymentDueAt        DateTime?
+  /// CIF/CIP 装运港口
+  shipmentPort        String?
+  /// CIF/CIP 装运日期
+  shipmentDate        DateTime?
+  /// 货物状态：预计到达日期
+  etaDate             DateTime?
+  /// 货物状态：到达港口（预计到达哪个港口）
+  arrivalPort         String?
+  /// 客户是否提货：true 已提货 / false 未提货 / null 未填
+  customerPickedUp    Boolean?
+  /// 是否收汇
+  hasRemittance       Boolean   @default(false)
+  /// 已收汇金额（分），与合同币种一致；未收汇金额 = 合同总额 − 本字段
+  remittedFen         Int       @default(0)
   updatedAt           DateTime  @updatedAt
   case                TradeCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
 }

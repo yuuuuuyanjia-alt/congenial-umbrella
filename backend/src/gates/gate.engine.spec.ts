@@ -11,6 +11,7 @@ import {
   evaluateN7,
   evaluateN8,
   evaluateN9,
+  isCifFamilyIncoterms,
   nextNode,
 } from './gate.engine';
 
@@ -384,6 +385,26 @@ describe('闸门引擎 MVP 节点', () => {
 
   it('N3 条款与中信保限额齐全可通过', () => {
     expect(evaluateN3(baseSnap()).canProceed).toBe(true);
+  });
+
+  it('N3 不因缺少 CIF 装运/收汇字段而拒绝，CIF 条款判定不影响 FOB 无提单', () => {
+    expect(isCifFamilyIncoterms('CIF Hamburg')).toBe(true);
+    expect(isCifFamilyIncoterms('CIP')).toBe(true);
+    expect(isCifFamilyIncoterms('FOB')).toBe(false);
+    expect(isCifFamilyIncoterms('CFR')).toBe(false);
+    expect(
+      evaluateN3(
+        baseSnap({
+          contract: {
+            ...baseSnap().contract!,
+            incoterms: 'FOB',
+            paymentDueAt: '2026-12-30',
+            hasRemittance: false,
+            remittedFen: 0,
+          },
+        }),
+      ).canProceed,
+    ).toBe(true);
   });
 
   it('N3 超额 1–2 万美元为中风险软提示，可推进', () => {

@@ -3,6 +3,7 @@ import {
   BlControl,
   BUYER_ARRANGED_FREIGHT_INCOTERMS,
   CHANGE_FIELDS,
+  CIF_FAMILY_INCOTERMS,
   COMPARE_FIELDS,
   ChangeStatus,
   Decision,
@@ -449,6 +450,12 @@ export function parseIncotermsCode(raw?: string | null): string {
 export function isBuyerArrangedFreight(incoterms?: string | null): boolean {
   const code = parseIncotermsCode(incoterms);
   return (BUYER_ARRANGED_FREIGHT_INCOTERMS as readonly string[]).includes(code);
+}
+
+/** CIF 条款族：销售合同展示装运港/到港货物状态；不影响 N6 FOB 无提单路径。 */
+export function isCifFamilyIncoterms(incoterms?: string | null): boolean {
+  const code = parseIncotermsCode(incoterms);
+  return (CIF_FAMILY_INCOTERMS as readonly string[]).includes(code);
 }
 
 /** N6 闸门使用的贸易术语：本节点手工覆盖优先，否则取 N3 合同。 */
