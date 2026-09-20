@@ -3,10 +3,13 @@
     <view class="card">
       <view class="h2">单证一致性 · 硬闸门</view>
       <view class="muted" v-if="noBlPath">
-        N6 无提单路径：须有终稿合同，合同 / 发票 / 装箱单关键字段一致；不要求提单。核验装船通知 / 订舱号（与 N6 NO_BL 一致）。
+        N6 无提单路径：须有终稿合同，合同 / 发票 / 装箱单关键字段一致；不要求提单。核验装船通知 / 订舱号（与 N6 NO_BL 一致）。存在未生效变更单时禁止推进。
       </view>
-      <view class="muted" v-else>须有终稿合同，且合同 / 发票 / 装箱单 / 提单关键字段一致；不一致必须留下修改记录。</view>
+      <view class="muted" v-else>
+        须有终稿合同，且合同 / 发票 / 装箱单 / 提单关键字段一致；不一致必须留下修改记录。存在未生效变更单时禁止推进。
+      </view>
     </view>
+    <PendingChangeBlock :case-id="id" :case-data="c" />
     <view class="card" v-if="noBlPath">
       <view class="h2">装船通知 / 订舱号</view>
       <view class="muted">跟随 N6 无提单依据，本节点不要求提单。</view>
@@ -49,12 +52,14 @@
 import { onLoad } from '@dcloudio/uni-app';
 import { computed, reactive, ref } from 'vue';
 import { api } from '../../api';
+import PendingChangeBlock from '../../components/PendingChangeBlock.vue';
 
 const BUYER_FREIGHT = ['FOB', 'EXW', 'FAS', 'FCA'];
 
 const id = ref('');
 const err = ref('');
 const ok = ref('');
+const c = ref<any>(null);
 const noBlPath = ref(false);
 const shippingAdvice = reactive({ noBlRef: '', noBlReason: '', noBlEvidenceStub: '' });
 const docs = reactive([
@@ -101,29 +106,29 @@ function effectiveIncotermsCode(raw?: string | null) {
 
 onLoad(async (q) => {
   id.value = q?.id || '';
-  const c = await api.case(id.value);
-  const sh = c.shipment || {};
+  c.value = await api.case(id.value);
+  const sh = c.value.shipment || {};
   const blc = String(sh.blControl || '').toUpperCase();
-  const term = effectiveIncotermsCode(sh.incotermsOverride || c.contract?.incoterms);
+  const term = effectiveIncotermsCode(sh.incotermsOverride || c.value.contract?.incoterms);
   noBlPath.value = (blc === 'NO_BL' || blc === 'FOB_NO_BL') && BUYER_FREIGHT.includes(term);
   shippingAdvice.noBlRef = sh.noBlRef || '';
   shippingAdvice.noBlReason = sh.noBlReason || '';
   shippingAdvice.noBlEvidenceStub = sh.noBlEvidenceStub || '';
-  for (const d of c.documents || []) {
+  for (const d of c.value.documents || []) {
     const target = docs.find((x) => x.type === d.type);
     if (target) {
       target.isFinal = d.isFinal;
       Object.assign(target.fields, d.fields || {});
     }
   }
-  if (c.contract) {
+  if (c.value.contract) {
     const t = docs[0];
-    t.isFinal = c.contract.isFinal;
-    t.fields.buyerName = c.contract.buyerName || t.fields.buyerName;
-    t.fields.consigneeName = c.contract.consigneeName || '';
-    t.fields.goodsDesc = c.contract.goodsDesc || c.goodsDesc;
-    t.fields.amountFen = c.contract.amountFen || c.amountFen;
-    t.fields.incoterms = transportIncoterms(c.contract.incoterms);
+    t.isFinal = c.value.contract.isFinal;
+    t.fields.buyerName = c.value.contract.buyerName || t.fields.buyerName;
+    t.fields.consigneeName = c.value.contract.consigneeName || '';
+    t.fields.goodsDesc = c.value.contract.goodsDesc || c.value.goodsDesc;
+    t.fields.amountFen = c.value.contract.amountFen || c.value.amountFen;
+    t.fields.incoterms = transportIncoterms(c.value.contract.incoterms);
   }
 });
 
