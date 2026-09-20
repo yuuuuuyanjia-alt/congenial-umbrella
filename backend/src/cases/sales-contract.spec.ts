@@ -7,6 +7,7 @@ import {
   isSalesPickedUp,
   isSalesRemittanceComplete,
   isSalesShipped,
+  normalizeTransportIncoterms,
   presentSalesContract,
   presentSalesShipmentStatus,
   resolveRemittedFen,
@@ -82,18 +83,37 @@ describe('销售合同 CIF 装运节点与收汇', () => {
     expect(n3Only?.tradeTerm).toBe('FOB');
   });
 
-  it('FOB / CIF / T/T 为并列三选一，T/T 再分前/后', () => {
-    expect(resolveTradeTerm('CIF Hamburg')).toBe('CIF');
-    expect(resolveTradeTerm('CIP')).toBe('CIF');
-    expect(resolveTradeTerm('FOB Shanghai')).toBe('FOB');
-    expect(resolveTradeTerm('T/T')).toBe('T/T');
-    expect(resolveTradeTerm('t/t 预付')).toBe('T/T');
-    const tt = presentSalesContract({ incoterms: 'T/T', amountFen: 800_000, ttTiming: 'ADVANCE', ttPercentBps: 3000 });
-    expect(tt?.ttVisible).toBe(true);
-    expect(tt?.cifShippingVisible).toBe(false);
-    expect(tt?.fobDomesticVisible).toBe(false);
-    expect(tt?.ttTiming).toBe('ADVANCE');
-    expect(tt?.ttAdvanceFen).toBe(240_000);
+  it('parseIncotermsCode 只取运输术语，永不把 T/T 切成 T', () => {
+    expect(parseIncotermsCode('FOB Shanghai')).toBe('FOB');
+    expect(parseIncotermsCode('Incoterms 2020 CIF')).toBe('CIF');
+    expect(parseIncotermsCode('CIP')).toBe('CIP');
+    expect(parseIncotermsCode('FOB T/T')).toBe('FOB');
+    expect(parseIncotermsCode('T/T')).toBe('');
+    expect(parseIncotermsCode('t/t 预付')).toBe('');
+    expect(parseIncotermsCode('TT')).toBe('');
+    expect(parseIncotermsCode('T')).toBe('');
+    expect(parseIncotermsCode('')).toBe('');
+    expect(normalizeTransportIncoterms('T/T')).toBe('FOB');
+    expect(normalizeTransportIncoterms('FOB Shanghai')).toBe('FOB Shanghai');
+  });
+
+  it('运输术语与电汇结算独立：FOB + 前 T/T 可同时表达', () => {
+    const combo = presentSalesContract({
+      incoterms: 'FOB',
+      paymentTerms: '前 T/T',
+      ttTiming: 'ADVANCE',
+      amountFen: 800_000,
+      ttPercentBps: 3000,
+    });
+    expect(combo?.tradeTerm).toBe('FOB');
+    expect(combo?.ttVisible).toBe(true);
+    expect(combo?.fobDomesticVisible).toBe(true);
+    expect(combo?.cifShippingVisible).toBe(false);
+    expect(combo?.ttTiming).toBe('ADVANCE');
+    expect(combo?.ttAdvanceFen).toBe(240_000);
+    expect(combo?.transportFallbackApplied).toBe(false);
+    expect(resolveTradeTerm('T/T')).toBeNull();
+    expect(resolveTradeTerm('t/t 预付')).toBeNull();
     expect(composeTtPaymentTerms('AFTER', 30)).toBe('后 T/T 30 days');
     expect(composeTtPaymentTerms('ADVANCE')).toBe('前 T/T');
     expect(resolveTtTiming({ paymentTerms: '前 T/T' })).toBe('ADVANCE');
@@ -102,6 +122,23 @@ describe('销售合同 CIF 装运节点与收汇', () => {
     expect(fobKeep?.tradeTerm).toBe('FOB');
     expect(fobKeep?.ttVisible).toBe(false);
     expect(fobKeep?.fobDomesticVisible).toBe(true);
+    const legacy = presentSalesContract({ incoterms: 'T/T', amountFen: 800_000, ttTiming: 'ADVANCE', ttPercentBps: 3000 });
+    expect(legacy?.ttVisible).toBe(true);
+    expect(legacy?.tradeTerm).toBe('FOB');
+    expect(legacy?.fobDomesticVisible).toBe(true);
+    expect(legacy?.transportFallbackApplied).toBe(true);
+    expect(legacy?.cifShippingVisible).toBe(false);
+    const cifTt = presentSalesContract({ incoterms: 'CIF', ttTiming: 'AFTER', paymentTerms: '后 T/T 30 days' });
+    expect(cifTt?.tradeTerm).toBe('CIF');
+    expect(cifTt?.ttVisible).toBe(true);
+    expect(cifTt?.cifShippingVisible).toBe(true);
+    expect(cifTt?.fobDomesticVisible).toBe(false);
+  });
+
+  it('FOB / CIF 为运输术语，CIP 归 CIF 族', () => {
+    expect(resolveTradeTerm('CIF Hamburg')).toBe('CIF');
+    expect(resolveTradeTerm('CIP')).toBe('CIF');
+    expect(resolveTradeTerm('FOB Shanghai')).toBe('FOB');
   });
 });
 

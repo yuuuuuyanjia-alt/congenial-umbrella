@@ -11,8 +11,10 @@ import {
   evaluateN7,
   evaluateN8,
   evaluateN9,
+  effectiveN6Incoterms,
   isCifFamilyIncoterms,
   nextNode,
+  parseIncotermsCode,
 } from './gate.engine';
 
 function baseSnap(over: Partial<CaseSnapshot> = {}): CaseSnapshot {
@@ -716,6 +718,80 @@ describe('闸门引擎 MVP 节点', () => {
     expect(evaluateN6(baseSnap()).canProceed).toBe(true);
   });
 
+  it('parseIncotermsCode 永不把 T/T 切成 T', () => {
+    expect(parseIncotermsCode('T/T')).toBe('');
+    expect(parseIncotermsCode('T/T')).not.toBe('T');
+    expect(parseIncotermsCode('t/t 预付')).toBe('');
+    expect(parseIncotermsCode('FOB Shanghai')).toBe('FOB');
+    expect(parseIncotermsCode('FOB + 前 T/T')).toBe('FOB');
+  });
+
+  it('N6 FOB + 前 T/T 跟随 FOB 运输规则，不因结算方式走卖方提单', () => {
+    const r = evaluateN6(
+      baseSnap({
+        contract: {
+          ...baseSnap().contract!,
+          incoterms: 'FOB',
+          paymentTerms: '前 T/T',
+          ttTiming: 'ADVANCE',
+        },
+        shipment: {
+          hasCustomerWrittenInstruction: true,
+          instructionRef: 'INST-TT-FOB',
+          hasInternalApproval: true,
+          blControl: null,
+        },
+      }),
+    );
+    expect(r.canProceed).toBe(false);
+    expect(r.missing).toContain('N6_NO_BL_PATH');
+    expect(r.missing).not.toContain('N6_BL_CONTROL');
+  });
+
+  it('N6 CIF + 后 T/T 仍按 CIF 卖方出单，须正本或电放', () => {
+    const r = evaluateN6(
+      baseSnap({
+        contract: {
+          ...baseSnap().contract!,
+          incoterms: 'CIF',
+          paymentTerms: '后 T/T 30 days',
+          ttTiming: 'AFTER',
+        },
+        shipment: {
+          hasCustomerWrittenInstruction: true,
+          instructionRef: 'INST-CIF-TT',
+          hasInternalApproval: true,
+          blControl: null,
+        },
+      }),
+    );
+    expect(r.missing).toContain('N6_BL_CONTROL');
+    expect(r.missing).not.toContain('N6_NO_BL_PATH');
+  });
+
+  it('N6 历史把 T/T 写入 incoterms 时回退 FOB，不得切成 T 后走卖方提单', () => {
+    const snap = baseSnap({
+      contract: {
+        ...baseSnap().contract!,
+        incoterms: 'T/T',
+        paymentTerms: '后 T/T 30 days',
+        ttTiming: 'AFTER',
+      },
+      shipment: {
+        hasCustomerWrittenInstruction: true,
+        instructionRef: 'INST-TT-LEGACY',
+        hasInternalApproval: true,
+        blControl: null,
+      },
+    });
+    expect(parseIncotermsCode('T/T')).toBe('');
+    expect(effectiveN6Incoterms(snap)).toBe('FOB');
+    const r = evaluateN6(snap);
+    expect(r.missing).toContain('N6_NO_BL_PATH');
+    expect(r.missing).not.toContain('N6_BL_CONTROL');
+    expect(r.alerts.some((a) => a.includes('FOB'))).toBe(true);
+  });
+
   it('N7 缺终稿合同或单证不一致且无修改记录则拒绝', () => {
     const missingFinal = evaluateN7(
       baseSnap({
@@ -756,6 +832,20 @@ describe('闸门引擎 MVP 节点', () => {
       }),
     );
     expect(r.canProceed).toBe(true);
+  });
+
+  it('N7 运输术语按 Incoterms 比对，文档里的 T/T 结算不参与、不与 FOB 误判不一致', () => {
+    const r = evaluateN7(
+      baseSnap({
+        contract: { ...baseSnap().contract!, incoterms: 'FOB', ttTiming: 'ADVANCE', paymentTerms: '前 T/T' },
+        documents: baseSnap().documents.map((d) => ({
+          ...d,
+          fields: { ...d.fields, incoterms: d.type === 'INVOICE' ? 'T/T' : 'FOB' },
+        })),
+      }),
+    );
+    expect(r.canProceed).toBe(true);
+    expect(r.missing.some((m) => m.includes('incoterms'))).toBe(false);
   });
 
   it('N9 缺少第三方证明/汇款附言/单证证明/放行审批拒绝', () => {

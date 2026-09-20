@@ -185,7 +185,9 @@ model Contract {
   id                  String    @id @default(cuid())
   caseId              String    @unique
   counterparty        String
+  /// 运输术语（Incoterms）：FOB / CIF / CIP 等。不得写入 T/T 等结算方式
   incoterms           String?
+  /// 结算/付款条件：L/C、OA、前 T/T、后 T/T 30 days 等。与 incoterms 独立
   paymentTerms        String?
   hasRetentionOfTitle Boolean   @default(false)
   hasDisputeClause    Boolean   @default(false)
@@ -207,7 +209,7 @@ model Contract {
   shipmentDate        DateTime?
   /// FOB/EXW/FAS/FCA：国内段到达口岸/港口时间；到达即完成国内交付
   domesticPortArrivalAt DateTime?
-  /// T/T 子类：ADVANCE 前 T/T / AFTER 后 T/T（与 FOB、CIF 并列的贸易条件，不是独立结算方式）
+  /// 电汇结算子类：ADVANCE 前 T/T / AFTER 后 T/T。独立于运输术语，可与 FOB/CIF 组合
   ttTiming            String?
   /// 前 T/T 预付款比例（基点，10000=100%）
   ttPercentBps        Int?

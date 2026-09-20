@@ -6,25 +6,30 @@
     <template v-else>
     <view class="card">
       <view class="h2">销售合同 / 订单确认</view>
-      <view class="muted">销售合同与采购合同分开签订。硬规则：中信保限额未登记，不得签订销售合同。请先登记投保限额，再保存合同要素。所有权保留、争议解决条款为必填。贸易条件为 FOB、CIF、T/T 三选一：CIF 填装运节点，FOB 填国内段到达口岸/港口时间，T/T 再选前 T/T 或后 T/T。所选路径下的字段均可填写。公司惯例先销售后采购：国内采购合同在 N5 另签，并须关联本销售合同。</view>
+      <view class="muted">销售合同与采购合同分开签订。硬规则：中信保限额未登记，不得签订销售合同。请先登记投保限额，再保存合同要素。所有权保留、争议解决条款为必填。运输术语（FOB / CIF）与结算方式（前 T/T / 后 T/T）独立，可组合例如 FOB + 前 T/T。CIF 填装运节点，FOB 填国内段到达口岸/港口时间，电汇填对应收汇节点。所选路径下的字段均可填写。公司惯例先销售后采购：国内采购合同在 N5 另签，并须关联本销售合同。</view>
       <view class="err" v-if="!hasLimit" style="margin-top: 12rpx">尚未登记中信保限额，不得签订销售合同。</view>
     </view>
     <view class="card">
       <view class="label">相对方</view>
       <input class="input" v-model="form.counterparty" />
-      <view class="label">贸易条件<text class="req">必填</text></view>
-      <view class="muted">FOB、CIF、T/T 并列三选一，不是另套结算方式。</view>
+      <view class="label">运输术语（Incoterms）<text class="req">必填</text></view>
+      <view class="muted">只选 FOB / CIF 等运输条件。T/T 不是 Incoterm，请在下方结算方式勾选。</view>
       <view class="choice-row">
         <view class="choice-btn" :class="{ 'choice-btn-on': tradeTerm === 'FOB' }" @click="selectTerm('FOB')">FOB</view>
         <view class="choice-btn" :class="{ 'choice-btn-on': tradeTerm === 'CIF' }" @click="selectTerm('CIF')">CIF</view>
-        <view class="choice-btn" :class="{ 'choice-btn-on': tradeTerm === 'T/T' }" @click="selectTerm('T/T')">T/T</view>
       </view>
-      <view class="label" v-if="tradeTerm !== 'T/T'">付款条件</view>
+      <view class="label">结算方式</view>
+      <view class="muted">与运输术语独立，可组合例如 FOB + 前 T/T。再点一次可取消，改为填写其他付款条件。</view>
+      <view class="choice-row">
+        <view class="choice-btn" :class="{ 'choice-btn-on': form.ttTiming === 'ADVANCE' }" @click="selectTtTiming('ADVANCE')">前 T/T</view>
+        <view class="choice-btn" :class="{ 'choice-btn-on': form.ttTiming === 'AFTER' }" @click="selectTtTiming('AFTER')">后 T/T</view>
+      </view>
+      <view class="label" v-if="!form.ttTiming">付款条件</view>
       <input
-        v-if="tradeTerm !== 'T/T'"
+        v-if="!form.ttTiming"
         class="input"
         v-model="form.paymentTerms"
-        placeholder="如 L/C、OA 30 days（T/T 请改选上方贸易条件）"
+        placeholder="如 L/C、OA 30 days；电汇请点选上方前 T/T / 后 T/T"
       />
       <view class="label">合同交货期（年-月-日）</view>
       <input class="input" v-model="form.deliveryDate" placeholder="2026-11-30" />
@@ -63,9 +68,9 @@
       <input class="input" v-model="form.domesticPortArrivalAt" placeholder="年-月-日 或 年-月-日 时:分，如 2026-12-08 10:00" />
     </view>
 
-    <view class="card" v-if="tradeTerm === 'T/T'">
+    <view class="card" v-if="form.ttTiming">
       <view class="h2">T/T 收汇节点</view>
-      <view class="muted">先选前 T/T 或后 T/T，再填写对应节点。不是独立于 FOB/CIF 的第二套结算开关。</view>
+      <view class="muted">与上方运输术语独立。前 T/T / 后 T/T 字段均可填写。</view>
       <view class="label">T/T 类型</view>
       <view class="choice-row">
         <view class="choice-btn" :class="{ 'choice-btn-on': form.ttTiming === 'ADVANCE' }" @click="selectTtTiming('ADVANCE')">前 T/T</view>
@@ -73,19 +78,29 @@
       </view>
 
       <template v-if="form.ttTiming === 'ADVANCE'">
-        <view class="muted" style="margin-top: 12rpx">前 T/T：约定先收款再发货。比例、金额、装运日期与收汇均可填。</view>
+        <view class="muted" style="margin-top: 12rpx">前 T/T：约定先收款再发货。比例、金额与装运日期均可填。是否收汇以收汇对账为准。</view>
         <view class="label">预付款比例（%）</view>
         <input class="input" type="digit" v-model="form.ttPercent" placeholder="如 30" @input="syncAdvanceFromPercent" />
         <view class="label">预付款金额</view>
         <input class="input" type="digit" v-model="form.ttAdvanceYuan" :placeholder="`与合同币种一致（${form.currency || 'USD'}）`" />
-        <view class="label">装运日期</view>
-        <input class="input" v-model="form.shipmentDate" placeholder="年-月-日。填写后计入已出运" />
+        <view class="label" v-if="tradeTerm !== 'CIF'">装运日期</view>
+        <input
+          v-if="tradeTerm !== 'CIF'"
+          class="input"
+          v-model="form.shipmentDate"
+          placeholder="年-月-日。填写后计入已出运"
+        />
       </template>
 
       <template v-if="form.ttTiming === 'AFTER'">
-        <view class="muted" style="margin-top: 12rpx">后 T/T：装运后再按约定账期收款。装运日期、天数与收汇均可填。</view>
-        <view class="label">装运日期</view>
-        <input class="input" v-model="form.shipmentDate" placeholder="年-月-日。填写后计入已出运" />
+        <view class="muted" style="margin-top: 12rpx">后 T/T：装运后再按约定账期收款。装运日期与天数均可填。是否收汇以收汇对账为准。</view>
+        <view class="label" v-if="tradeTerm !== 'CIF'">装运日期</view>
+        <input
+          v-if="tradeTerm !== 'CIF'"
+          class="input"
+          v-model="form.shipmentDate"
+          placeholder="年-月-日。填写后计入已出运"
+        />
         <view class="label">装运后付款天数</view>
         <input class="input" type="number" v-model="form.ttDays" placeholder="如 30" />
       </template>
@@ -149,7 +164,7 @@ import { computed, reactive, ref } from 'vue';
 import { api, fenToYuan, latestSinosure, previewExposure, yuanToFen } from '../../api';
 import SinosureExposure from '../../components/SinosureExposure.vue';
 
-type TradeTerm = 'FOB' | 'CIF' | 'T/T';
+type TradeTerm = 'FOB' | 'CIF';
 type TtTiming = 'ADVANCE' | 'AFTER';
 
 const id = ref('');
@@ -217,9 +232,9 @@ onLoad(async (q) => {
   const ct = c.value.contract;
   if (ct) {
     form.counterparty = ct.counterparty || '';
-    form.incoterms = ct.incoterms || form.incoterms;
+    form.incoterms = isTtOnly(ct.incoterms) ? 'FOB' : ct.incoterms || form.incoterms;
     form.paymentTerms = ct.paymentTerms || form.paymentTerms;
-    form.ttTiming = (ct.ttTiming === 'ADVANCE' || ct.ttTiming === 'AFTER' ? ct.ttTiming : resolveTtTiming(ct.paymentTerms)) || '';
+    form.ttTiming = (ct.ttTiming === 'ADVANCE' || ct.ttTiming === 'AFTER' ? ct.ttTiming : resolveTtTiming(ct.paymentTerms || ct.incoterms)) || '';
     form.ttPercent = ct.ttPercentBps != null ? String(Math.round(Number(ct.ttPercentBps) / 100)) : '';
     form.ttAdvanceYuan = ct.ttAdvanceFen ? fenToYuan(ct.ttAdvanceFen) : '';
     form.ttDays = ct.ttDaysAfterShipment != null ? String(ct.ttDaysAfterShipment) : '';
@@ -238,7 +253,7 @@ onLoad(async (q) => {
     form.customerPickedUp = ct.customerPickedUp === true ? true : ct.customerPickedUp === false ? false : null;
     form.paymentDueAt = ct.paymentDueAt ? String(ct.paymentDueAt).slice(0, 10) : '';
     applyContractRemittance(ct);
-    if (resolveTradeTerm(form.incoterms) === 'T/T' && !form.ttTiming) form.ttTiming = 'ADVANCE';
+    if (isTtOnly(ct.incoterms) && !form.ttTiming) form.ttTiming = 'ADVANCE';
     if (form.ttTiming === 'ADVANCE' && !form.ttAdvanceYuan) syncAdvanceFromPercent();
   } else {
     if (c.value.parties?.[0]) form.counterparty = c.value.parties[0].name;
@@ -256,15 +271,29 @@ onLoad(async (q) => {
   }
 });
 
-function resolveTradeTerm(raw?: string | null): TradeTerm | '' {
-  const s = String(raw || '').trim();
-  if (!s) return '';
-  if (/t\s*\/\s*t/i.test(s) || /^tt(?:\b|\s|$)/i.test(s)) return 'T/T';
-  const code = s
+function parseIncotermsCode(raw?: string | null): string {
+  const s = String(raw || '')
+    .trim()
     .toUpperCase()
-    .replace(/^INCOTERMS(?:\s*20\d{2})?\s+/i, '')
-    .split(/[\s,;:：-]+/)[0]
-    .replace(/\/.*$/, '');
+    .replace(/^INCOTERMS(?:\s*20\d{2})?\s+/, '');
+  if (!s) return '';
+  const known = ['EXW', 'FCA', 'FAS', 'FOB', 'CFR', 'CIF', 'CPT', 'CIP', 'DAP', 'DPU', 'DDP'];
+  const found = s.match(/[A-Z]{3}/g) || [];
+  for (const code of found) {
+    if (known.includes(code)) return code;
+  }
+  return '';
+}
+
+function isTtOnly(raw?: string | null): boolean {
+  const s = String(raw || '').trim();
+  if (!s) return false;
+  if (parseIncotermsCode(s)) return false;
+  return /t\s*\/\s*t/i.test(s) || /^tt(?:\b|\s|$)/i.test(s);
+}
+
+function resolveTradeTerm(raw?: string | null): TradeTerm | '' {
+  const code = parseIncotermsCode(raw);
   if (code === 'CIF' || code === 'CIP') return 'CIF';
   if (code === 'FOB' || code === 'EXW' || code === 'FAS' || code === 'FCA') return 'FOB';
   return '';
@@ -279,12 +308,13 @@ function resolveTtTiming(terms?: string | null): TtTiming | '' {
 
 function selectTerm(term: TradeTerm) {
   form.incoterms = term;
-  if (term === 'T/T') {
-    if (!form.ttTiming) form.ttTiming = 'ADVANCE';
-  }
 }
 
 function selectTtTiming(timing: TtTiming) {
+  if (form.ttTiming === timing) {
+    form.ttTiming = '';
+    return;
+  }
   form.ttTiming = timing;
   if (timing === 'ADVANCE' && !form.ttPercent) form.ttPercent = '30';
   if (timing === 'AFTER' && !form.ttDays) form.ttDays = '30';
@@ -336,13 +366,13 @@ async function save() {
   err.value = '';
   ok.value = '';
   try {
-    const term = tradeTerm.value || form.incoterms;
-    const ttTiming = term === 'T/T' ? form.ttTiming || 'ADVANCE' : undefined;
+    const term = tradeTerm.value || (isTtOnly(form.incoterms) ? 'FOB' : form.incoterms);
+    const ttTiming = form.ttTiming || undefined;
     await api.saveContract(id.value, {
       counterparty: form.counterparty,
-      incoterms: term || form.incoterms,
+      incoterms: term || 'FOB',
       paymentTerms: form.paymentTerms,
-      ttTiming: ttTiming || undefined,
+      ttTiming: ttTiming || null,
       ttPercentBps: ttTiming === 'ADVANCE' && form.ttPercent ? Math.round(Number(form.ttPercent) * 100) : undefined,
       ttAdvanceFen: ttTiming === 'ADVANCE' ? yuanToFen(form.ttAdvanceYuan) : undefined,
       ttDaysAfterShipment: ttTiming === 'AFTER' ? intOrUndef(form.ttDays) : undefined,

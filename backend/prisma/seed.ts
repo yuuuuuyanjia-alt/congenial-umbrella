@@ -1888,7 +1888,7 @@ async function seedBareExport(opts: {
 async function seedNordlichtWipCase(salesId: string) {
   return seedBareExport({
     caseNo: 'DEMO-NORD-WIP',
-    title: '北海机电出口德国 Nordlicht（后 T/T，在手未装运）',
+    title: '北海机电出口德国 Nordlicht（CIF + 后 T/T，在手未装运）',
     scenario: 'OPEN_UNFULFILLED',
     status: 'IN_PROGRESS',
     currentNode: 'N5',
@@ -1897,7 +1897,7 @@ async function seedNordlichtWipCase(salesId: string) {
     goodsDesc: '数控机床配件',
     destination: 'Hamburg, DE',
     amountFen: 1_800_000,
-    incoterms: 'T/T',
+    incoterms: 'CIF',
     paymentTerms: '后 T/T 30 days',
     ttTiming: 'AFTER',
     ttDaysAfterShipment: 30,
@@ -1951,7 +1951,7 @@ async function seedHeliosMediumBundle(salesId: string, approverId: string) {
   });
   const wip = await seedBareExport({
     caseNo: 'DEMO-HELIOS-WIP',
-    title: '闽南泵业出口 Helios（前 T/T，未履行完毕未回款）',
+    title: '闽南泵业出口 Helios（FOB + 前 T/T，未履行完毕未回款）',
     scenario: 'EXPOSURE_OPEN_UNPAID',
     status: 'IN_PROGRESS',
     currentNode: 'N5',
@@ -1960,7 +1960,7 @@ async function seedHeliosMediumBundle(salesId: string, approverId: string) {
     goodsDesc: '工业泵',
     destination: 'Piraeus, GR',
     amountFen: 800_000,
-    incoterms: 'T/T',
+    incoterms: 'FOB',
     paymentTerms: '前 T/T',
     ttTiming: 'ADVANCE',
     ttPercentBps: 3_000,
