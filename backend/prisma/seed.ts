@@ -1747,6 +1747,8 @@ async function seedBareExport(opts: {
   nodeOverrides: Record<string, Partial<{ status: string; decision: string | null; summary: string }>>;
   salesId: string;
   approverId?: string;
+  shipmentDate?: Date | null;
+  customerPickedUp?: boolean | null;
   deliveryDate?: Date;
   quantity?: number;
   unit?: string;
@@ -1790,6 +1792,8 @@ async function seedBareExport(opts: {
           quantity: opts.quantity ?? 2,
           unit: opts.unit || '套',
           destination: opts.destination,
+          shipmentDate: opts.shipmentDate ?? null,
+          customerPickedUp: opts.customerPickedUp ?? null,
           hasRemittance: (opts.receivedFen ?? 0) > 0,
           remittedFen: opts.receivedFen ?? 0,
         },
@@ -1914,6 +1918,8 @@ async function seedHeliosMediumBundle(salesId: string, approverId: string) {
     receivedFen: 500_000,
     receivedAt: new Date('2026-08-01T00:00:00.000Z'),
     shipment: true,
+    shipmentDate: new Date('2026-05-20T00:00:00.000Z'),
+    customerPickedUp: true,
     approverId,
     limitFen,
     limitRef: 'SIN-HELIOS-2026',

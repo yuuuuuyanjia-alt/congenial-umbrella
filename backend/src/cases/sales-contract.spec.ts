@@ -1,9 +1,15 @@
 import { CIF_FAMILY_INCOTERMS } from '../common/constants';
 import { isBuyerArrangedFreight, parseIncotermsCode } from '../gates/gate.engine';
 import {
+  groupSalesByShipmentBucket,
   isCifFamilyIncoterms,
+  isSalesPickedUp,
+  isSalesRemittanceComplete,
+  isSalesShipped,
   presentSalesContract,
+  presentSalesShipmentStatus,
   resolveRemittedFen,
+  salesShipmentBucketOf,
   unpaidRemittanceFen,
 } from './sales-contract';
 
@@ -60,5 +66,95 @@ describe('销售合同 CIF 装运节点与收汇', () => {
     expect(fob?.cifShippingVisible).toBe(false);
     expect(fob?.remittedFen).toBe(0);
     expect(fob?.unpaidFen).toBe(3_600_000);
+  });
+});
+
+describe('销售合同出运/履约分组', () => {
+  const cifShipped = {
+    shipmentDate: '2026-08-15',
+    customerPickedUp: true,
+    hasRemittance: true,
+    remittedFen: 12_800_000,
+    amountFen: 12_800_000,
+    currentNode: 'N9',
+    nodes: [{ code: 'N6', status: 'PASSED' }],
+  };
+
+  it('CIF 装运日期已填视为已出运', () => {
+    expect(isSalesShipped({ shipmentDate: '2026-08-15', currentNode: 'N3' })).toBe(true);
+    expect(isSalesShipped({ contract: { shipmentDate: new Date('2026-08-15') }, currentNode: 'N3' })).toBe(true);
+    expect(isSalesShipped({ shipmentDate: '', currentNode: 'N3' })).toBe(false);
+  });
+
+  it('FOB 无装运日期时以 N6 已通过或提单/无提单路径为准', () => {
+    expect(isSalesShipped({ currentNode: 'N6', nodes: [{ code: 'N6', status: 'IN_PROGRESS' }] })).toBe(false);
+    expect(isSalesShipped({ currentNode: 'N6', nodes: [{ code: 'N6', status: 'PASSED' }] })).toBe(true);
+    expect(isSalesShipped({ currentNode: 'N7', nodes: [{ code: 'N6', status: 'IN_PROGRESS' }] })).toBe(true);
+    expect(isSalesShipped({ currentNode: 'N6', shipment: { blNo: 'COSU8899001' } })).toBe(true);
+    expect(
+      isSalesShipped({
+        currentNode: 'N6',
+        shipment: { blControl: 'NO_BL', noBlRef: 'SA-FOB-2026-004', noBlReason: '买方订舱' },
+      }),
+    ).toBe(true);
+    expect(isSalesShipped({ currentNode: 'N6', shipment: { blControl: 'NO_BL' } })).toBe(false);
+  });
+
+  it('已回款须是否收汇为是且未收汇金额为 0', () => {
+    expect(
+      isSalesRemittanceComplete({ hasRemittance: true, remittedFen: 12_800_000, amountFen: 12_800_000 }),
+    ).toBe(true);
+    expect(
+      isSalesRemittanceComplete({ hasRemittance: true, remittedFen: 5_000_000, amountFen: 12_800_000 }),
+    ).toBe(false);
+    expect(
+      isSalesRemittanceComplete({ hasRemittance: false, remittedFen: 12_800_000, amountFen: 12_800_000 }),
+    ).toBe(false);
+    expect(isSalesPickedUp({ customerPickedUp: true })).toBe(true);
+    expect(isSalesPickedUp({ customerPickedUp: false })).toBe(false);
+    expect(isSalesPickedUp({ customerPickedUp: null })).toBe(false);
+  });
+
+  it('已完成 = 已出运且已提货且已回款；已出运列不含已完成', () => {
+    expect(salesShipmentBucketOf(cifShipped)).toBe('completed');
+    expect(presentSalesShipmentStatus(cifShipped).shipmentBucketLabel).toBe('已完成');
+
+    expect(
+      salesShipmentBucketOf({
+        ...cifShipped,
+        customerPickedUp: false,
+      }),
+    ).toBe('shipped');
+
+    expect(
+      salesShipmentBucketOf({
+        ...cifShipped,
+        hasRemittance: true,
+        remittedFen: 4_000_000,
+      }),
+    ).toBe('shipped');
+
+    expect(
+      salesShipmentBucketOf({
+        shipmentDate: null,
+        currentNode: 'N5',
+        nodes: [{ code: 'N6', status: 'NOT_STARTED' }],
+        customerPickedUp: false,
+        hasRemittance: false,
+        amountFen: 1_800_000,
+      }),
+    ).toBe('unshipped');
+  });
+
+  it('分组顺序为未出运 / 已出运 / 已完成，标签为中文', () => {
+    const groups = groupSalesByShipmentBucket([
+      { caseNo: 'DONE', ...cifShipped },
+      { caseNo: 'SHIP', shipmentDate: '2026-11-10', customerPickedUp: false, hasRemittance: false, amountFen: 100 },
+      { caseNo: 'WIP', currentNode: 'N3' },
+    ] as Array<{ caseNo: string } & Parameters<typeof salesShipmentBucketOf>[0]>);
+    expect(groups.map((g) => g.label)).toEqual(['未出运', '已出运', '已完成']);
+    expect(groups[0].items.map((r) => r.caseNo)).toEqual(['WIP']);
+    expect(groups[1].items.map((r) => r.caseNo)).toEqual(['SHIP']);
+    expect(groups[2].items.map((r) => r.caseNo)).toEqual(['DONE']);
   });
 });

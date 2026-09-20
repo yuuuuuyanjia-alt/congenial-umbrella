@@ -30,7 +30,7 @@
 
     <view class="card" v-if="showCifShipping">
       <view class="h2">CIF 装运节点</view>
-      <view class="muted">贸易术语为 CIF（及同类 CIP）时填写。含义：装运后预计什么时候到达哪个港口。FOB 等买方安排运输的术语不显示本区块，装运/提单仍在后续节点办理。</view>
+      <view class="muted">贸易术语为 CIF（及同类 CIP）时填写。含义：装运后预计什么时候到达哪个港口。FOB 等买方安排运输的术语不显示本区块，装运/提单仍在后续节点办理。客户是否提货在下方「提货与收汇」填写。</view>
       <view class="label">装运港口</view>
       <input class="input" v-model="form.shipmentPort" placeholder="如 Shanghai" />
       <view class="label">装运日期</view>
@@ -40,16 +40,16 @@
       <input class="input" v-model="form.etaDate" placeholder="年-月-日，如 2026-09-20" />
       <view class="label">到达港口</view>
       <input class="input" v-model="form.arrivalPort" placeholder="预计到达的港口，如 Hamburg" />
+    </view>
+
+    <view class="card">
+      <view class="h2">提货与收汇</view>
+      <view class="muted">适用于全部贸易术语。已完成须客户已提货且已回款。未收汇金额按合同总金额减去收汇金额自动计算，币种与合同一致。</view>
       <view class="label">客户是否提货</view>
       <view class="choice-row">
         <view class="choice-btn" :class="{ 'choice-btn-on': form.customerPickedUp === true }" @click="form.customerPickedUp = true">已提货</view>
         <view class="choice-btn" :class="{ 'choice-btn-on': form.customerPickedUp === false }" @click="form.customerPickedUp = false">未提货</view>
       </view>
-    </view>
-
-    <view class="card">
-      <view class="h2">付款与收汇</view>
-      <view class="muted">适用于全部贸易术语。未收汇金额按合同总金额减去收汇金额自动计算，币种与合同一致。</view>
       <view class="label">约定客户付款日期</view>
       <input class="input" v-model="form.paymentDueAt" placeholder="年-月-日。未填时按交货期+账期推算" />
       <view class="label">是否收汇</view>

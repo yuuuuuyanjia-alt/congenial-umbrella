@@ -38,7 +38,7 @@ import {
   signedSalesOptions,
   supplierNameOf,
 } from './sales-link';
-import { presentSalesContract, resolveRemittedFen } from './sales-contract';
+import { presentSalesContract, presentSalesShipmentStatus, resolveRemittedFen } from './sales-contract';
 import {
   AckChangeDto,
   CreateCaseDto,
@@ -79,6 +79,7 @@ export class CasesService {
         parties: true,
         hits: true,
         contract: true,
+        shipment: true,
         procurementPlan: {
           include: {
             salesCase: { include: { contract: true, parties: true, nodes: true } },
@@ -96,6 +97,15 @@ export class CasesService {
     return filtered.map((c) => {
       const salesLink = c.procurementPlan?.salesCase ? presentSalesLink(c.procurementPlan.salesCase) : null;
       const supplierName = supplierNameOf(c);
+      const contract = presentSalesContract(c.contract);
+      const shipmentStatus = presentSalesShipmentStatus({
+        status: c.status,
+        currentNode: c.currentNode,
+        nodes: c.nodes,
+        contract,
+        shipment: c.shipment,
+        amountFen: contract?.amountFen ?? c.amountFen,
+      });
       return {
         ...c,
         customer: salesCustomerOf(c),
@@ -110,7 +120,8 @@ export class CasesService {
           supplierName,
           salesLink,
         }),
-        contract: presentSalesContract(c.contract),
+        contract,
+        ...shipmentStatus,
       };
     });
   }
