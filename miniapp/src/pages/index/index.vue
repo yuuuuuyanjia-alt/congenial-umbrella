@@ -132,7 +132,7 @@ function openByNo(caseNo: string) {
 }
 .eyebrow {
   letter-spacing: 4rpx;
-  font-size: 22rpx;
+  font-size: var(--font-xs);
   opacity: 0.85;
   margin-bottom: 8rpx;
 }
