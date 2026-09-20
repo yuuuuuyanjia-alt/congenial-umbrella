@@ -2,8 +2,9 @@
   <view class="wrap" v-if="c">
     <view class="card">
       <view class="h2">报关放行</view>
-      <view class="muted">核对 HS 编码与申报要素模板、原产地证据。税则品名/计量单位不符仅软提示；HS 或要素严重缺项禁止申报。电子口岸状态为模拟同步。</view>
+      <view class="muted">核对 HS 编码与申报要素模板、原产地证据。税则品名/计量单位不符仅软提示；HS 或要素严重缺项禁止申报。电子口岸状态为模拟同步。存在未生效变更单时禁止申报。</view>
     </view>
+    <PendingChangeBlock :case-id="id" :case-data="c" />
     <view class="card">
       <view class="label">HS 编码</view>
       <input class="input" v-model="form.hsCode" placeholder="8458.11.00" />
@@ -49,6 +50,7 @@
 import { onLoad } from '@dcloudio/uni-app';
 import { computed, reactive, ref } from 'vue';
 import { api } from '../../api';
+import PendingChangeBlock from '../../components/PendingChangeBlock.vue';
 
 const id = ref('');
 const c = ref<any>(null);

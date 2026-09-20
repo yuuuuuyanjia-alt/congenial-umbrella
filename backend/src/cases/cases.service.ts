@@ -18,6 +18,7 @@ import {
   N3_SINOSURE_UNREGISTERED_REASON,
   N5_SALES_LINK_REQUIRED_REASON,
   N5_SALES_NOT_SIGNED_REASON,
+  N6_PLUS_PENDING_CHANGE_REASON,
   NODE_CATALOG,
   NodeStatus,
   PartyRole,
@@ -1586,6 +1587,7 @@ export class CasesService {
       result.missing.includes('N3_SINOSURE_LIMIT') &&
       result.reasons.includes(N3_SINOSURE_UNREGISTERED_REASON);
     const salesLink = result.missing.includes('N5_SALES_LINK') || result.missing.includes('N5_SALES_NOT_SIGNED');
+    const pendingChange = (result.missing || []).some((m) => /_PENDING_CHANGE$/.test(m));
     const occupancyHigh = (result.missing || []).some((m) => /_SINOSURE_EXPOSURE_HIGH$/.test(m));
     throw new HttpException(
       {
@@ -1596,9 +1598,11 @@ export class CasesService {
             ? N3_SINOSURE_UNREGISTERED_REASON
             : salesLink
               ? result.reasons[0] || N5_SALES_LINK_REQUIRED_REASON
-              : occupancyHigh
-                ? result.reasons.find((r) => r.includes('工作台')) || SINOSURE_EXPOSURE_HIGH_REVIEW_REASON
-                : '闸门拒绝推进：证据不足或命中硬拦截'),
+              : pendingChange
+                ? result.reasons.find((r) => r.includes('未生效')) || N6_PLUS_PENDING_CHANGE_REASON
+                : occupancyHigh
+                  ? result.reasons.find((r) => r.includes('工作台')) || SINOSURE_EXPOSURE_HIGH_REVIEW_REASON
+                  : '闸门拒绝推进：证据不足或命中硬拦截'),
         ...result,
       },
       HttpStatus.CONFLICT,

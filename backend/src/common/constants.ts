@@ -30,7 +30,7 @@ export const NODE_CATALOG = [
     mvp: true,
     isHardGate: false,
     isStub: false,
-    summary: '交货期/数量/收货人/付款条件变更须出变更单（含 diff），客户与内部确认后生效；进入变更时须再次确认中信保，并按变更后金额重算买方占用。',
+    summary: '交货期/数量/收货人/付款条件变更须出变更单（含 diff），客户与内部确认后生效；进入变更时须再次确认中信保，并按变更后金额重算买方占用。未生效变更禁止进入采购（N5）及装运及之后（N6+）。',
   },
   {
     code: 'N5',
@@ -46,7 +46,7 @@ export const NODE_CATALOG = [
     mvp: true,
     isHardGate: true,
     isStub: false,
-    summary: '硬闸门：客户书面指示 + 内部审批。装运规则跟随所选运输术语：CIF/CFR 等须正本或电放其一；FOB/EXW/FAS/FCA 可走无提单路径。T/T 是结算方式不是 Incoterm；无有效运输术语时回退按 FOB（买方安排运输）执行。',
+    summary: '硬闸门：客户书面指示 + 内部审批。存在未生效变更单时硬拦截，禁止装运。装运规则跟随所选运输术语：CIF/CFR 等须正本或电放其一；FOB/EXW/FAS/FCA 可走无提单路径。T/T 是结算方式不是 Incoterm；无有效运输术语时回退按 FOB（买方安排运输）执行。',
   },
   {
     code: 'N7',
@@ -54,7 +54,7 @@ export const NODE_CATALOG = [
     mvp: true,
     isHardGate: true,
     isStub: false,
-    summary: '硬闸门：终稿合同 + 合同/发票/装箱单/提单字段一致 + 不符点修改记录。运输术语按 Incoterms 比对，T/T 结算方式不参与；装运规则与 N6 相同，跟随所选运输术语。',
+    summary: '硬闸门：终稿合同 + 合同/发票/装箱单/提单字段一致 + 不符点修改记录。存在未生效变更单时硬拦截。运输术语按 Incoterms 比对，T/T 结算方式不参与；装运规则与 N6 相同，跟随所选运输术语。',
   },
   {
     code: 'N8',
@@ -62,7 +62,7 @@ export const NODE_CATALOG = [
     mvp: true,
     isHardGate: false,
     isStub: false,
-    summary: 'HS 编码与申报要素模板核对、原产地证据；税则品名/计量单位不符软提示；严重缺项禁止申报。',
+    summary: 'HS 编码与申报要素模板核对、原产地证据；税则品名/计量单位不符软提示；严重缺项禁止申报。存在未生效变更单时硬拦截。',
   },
   {
     code: 'N9',
@@ -70,7 +70,7 @@ export const NODE_CATALOG = [
     mvp: true,
     isHardGate: true,
     isStub: false,
-    summary: '硬闸门：第三方关系证明 + 汇款附言 + 单证一致证明 + 放行审批。水单/到账金额为已回款唯一事实源，驱动销售列表已完成与中信保占用释放。',
+    summary: '硬闸门：第三方关系证明 + 汇款附言 + 单证一致证明 + 放行审批。存在未生效变更单时硬拦截。水单/到账金额为已回款唯一事实源，驱动销售列表已完成与中信保占用释放。',
   },
 ] as const;
 
@@ -461,6 +461,10 @@ export const N5_SALES_LINK_REQUIRED_REASON =
   '须关联已签订的销售合同（先销售后采购），否则不得保存或推进采购合同';
 export const N5_SALES_NOT_SIGNED_REASON =
   '关联的销售案件尚未完成销售合同签订，须至少到达合同确认（N3）且已签销售合同';
+
+/** N6+ 硬规则：变更未生效不得装运及推进后续节点（须应用新版本后才可过闸） */
+export const N6_PLUS_PENDING_CHANGE_REASON =
+  '存在未生效变更单，禁止装运及后续节点；须先完成变更管理并应用新版本';
 
 export const HISTORY_DEV_SOFT_PCT = 0.15;
 export const HISTORY_DEV_MEDIUM_PCT = 0.3;

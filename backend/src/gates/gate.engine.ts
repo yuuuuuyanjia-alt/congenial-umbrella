@@ -21,6 +21,7 @@ import {
   N3_SINOSURE_UNREGISTERED_REASON,
   N5_SALES_LINK_REQUIRED_REASON,
   N5_SALES_NOT_SIGNED_REASON,
+  N6_PLUS_PENDING_CHANGE_REASON,
   SINOSURE_EXPOSURE_HIGH_REJECTED_REASON,
   SINOSURE_EXPOSURE_HIGH_REVIEW_REASON,
   PartyRole,
@@ -589,6 +590,8 @@ export function hasNoBlJustification(s: Pick<ShipmentSnap, 'noBlReason' | 'noBlR
 
 export function evaluateN6(snap: CaseSnapshot): GateResult {
   const r = emptyResult('N6');
+  const pending = refusePendingChangeAtShipment(r, snap);
+  if (pending) return pending;
   const s = snap.shipment;
   if (!s) {
     r.missing.push('N6_SHIPMENT');
@@ -652,6 +655,8 @@ export function evaluateN6(snap: CaseSnapshot): GateResult {
 
 export function evaluateN7(snap: CaseSnapshot): GateResult {
   const r = emptyResult('N7');
+  const pending = refusePendingChangeAtShipment(r, snap);
+  if (pending) return pending;
   const byType = Object.fromEntries(snap.documents.map((d) => [d.type, d]));
   const contractDoc = byType[DocType.CONTRACT];
   const invoice = byType[DocType.INVOICE];
@@ -708,6 +713,8 @@ function comparableDocField(field: string, v: unknown): string | null {
 
 export function evaluateN8(snap: CaseSnapshot): GateResult {
   const r = emptyResult('N8');
+  const pending = refusePendingChangeAtShipment(r, snap);
+  if (pending) return pending;
   const c = snap.customs;
   if (!c) {
     r.missing.push('N8_CUSTOMS');
@@ -772,6 +779,8 @@ export function evaluateN8(snap: CaseSnapshot): GateResult {
 
 export function evaluateN9(snap: CaseSnapshot): GateResult {
   const r = emptyResult('N9');
+  const pending = refusePendingChangeAtShipment(r, snap);
+  if (pending) return pending;
   const n7 = snap.nodes.find((n) => n.code === 'N7');
   if (!n7 || n7.status !== NodeStatus.PASSED) {
     r.missing.push('N9_PREREQ_DOC_CONSISTENCY');
@@ -972,6 +981,14 @@ export function hasPendingChanges(snap: CaseSnapshot): boolean {
   return (snap.changeOrders || []).some(
     (c) => c.status !== ChangeStatus.APPLIED && c.status !== ChangeStatus.SUPERSEDED,
   );
+}
+
+/** N6+：未生效变更硬拦截装运及后续，不与其他缺项混报。 */
+function refusePendingChangeAtShipment(r: GateResult, snap: CaseSnapshot): GateResult | null {
+  if (!hasPendingChanges(snap)) return null;
+  r.missing.push(`${r.nodeCode}_PENDING_CHANGE`);
+  r.reasons.push(N6_PLUS_PENDING_CHANGE_REASON);
+  return HARD_GATES.has(r.nodeCode) ? finalizeHard(r) : blockMissing(r);
 }
 
 /** 流程 1→2→3→4(按需)→5→6→7→8→9。N3 之后若无变更单则跳过 N4。 */

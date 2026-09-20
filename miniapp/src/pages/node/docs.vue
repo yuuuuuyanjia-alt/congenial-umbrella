@@ -2,8 +2,9 @@
   <view class="wrap">
     <view class="card">
       <view class="h2">单证一致性 · 硬闸门</view>
-      <view class="muted">须有终稿合同，且合同 / 发票 / 装箱单 / 提单关键字段一致；不一致必须留下修改记录。</view>
+      <view class="muted">须有终稿合同，且合同 / 发票 / 装箱单 / 提单关键字段一致；不一致必须留下修改记录。存在未生效变更单时禁止推进。</view>
     </view>
+    <PendingChangeBlock :case-id="id" :case-data="c" />
     <view class="card" v-for="doc in docs" :key="doc.type">
       <view class="h2">{{ doc.label }}</view>
       <view class="label">买方</view>
@@ -36,10 +37,12 @@
 import { onLoad } from '@dcloudio/uni-app';
 import { reactive, ref } from 'vue';
 import { api } from '../../api';
+import PendingChangeBlock from '../../components/PendingChangeBlock.vue';
 
 const id = ref('');
 const err = ref('');
 const ok = ref('');
+const c = ref<any>(null);
 const docs = reactive([
   { type: 'CONTRACT', label: '合同', isFinal: true, fields: blank() },
   { type: 'INVOICE', label: '发票', isFinal: true, fields: blank() },
@@ -65,22 +68,22 @@ function transportIncoterms(raw?: string | null) {
 
 onLoad(async (q) => {
   id.value = q?.id || '';
-  const c = await api.case(id.value);
-  for (const d of c.documents || []) {
+  c.value = await api.case(id.value);
+  for (const d of c.value.documents || []) {
     const target = docs.find((x) => x.type === d.type);
     if (target) {
       target.isFinal = d.isFinal;
       Object.assign(target.fields, d.fields || {});
     }
   }
-  if (c.contract) {
+  if (c.value.contract) {
     const t = docs[0];
-    t.isFinal = c.contract.isFinal;
-    t.fields.buyerName = c.contract.buyerName || t.fields.buyerName;
-    t.fields.consigneeName = c.contract.consigneeName || '';
-    t.fields.goodsDesc = c.contract.goodsDesc || c.goodsDesc;
-    t.fields.amountFen = c.contract.amountFen || c.amountFen;
-    t.fields.incoterms = transportIncoterms(c.contract.incoterms);
+    t.isFinal = c.value.contract.isFinal;
+    t.fields.buyerName = c.value.contract.buyerName || t.fields.buyerName;
+    t.fields.consigneeName = c.value.contract.consigneeName || '';
+    t.fields.goodsDesc = c.value.contract.goodsDesc || c.value.goodsDesc;
+    t.fields.amountFen = c.value.contract.amountFen || c.value.amountFen;
+    t.fields.incoterms = transportIncoterms(c.value.contract.incoterms);
   }
 });
 
