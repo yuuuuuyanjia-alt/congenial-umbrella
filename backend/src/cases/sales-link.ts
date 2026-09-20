@@ -22,6 +22,24 @@ export type SalesLinkCaseInput = {
   nodes?: Array<{ code: string; status: string }>;
 };
 
+export function formatYmd(v?: Date | string | null): string {
+  if (!v) return '';
+  return String(v instanceof Date ? v.toISOString() : v).slice(0, 10);
+}
+
+/** 延期闸门对照用的关联销售合同交货期：优先当前销售合同，其次采购计划快照。 */
+export function salesContractDeliveryOf(input: {
+  salesLinkDelivery?: Date | string | null;
+  planContractDelivery?: Date | string | null;
+  caseContractDelivery?: Date | string | null;
+}): string {
+  return (
+    formatYmd(input.salesLinkDelivery) ||
+    formatYmd(input.planContractDelivery) ||
+    formatYmd(input.caseContractDelivery)
+  );
+}
+
 export type SalesLinkView = {
   id: string;
   caseNo: string;

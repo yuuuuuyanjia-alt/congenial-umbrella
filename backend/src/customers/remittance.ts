@@ -54,8 +54,8 @@ const KIND_NOTES: Record<
   },
   delivery: {
     onTimeNoDue: '已交付，未登记供应商实际交付日期，视为按期',
-    onTime: '实际交付日期不晚于供应商实际交付日期（或客户合同交期）',
-    overdueOccurred: '实际交付日期晚于供应商实际交付日期/客户合同交期',
+    onTime: '实际交付日期不晚于供应商实际交付日期（或关联销售合同交货期）',
+    overdueOccurred: '实际交付日期晚于供应商实际交付日期/关联销售合同交货期',
     notDue: '尚未交付，供应商实际交付日期未过',
     overdueUnoccurred: '供应商实际交付日期已过且尚未交付',
     noRecord: '无供应商实际交付日期，也无实际交付记录',

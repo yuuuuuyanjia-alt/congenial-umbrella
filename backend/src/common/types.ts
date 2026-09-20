@@ -180,7 +180,9 @@ export interface SinosureExposureSnap {
 
 export interface ProcurementPlanSnap {
   poNo?: string | null;
+  /** 供应商实际交付日期（计划交付） */
   plannedArrival?: string | Date | null;
+  /** 对照用：关联销售合同交货期 */
   contractDelivery?: string | Date | null;
   /** 本采购合同服务的销售/出口案件 id */
   salesCaseId?: string | null;
@@ -195,6 +197,7 @@ export interface ProcurementPlanSnap {
   delayReason?: string | null;
   customerConsent: boolean;
   customerConsentEvidenceId?: string | null;
+  /** 实际交付日期；闸门与供应商实际交付日期任一对照关联销售合同交货期 */
   actualArrival?: string | Date | null;
   amountFen?: number | null;
   currency?: string | null;

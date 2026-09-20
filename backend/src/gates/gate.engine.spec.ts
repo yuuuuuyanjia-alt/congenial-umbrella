@@ -15,6 +15,7 @@ import {
   isCifFamilyIncoterms,
   nextNode,
   parseIncotermsCode,
+  checkProcurementDelayVsSalesDelivery,
 } from './gate.engine';
 import { OccupancyReviewStatus, occupancyFingerprint } from '../workbench/occupancy-review';
 
@@ -1360,11 +1361,11 @@ describe('闸门引擎 N5 国内采购/备货', () => {
     ...over,
   });
 
-  it('采购计划到货不晚于客户合同交期可通过', () => {
+  it('供应商实际交付日期不晚于关联销售合同交货期可通过', () => {
     expect(evaluateN5(baseSnap()).canProceed).toBe(true);
   });
 
-  it('未填客户合同交货期不再拒绝推进（对照关联销售合同交期，无交期则跳过核对）', () => {
+  it('未填关联销售合同交货期不再拒绝推进（对照关联销售合同交期，无交期则跳过核对）', () => {
     const r = evaluateN5(baseSnap({ procurementPlan: plan({ contractDelivery: null }) }));
     expect(r.canProceed).toBe(true);
     expect(r.missing).not.toContain('N5_CONTRACT_DELIVERY');
@@ -1481,7 +1482,7 @@ describe('闸门引擎 N5 国内采购/备货', () => {
     expect(r.canProceed).toBe(true);
   });
 
-  it('晚于合同交期且未登记延期拒绝', () => {
+  it('供应商实际交付日期晚于关联销售合同交货期且未登记延期拒绝', () => {
     const r = evaluateN5(
       baseSnap({
         procurementPlan: plan({
@@ -1492,6 +1493,38 @@ describe('闸门引擎 N5 国内采购/备货', () => {
     );
     expect(r.canProceed).toBe(false);
     expect(r.missing).toContain('N5_DELAY_NOT_REGISTERED');
+    expect(r.reasons.join('')).toContain('关联销售合同交货期');
+    expect(r.reasons.join('')).toContain('供应商实际交付日期');
+  });
+
+  it('实际交付日期晚于关联销售合同交货期且未登记延期拒绝（即使供应商实际交付日期未晚）', () => {
+    const r = evaluateN5(
+      baseSnap({
+        procurementPlan: plan({
+          plannedArrival: '2026-11-28',
+          actualArrival: '2026-12-05',
+          delayRegistered: false,
+        }),
+      }),
+    );
+    expect(r.canProceed).toBe(false);
+    expect(r.missing).toContain('N5_DELAY_NOT_REGISTERED');
+    expect(r.reasons.join('')).toContain('实际交付日期');
+    expect(r.reasons.join('')).toContain('2026-11-30');
+  });
+
+  it('供应商实际交付日期与实际交付日期均不晚于关联销售合同交货期可通过', () => {
+    const r = evaluateN5(
+      baseSnap({
+        procurementPlan: plan({
+          plannedArrival: '2026-11-28',
+          actualArrival: '2026-11-29',
+        }),
+      }),
+    );
+    expect(r.canProceed).toBe(true);
+    expect(r.missing).not.toContain('N5_DELAY_NOT_REGISTERED');
+    expect(r.reasons.join('')).toContain('均不晚于该交期');
   });
 
   it('延期缺少结构化触发条件拒绝', () => {
@@ -1577,6 +1610,65 @@ describe('闸门引擎 N5 国内采购/备货', () => {
     );
     expect(r.canProceed).toBe(false);
     expect(r.missing).toContain('N5_SALES_NOT_SIGNED');
+  });
+});
+
+describe('采购交付对照关联销售合同交货期', () => {
+  it('无销售合同交货期不判延期', () => {
+    const d = checkProcurementDelayVsSalesDelivery({
+      plannedArrival: '2026-12-20',
+      actualArrival: '2026-12-22',
+      salesDelivery: null,
+    });
+    expect(d.delayed).toBe(false);
+    expect(d.salesDeliveryYmd).toBeNull();
+  });
+
+  it('供应商实际交付日期晚于交期即延期', () => {
+    const d = checkProcurementDelayVsSalesDelivery({
+      plannedArrival: '2026-12-05',
+      actualArrival: '2026-11-20',
+      salesDelivery: '2026-11-30',
+    });
+    expect(d.delayed).toBe(true);
+    expect(d.plannedLate).toBe(true);
+    expect(d.actualLate).toBe(false);
+    expect(d.lateReason).toContain('供应商实际交付日期');
+    expect(d.lateReason).toContain('2026-11-30');
+  });
+
+  it('实际交付日期晚于交期即延期（即使计划未晚）', () => {
+    const d = checkProcurementDelayVsSalesDelivery({
+      plannedArrival: '2026-11-20',
+      actualArrival: '2026-12-02',
+      salesDelivery: '2026-11-30',
+    });
+    expect(d.delayed).toBe(true);
+    expect(d.plannedLate).toBe(false);
+    expect(d.actualLate).toBe(true);
+    expect(d.lateReason).toContain('实际交付日期');
+  });
+
+  it('两者均晚于交期一并写出', () => {
+    const d = checkProcurementDelayVsSalesDelivery({
+      plannedArrival: '2026-12-01',
+      actualArrival: '2026-12-08',
+      salesDelivery: '2026-11-30',
+    });
+    expect(d.delayed).toBe(true);
+    expect(d.plannedLate).toBe(true);
+    expect(d.actualLate).toBe(true);
+    expect(d.lateReason).toContain('供应商实际交付日期与实际交付日期');
+  });
+
+  it('两者均不晚于交期不延期', () => {
+    const d = checkProcurementDelayVsSalesDelivery({
+      plannedArrival: '2026-11-28',
+      actualArrival: '2026-11-30',
+      salesDelivery: '2026-11-30',
+    });
+    expect(d.delayed).toBe(false);
+    expect(d.passReason).toContain('均不晚于该交期');
   });
 });
 

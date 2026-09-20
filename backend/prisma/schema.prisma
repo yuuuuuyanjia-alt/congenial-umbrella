@@ -475,7 +475,9 @@ model ProcurementPlan {
   /// 本采购合同服务的销售/出口案件（须已达 N3 且已签销售合同）
   salesCaseId               String?
   poNo                      String?
+  /// 供应商实际交付日期（计划交付，接口字段仍为 plannedArrival）
   plannedArrival            DateTime?
+  /// 对照用：关联销售合同交货期快照；闸门优先用关联销售合同当前交货期
   contractDelivery          DateTime?
   poEvidenceStub            String?
   poEvidenceId              String?
@@ -485,7 +487,7 @@ model ProcurementPlan {
   delayReason               String?
   customerConsent           Boolean   @default(false)
   customerConsentEvidenceId String?
-  /// 供应商实际到货日，与计划到货/客户合同交期比较得出是否按期交货
+  /// 实际交付日期；闸门对照关联销售合同交货期，与供应商实际交付日期（plannedArrival）任一晚于交期即须登记延期
   actualArrival             DateTime?
   /// 采购合同/PO 金额（分）
   amountFen                 Int?

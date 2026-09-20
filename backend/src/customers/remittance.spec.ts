@@ -88,7 +88,7 @@ describe('收汇按期判断', () => {
     expect(s.counts).toEqual({ onTime: 1, overdue: 1, notDue: 1, noRecord: 0 });
   });
 
-  it('交货：实际到货晚于计划为逾期', () => {
+  it('交货：实际交付日期晚于供应商实际交付日期为逾期', () => {
     const r = evaluateRemittance({
       kind: 'delivery',
       paymentDueAt: '2026-03-10',

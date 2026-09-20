@@ -32,7 +32,7 @@
 
     <view class="card">
       <view class="h2">是否按期交货 · 约定付款时间</view>
-      <view class="muted">交货对照实际交付日期与供应商实际交付日期（无供应商实际交付日期则对照客户合同交期）。付款按每一期的约定付款时间判断：未付清且到期已过即为逾期；分期支付时任一期逾期则总体逾期。</view>
+      <view class="muted">交货对照实际交付日期与供应商实际交付日期（无供应商实际交付日期则对照关联销售合同交货期）。付款按每一期的约定付款时间判断：未付清且到期已过即为逾期；分期支付时任一期逾期则总体逾期。</view>
       <view class="row" style="margin-top: 16rpx">
         <view class="stat">
           <view class="stat-n over">{{ s.delivery?.counts?.overdue ?? 0 }}</view>
@@ -68,7 +68,7 @@
       <view class="muted" v-else style="margin-top: 10rpx">尚未关联销售合同</view>
       <view class="chip" v-if="p.salesLink" style="margin-top: 8rpx" @click.stop="openCase(p.salesLink.id)">查看销售合同</view>
       <view class="muted" style="margin-top: 10rpx">
-        供应商实际交付日期 {{ ymd(p.plannedArrival) }} · 客户交期 {{ ymd(p.contractDelivery) }} · 实际交付日期 {{ ymd(p.actualArrival) }}
+        供应商实际交付日期 {{ ymd(p.plannedArrival) }} · 关联销售合同交货期 {{ ymd(p.contractDelivery) }} · 实际交付日期 {{ ymd(p.actualArrival) }}
       </view>
       <view class="muted">
         采购金额 {{ money(p.amountFen, p.currency) }} · 已付 {{ money(p.paidFen, p.currency) }} · 未付 {{ money(p.unpaidFen, p.currency) }}

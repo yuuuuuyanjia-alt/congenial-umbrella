@@ -18,6 +18,10 @@
       <view class="muted" style="margin-top: 8rpx">
         {{ money(c.procurementPlan.salesLink.amountFen, c.procurementPlan.salesLink.currency) }} · {{ c.procurementPlan.salesLink.statusLabel }} · {{ c.procurementPlan.salesLink.currentNodeLabel }}
       </view>
+      <view class="muted" style="margin-top: 8rpx" v-if="salesDeliveryYmd">
+        关联销售合同交货期 {{ salesDeliveryYmd }}（采购交付延期对照此日期）
+      </view>
+      <view class="muted" style="margin-top: 8rpx" v-else>所选销售合同未登记交货期，采购延期闸门跳过交期核对。</view>
       <view
         class="btn btn-ghost"
         v-if="c.procurementPlan.salesLink.id !== c.id"
@@ -54,11 +58,16 @@
 
 <script setup lang="ts">
 import { onLoad, onShow } from '@dcloudio/uni-app';
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import { api, decisionClass, decisionText, money, nodePage } from '../../api';
 
 const id = ref('');
 const c = ref<any>(null);
+const salesDeliveryYmd = computed(() => {
+  const p = c.value?.procurementPlan;
+  const d = p?.salesContractDeliveryDate || p?.salesLink?.deliveryDate || p?.contractDelivery;
+  return d ? String(d).slice(0, 10) : '';
+});
 
 onLoad((q) => {
   id.value = q?.id || '';
