@@ -428,17 +428,20 @@ export function evaluateN5(snap: CaseSnapshot): GateResult {
     return r;
   }
 
-  const planned = startOfDay(toDate(plan.plannedArrival as string | Date));
-  const contracted = contractDelivery ? startOfDay(toDate(contractDelivery as string | Date)) : null;
-  if (!contracted || planned.getTime() <= contracted.getTime()) {
-    if (contracted) r.reasons.push('供应商实际交付日期不晚于关联销售合同交货期');
+  const delay = checkProcurementDelayVsSalesDelivery({
+    plannedArrival: plan.plannedArrival,
+    actualArrival: plan.actualArrival,
+    salesDelivery: contractDelivery,
+  });
+  if (!delay.delayed) {
+    if (delay.passReason) r.reasons.push(delay.passReason);
     applyLowScreeningAlert(r, buckets, '国内供应商低置信/低风险命中：软提示，不阻断，须保留审计痕迹');
     return r;
   }
 
   if (!plan.delayRegistered) {
     r.missing.push('N5_DELAY_NOT_REGISTERED');
-    r.reasons.push('供应商实际交付日期晚于关联销售合同交货期，须登记延期');
+    r.reasons.push(delay.lateReason);
   }
   const validTrigger =
     !!plan.delayTriggerCode &&
@@ -453,12 +456,55 @@ export function evaluateN5(snap: CaseSnapshot): GateResult {
     r.decision = Decision.REVIEW;
     r.canProceed = false;
     r.missing.push('N5_DELAY_WITHOUT_CONSENT');
-    r.reasons.push('采购到货延期未经客户同意（缺少可追溯证据编号），中风险，禁止推进');
+    r.reasons.push('采购交付延期未经客户同意（缺少可追溯证据编号），中风险，禁止推进');
     return r;
   }
-  r.reasons.push('已登记结构化采购到货延期且客户同意证据可追溯');
+  r.reasons.push('已登记结构化采购交付延期且客户同意证据可追溯');
   applyLowScreeningAlert(r, buckets, '国内供应商低置信/低风险命中：软提示，不阻断，须保留审计痕迹');
   return r;
+}
+
+/** 日历日比较：供应商实际交付日期或实际交付日期任一晚于关联销售合同交货期，即视为延期。 */
+export type ProcurementDelayVsSales = {
+  salesDelivery: Date | null;
+  salesDeliveryYmd: string | null;
+  plannedLate: boolean;
+  actualLate: boolean;
+  delayed: boolean;
+  passReason: string | null;
+  lateReason: string;
+};
+
+export function checkProcurementDelayVsSalesDelivery(input: {
+  plannedArrival?: string | Date | null;
+  actualArrival?: string | Date | null;
+  salesDelivery?: string | Date | null;
+}): ProcurementDelayVsSales {
+  const salesDelivery = dayOrNull(input.salesDelivery);
+  const planned = dayOrNull(input.plannedArrival);
+  const actual = dayOrNull(input.actualArrival);
+  const plannedLate = !!(salesDelivery && planned && planned.getTime() > salesDelivery.getTime());
+  const actualLate = !!(salesDelivery && actual && actual.getTime() > salesDelivery.getTime());
+  const delayed = plannedLate || actualLate;
+  const salesDeliveryYmd = salesDelivery ? ymdLocal(salesDelivery) : null;
+  const lateParts = [
+    plannedLate ? '供应商实际交付日期' : '',
+    actualLate ? '实际交付日期' : '',
+  ].filter(Boolean);
+  const lateReason = salesDeliveryYmd
+    ? `对照关联销售合同交货期 ${salesDeliveryYmd}：${lateParts.join('与')}晚于该交期，须登记延期`
+    : '供应商实际交付日期或实际交付日期晚于关联销售合同交货期，须登记延期';
+  let passReason: string | null = null;
+  if (salesDeliveryYmd && !delayed) {
+    if (planned && actual) {
+      passReason = `对照关联销售合同交货期 ${salesDeliveryYmd}：供应商实际交付日期与实际交付日期均不晚于该交期`;
+    } else if (actual) {
+      passReason = `对照关联销售合同交货期 ${salesDeliveryYmd}：实际交付日期不晚于该交期`;
+    } else {
+      passReason = `对照关联销售合同交货期 ${salesDeliveryYmd}：供应商实际交付日期不晚于该交期`;
+    }
+  }
+  return { salesDelivery, salesDeliveryYmd, plannedLate, actualLate, delayed, passReason, lateReason };
 }
 
 const KNOWN_INCOTERMS = new Set<string>(INCOTERMS_CODES);
@@ -836,6 +882,20 @@ function toDate(v: string | Date): Date {
 
 function startOfDay(d: Date): Date {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+}
+
+function dayOrNull(v?: string | Date | null): Date | null {
+  if (v == null || v === '') return null;
+  const d = toDate(v as string | Date);
+  if (Number.isNaN(d.getTime())) return null;
+  return startOfDay(d);
+}
+
+function ymdLocal(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
 
 function normalize(s: string) {

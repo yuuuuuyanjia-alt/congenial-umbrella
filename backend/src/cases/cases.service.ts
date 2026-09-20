@@ -43,6 +43,7 @@ import {
   parseContractListKind,
   presentSalesLink,
   procurementContractTitle,
+  salesContractDeliveryOf,
   salesCustomerOf,
   signedSalesOptions,
   supplierNameOf,
@@ -233,6 +234,13 @@ export class CasesService {
             scheduleWording: planPayment?.wording,
             unpaidFen: planPayment?.unpaidFen,
             salesLink: c.procurementPlan.salesCase ? presentSalesLink(c.procurementPlan.salesCase) : null,
+            salesContractDeliveryDate: salesContractDeliveryOf({
+              salesLinkDelivery: c.procurementPlan.salesCase
+                ? presentSalesLink(c.procurementPlan.salesCase).deliveryDate
+                : null,
+              planContractDelivery: c.procurementPlan.contractDelivery,
+              caseContractDelivery: c.contract?.deliveryDate,
+            }),
           }
         : null,
     };
@@ -825,7 +833,7 @@ export class CasesService {
     if (dto.customerConsent && dto.customerConsentRef) {
       const ev = await this.addEvidence(caseId, 'N5', EvidenceKind.DELAY_CONSENT, {
         ref: dto.customerConsentRef,
-        note: dto.delayReason || '客户同意采购到货延期',
+        note: dto.delayReason || '客户同意采购交付延期',
         payload: { trigger: dto.delayTriggerCode, triggerRef: dto.delayTriggerRef },
       });
       consentId = ev.id;
@@ -876,7 +884,12 @@ export class CasesService {
       salesCaseId: salesCase.id,
       poNo: dto.poNo || null,
       plannedArrival: parseDate(dto.plannedArrival || dto.plannedDelivery),
-      contractDelivery: parseDate(dto.contractDelivery) || contract?.deliveryDate || existingPlan?.contractDelivery || null,
+      contractDelivery:
+        parseDate(dto.contractDelivery) ||
+        salesCase.contract?.deliveryDate ||
+        contract?.deliveryDate ||
+        existingPlan?.contractDelivery ||
+        null,
       poEvidenceStub: poStub || null,
       poEvidenceId: poEvidenceId || existingPlan?.poEvidenceId || null,
       delayRegistered: dto.delayRegistered ?? false,
@@ -939,13 +952,19 @@ export class CasesService {
       },
     });
     const presented = presentPlanPayment(row);
+    const salesLink = row.salesCase ? presentSalesLink(row.salesCase) : presentSalesLink(salesCase);
     return {
       ...row,
       paymentModeLabel: presented.paymentModeLabel,
       installments: presented.installments,
       scheduleWording: presented.wording,
       unpaidFen: presented.unpaidFen,
-      salesLink: row.salesCase ? presentSalesLink(row.salesCase) : presentSalesLink(salesCase),
+      salesLink,
+      salesContractDeliveryDate: salesContractDeliveryOf({
+        salesLinkDelivery: salesLink.deliveryDate,
+        planContractDelivery: row.contractDelivery,
+        caseContractDelivery: contract?.deliveryDate,
+      }),
     };
   }
 

@@ -4,7 +4,7 @@
       <view class="h1" style="line-height: 1.35">{{ contractTitle }}</view>
       <view class="muted" style="margin-top: 8rpx">采购合同 / 国内备货</view>
       <view class="muted">
-        销售合同与采购合同分开签订。公司惯例先销售后采购：本页是采购合同，须先从已签订的销售/出口合同中任选一笔关联（不限于本案），否则不得保存或推进。公司无自有产线，向国内供应商采购。须登记供应商、采购合同/PO、供应商实际交付日期与货款支付方式（一次性付清或分期支付），并对供应商做制裁/不可靠实体筛查。供应商实际交付日期对照关联销售合同交货期；若晚于交期须登记结构化延期并保留客户同意证据。
+        销售合同与采购合同分开签订。公司惯例先销售后采购：本页是采购合同，须先从已签订的销售/出口合同中任选一笔关联（不限于本案），否则不得保存或推进。公司无自有产线，向国内供应商采购。须登记供应商、采购合同/PO、供应商实际交付日期与货款支付方式（一次性付清或分期支付），并对供应商做制裁/不可靠实体筛查。供应商实际交付日期或实际交付日期任一晚于关联销售合同交货期，须登记结构化延期并保留客户同意证据。本页展示对照用的关联销售合同交货期。
       </view>
       <view class="muted" v-if="c.currentNode" style="margin-top: 8rpx">本案当前节点：{{ c.currentNode }} {{ currentNodeName }}</view>
     </view>
@@ -19,8 +19,9 @@
       <view class="picker-face" :class="{ 'picker-face-on': !!selectedSales, 'picker-face-open': pickerOpen }" @click="togglePicker">
         <view v-if="selectedSales">
           <view class="h2" style="margin: 0">{{ selectedSales.customer }} · {{ selectedSales.contractNo }}</view>
-          <view class="muted" style="margin-top: 6rpx">
+          <view class="muted" style="margin-top: 8rpx">
             销售金额 {{ money(selectedSales.amountFen, selectedSales.currency) }}
+            <text v-if="salesDeliveryYmd"> · 交货期 {{ salesDeliveryYmd }}</text>
             <text v-if="selectedSales.statusLabel"> · {{ selectedSales.statusLabel }}</text>
           </view>
         </view>
@@ -51,7 +52,9 @@
             </view>
           </view>
           <view class="muted" style="margin-top: 8rpx">
-            销售金额 {{ money(opt.amountFen, opt.currency) }} · {{ opt.currentNodeLabel }} · {{ opt.statusLabel }}
+            销售金额 {{ money(opt.amountFen, opt.currency) }}
+            <text v-if="ymd(opt.deliveryDate)"> · 交货期 {{ ymd(opt.deliveryDate) }}</text>
+            · {{ opt.currentNodeLabel }} · {{ opt.statusLabel }}
           </view>
         </view>
         <view class="muted" v-if="!filteredSalesOptions.length" style="margin-top: 12rpx">没有匹配的已签销售合同。</view>
@@ -59,6 +62,7 @@
       <view class="muted" v-if="!salesOptions.length" style="margin-top: 12rpx">暂无已签订的销售合同。请先完成销售合同（N3）签订。</view>
       <view class="ok" v-if="selectedSales" style="margin-top: 12rpx">
         已关联：客户 {{ selectedSales.customer }} · 合同号 {{ selectedSales.contractNo }} · 金额 {{ money(selectedSales.amountFen, selectedSales.currency) }}
+        <text v-if="salesDeliveryYmd"> · 交货期 {{ salesDeliveryYmd }}</text>
       </view>
       <view class="err" v-if="!form.salesCaseId" style="margin-top: 12rpx">尚未选择销售合同，不得保存采购合同。</view>
     </view>
@@ -81,10 +85,14 @@
       <view class="h2">采购合同 / 备货</view>
       <view class="label">采购订单 / 采购合同编号</view>
       <input class="input" v-model="form.poNo" placeholder="如 PO-2026-011" />
+      <view class="label">关联销售合同交货期（对照用）</view>
+      <view class="readonly" v-if="salesDeliveryYmd">{{ salesDeliveryYmd }}</view>
+      <view class="muted" v-else>请先选择已签订的销售合同。有交货期时，供应商实际交付日期或实际交付日期任一晚于该日须登记延期。</view>
+      <view class="muted" v-if="salesDeliveryYmd">延期对照此日期：供应商实际交付日期或实际交付日期任一更晚，须登记延期。</view>
       <view class="label">供应商实际交付日期</view>
-      <input class="input" v-model="form.plannedArrival" placeholder="YYYY-MM-DD" />
+      <input class="input" v-model="form.plannedArrival" placeholder="YYYY-MM-DD，计划交付" />
       <view class="label">实际交付日期</view>
-      <input class="input" v-model="form.actualArrival" placeholder="YYYY-MM-DD，用于判断是否按期交付" />
+      <input class="input" v-model="form.actualArrival" placeholder="YYYY-MM-DD，实际交付；可选" />
       <view class="label">采购金额（元）</view>
       <input class="input" type="digit" v-model="form.amountYuan" placeholder="采购合同/PO 金额" @blur="syncAmountsFromPercent" />
       <view class="label">币种</view>
@@ -136,7 +144,7 @@
       <view class="label">采购合同/PO 附件（可选，模拟上传）</view>
       <input class="input" v-model="form.poEvidenceStub" placeholder="如 PO-2026-011.pdf" />
       <view class="btn btn-ghost" @click="stubUpload">模拟上传采购合同</view>
-      <view class="label">登记采购到货延期</view>
+      <view class="label">登记采购交付延期</view>
       <switch :checked="form.delayRegistered" @change="(e: any) => (form.delayRegistered = e.detail.value)" />
       <view class="label">延期触发条件</view>
       <view class="chips">
@@ -260,6 +268,17 @@ const selectedSales = computed(
     salesOptions.value.find((o: any) => o.id === form.salesCaseId) ||
     (form.salesCaseId ? c.value?.procurementPlan?.salesLink : null) ||
     null,
+);
+function ymd(v?: string | Date | null) {
+  return v ? String(v).slice(0, 10) : '';
+}
+const salesDeliveryYmd = computed(() =>
+  ymd(
+    selectedSales.value?.deliveryDate ||
+      c.value?.procurementPlan?.salesContractDeliveryDate ||
+      c.value?.procurementPlan?.salesLink?.deliveryDate ||
+      c.value?.procurementPlan?.contractDelivery,
+  ),
 );
 const currentNodeName = computed(() => pipelineNodeName(c.value?.currentNode));
 const nextTarget = computed(() =>
@@ -659,5 +678,14 @@ function goNext() {
   font-weight: 600;
   margin-left: 8rpx;
   font-size: var(--font-xs);
+}
+.readonly {
+  margin-top: 8rpx;
+  border: 2rpx solid #e8eef3;
+  border-radius: 12rpx;
+  padding: 18rpx;
+  background: #f7f5f0;
+  font-weight: 650;
+  color: #0f3d2e;
 }
 </style>

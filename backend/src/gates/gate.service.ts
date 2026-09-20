@@ -80,8 +80,8 @@ export class GateService {
             poNo: c.procurementPlan.poNo,
             plannedArrival: c.procurementPlan.plannedArrival,
             contractDelivery:
-              c.procurementPlan.contractDelivery ||
               c.procurementPlan.salesCase?.contract?.deliveryDate ||
+              c.procurementPlan.contractDelivery ||
               c.contract?.deliveryDate ||
               null,
             poEvidenceStub: c.procurementPlan.poEvidenceStub,

@@ -3,7 +3,7 @@ import { PartyRole } from '../common/constants';
 import { evaluateRemittance, moneyBuckets, summarizeRemittance } from '../customers/remittance';
 import { PrismaService } from '../prisma/prisma.service';
 import { presentPlanPayment } from './payment-schedule';
-import { presentSalesLink } from '../cases/sales-link';
+import { presentSalesLink, salesContractDeliveryOf } from '../cases/sales-link';
 
 @Injectable()
 export class SuppliersService {
@@ -90,14 +90,20 @@ export class SuppliersService {
     const paidFen = schedule.paidFen;
     const unpaidFen = schedule.unpaidFen;
     const currency = plan?.currency || 'CNY';
-    const dueForDelivery = plan?.plannedArrival ?? plan?.contractDelivery ?? null;
+    const payment = schedule.payment;
+    const salesLink = plan?.salesCase ? presentSalesLink(plan.salesCase) : null;
+    const salesContractDeliveryDate =
+      salesContractDeliveryOf({
+        salesLinkDelivery: salesLink?.deliveryDate,
+        planContractDelivery: plan?.contractDelivery,
+        caseContractDelivery: c.contract?.deliveryDate,
+      }) || null;
+    const dueForDelivery = plan?.plannedArrival ?? (salesContractDeliveryDate || null);
     const delivery = evaluateRemittance({
       kind: 'delivery',
       paymentDueAt: dueForDelivery,
       receivedAt: plan?.actualArrival ?? null,
     });
-    const payment = schedule.payment;
-    const salesLink = plan?.salesCase ? presentSalesLink(plan.salesCase) : null;
     return {
       id: c.id,
       caseNo: c.caseNo,
@@ -107,7 +113,8 @@ export class SuppliersService {
       goodsDesc: c.goodsDesc,
       poNo: plan?.poNo ?? null,
       plannedArrival: plan?.plannedArrival ?? null,
-      contractDelivery: plan?.contractDelivery ?? c.contract?.deliveryDate ?? salesLink?.deliveryDate ?? null,
+      contractDelivery: salesContractDeliveryDate,
+      salesContractDeliveryDate,
       actualArrival: plan?.actualArrival ?? null,
       delayRegistered: plan?.delayRegistered ?? false,
       amountFen,

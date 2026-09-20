@@ -12,6 +12,7 @@ import {
   procurementContractTitle,
   procurementExportCustomerOf,
   procurementProductOf,
+  salesContractDeliveryOf,
   signedSalesOptions,
 } from './sales-link';
 
@@ -164,6 +165,7 @@ describe('销售合同关联（先销售后采购）', () => {
     expect(view.currency).toBe('USD');
     expect(view.currentNodeLabel).toContain('收汇');
     expect(view.signed).toBe(true);
+    expect(String(view.deliveryDate).slice(0, 10)).toBe('2026-11-30');
   });
 });
 
@@ -309,5 +311,27 @@ describe('采购合同主标题（供应商采购产品出口客户）', () => {
         goodsDesc: '手工具套装',
       }),
     ).toBe('宁波五金制品有限公司采购手工具套装出口客户待关联');
+  });
+});
+
+describe('关联销售合同交货期（延期对照）', () => {
+  it('优先取关联销售合同当前交货期', () => {
+    expect(
+      salesContractDeliveryOf({
+        salesLinkDelivery: '2026-11-30',
+        planContractDelivery: '2026-10-01',
+        caseContractDelivery: '2026-09-01',
+      }),
+    ).toBe('2026-11-30');
+  });
+
+  it('无销售合同交货期时回退采购计划快照', () => {
+    expect(
+      salesContractDeliveryOf({
+        salesLinkDelivery: null,
+        planContractDelivery: new Date('2026-12-15T00:00:00.000Z'),
+        caseContractDelivery: '2026-09-01',
+      }),
+    ).toBe('2026-12-15');
   });
 });
