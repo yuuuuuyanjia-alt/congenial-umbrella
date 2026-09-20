@@ -92,6 +92,10 @@ describe('销售合同 CIF 装运节点与收汇', () => {
     expect(composeTtPaymentTerms('ADVANCE')).toBe('前 T/T');
     expect(resolveTtTiming({ paymentTerms: '前 T/T' })).toBe('ADVANCE');
     expect(resolveTtTiming({ paymentTerms: '后 T/T 30 days' })).toBe('AFTER');
+    const fobKeep = presentSalesContract({ incoterms: 'FOB', paymentTerms: 'OA 15 days' });
+    expect(fobKeep?.tradeTerm).toBe('FOB');
+    expect(fobKeep?.ttVisible).toBe(false);
+    expect(fobKeep?.fobDomesticVisible).toBe(true);
   });
 });
 
@@ -110,6 +114,7 @@ describe('销售合同出运/履约分组', () => {
     expect(isSalesShipped({ shipmentDate: '2026-08-15', currentNode: 'N3' })).toBe(true);
     expect(isSalesShipped({ contract: { shipmentDate: new Date('2026-08-15') }, currentNode: 'N3' })).toBe(true);
     expect(isSalesShipped({ shipmentDate: '', currentNode: 'N3' })).toBe(false);
+    expect(isSalesShipped({ shipmentDate: '2026-12-01', currentNode: 'N3' })).toBe(true);
   });
 
   it('FOB 无装运日期时以国内段到达口岸、N6 已通过或提单/无提单路径为准', () => {

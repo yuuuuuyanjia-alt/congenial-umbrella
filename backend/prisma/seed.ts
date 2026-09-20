@@ -792,7 +792,7 @@ async function seedGateDemoCase(salesId: string) {
       contract: {
         create: {
           counterparty: 'Harbor View Ltd',
-          paymentTerms: 'T/T 15 days',
+          paymentTerms: 'OA 15 days',
           hasRetentionOfTitle: true,
           hasDisputeClause: true,
           isFinal: false,
@@ -936,7 +936,7 @@ async function seedFobNoBlCase(salesId: string, approverId: string) {
       contract: {
         create: {
           counterparty: 'Pacific Tools Pte Ltd',
-          paymentTerms: 'T/T 15 days',
+          paymentTerms: 'OA 15 days',
           hasRetentionOfTitle: true,
           hasDisputeClause: true,
           isFinal: true,

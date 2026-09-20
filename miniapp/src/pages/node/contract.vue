@@ -1,5 +1,9 @@
 <template>
-  <view class="wrap" v-if="c">
+  <view class="wrap">
+    <view class="card" v-if="!c">
+      <view class="muted">正在加载销售合同…</view>
+    </view>
+    <template v-else>
     <view class="card">
       <view class="h2">销售合同 / 订单确认</view>
       <view class="muted">销售合同与采购合同分开签订。硬规则：中信保限额未登记，不得签订销售合同。请先登记投保限额，再保存合同要素。所有权保留、争议解决条款为必填。贸易条件为 FOB、CIF、T/T 三选一：CIF 填装运节点，FOB 填国内段到达口岸/港口时间，T/T 再选前 T/T 或后 T/T。所选路径下的字段均可填写。公司惯例先销售后采购：国内采购合同在 N5 另签，并须关联本销售合同。</view>
@@ -136,6 +140,7 @@
     </view>
     <view class="err" v-if="err">{{ err }}</view>
     <view class="ok" v-if="ok">{{ ok }}</view>
+    </template>
   </view>
 </template>
 
