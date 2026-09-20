@@ -7,10 +7,19 @@ onLaunch(() => {
 
 <style>
 page {
+  /* Modest type scale (+4rpx vs original). Body/labels ~14px on 375-wide H5. */
+  --font-xs: 26rpx;
+  --font-sm: 28rpx;
+  --font-md: 30rpx;
+  --font-lg: 32rpx;
+  --font-h2: 34rpx;
+  --font-stat: 36rpx;
+  --font-title: 40rpx;
+  --font-h1: 44rpx;
   background: #f4f1ea;
   color: #1f2933;
   font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Noto Sans SC', sans-serif;
-  font-size: $font-sm;
+  font-size: var(--font-sm);
 }
 .wrap {
   padding: 24rpx;
@@ -23,19 +32,19 @@ page {
   box-shadow: 0 8rpx 24rpx rgba(15, 61, 46, 0.08);
 }
 .h1 {
-  font-size: $font-h1;
+  font-size: var(--font-h1);
   font-weight: 700;
   color: #0f3d2e;
 }
 .h2 {
-  font-size: $font-h2;
+  font-size: var(--font-h2);
   font-weight: 650;
   color: #0f3d2e;
   margin-bottom: 12rpx;
 }
 .muted {
   color: #6b7280;
-  font-size: $font-sm;
+  font-size: var(--font-sm);
   line-height: 1.6;
 }
 .row {
@@ -46,7 +55,7 @@ page {
 }
 .badge {
   display: inline-block;
-  font-size: $font-xs;
+  font-size: var(--font-xs);
   padding: 6rpx 14rpx;
   border-radius: 999rpx;
   font-weight: 600;
@@ -63,7 +72,7 @@ page {
   text-align: center;
   padding: 20rpx;
   border-radius: 12rpx;
-  font-size: $font-lg;
+  font-size: var(--font-lg);
   margin-top: 16rpx;
 }
 .btn-ghost {
@@ -78,11 +87,11 @@ page {
   border-radius: 10rpx;
   padding: 16rpx 18rpx;
   margin-top: 10rpx;
-  font-size: $font-md;
+  font-size: var(--font-md);
 }
 .label {
   margin-top: 18rpx;
-  font-size: $font-sm;
+  font-size: var(--font-sm);
   color: #374151;
   font-weight: 600;
 }
@@ -94,7 +103,7 @@ page {
   margin-top: 12rpx;
 }
 .chip {
-  font-size: $font-xs;
+  font-size: var(--font-xs);
   padding: 8rpx 16rpx;
   background: #e6efe9;
   color: #0f3d2e;
@@ -114,7 +123,7 @@ page {
   border-radius: 12rpx;
   background: #e6efe9;
   color: #0f3d2e;
-  font-size: $font-lg;
+  font-size: var(--font-lg);
   font-weight: 650;
   border: 2rpx solid #c5d4cb;
   box-sizing: border-box;
@@ -129,7 +138,7 @@ page {
   color: #7a1d16;
   padding: 16rpx;
   border-radius: 12rpx;
-  font-size: $font-sm;
+  font-size: var(--font-sm);
   margin-top: 12rpx;
   line-height: 1.55;
 }
@@ -138,7 +147,7 @@ page {
   color: #14532d;
   padding: 16rpx;
   border-radius: 12rpx;
-  font-size: $font-sm;
+  font-size: var(--font-sm);
   margin-top: 12rpx;
 }
 .input[disabled] {

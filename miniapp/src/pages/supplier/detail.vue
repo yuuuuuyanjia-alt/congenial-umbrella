@@ -139,7 +139,7 @@ function openCase(caseId: string) {
   text-align: center;
 }
 .stat-n {
-  font-size: $font-stat;
+  font-size: var(--font-stat);
   font-weight: 700;
   color: #0f3d2e;
 }
