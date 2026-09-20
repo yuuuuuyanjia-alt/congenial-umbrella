@@ -4,7 +4,7 @@
       <view class="h1" style="line-height: 1.35">{{ contractTitle }}</view>
       <view class="muted" style="margin-top: 8rpx">采购合同 / 国内备货</view>
       <view class="muted">
-        销售合同与采购合同分开签订。公司惯例先销售后采购：本页是采购合同，须先从已签订的销售/出口合同中任选一笔关联（不限于本案），否则不得保存或推进。公司无自有产线，向国内供应商采购。须登记供应商、采购合同/PO、供应商实际交付日期与货款支付方式（一次性付清或分期支付），并对供应商做制裁/不可靠实体筛查。供应商实际交付日期或实际交付日期任一晚于关联销售合同交货期，须登记结构化延期并保留客户同意证据。本页展示对照用的关联销售合同交货期。
+        销售合同与采购合同分开签订。公司惯例先销售后采购：本页是采购合同，须先从已签订的销售/出口合同中任选一笔关联（不限于本案），否则不得保存或推进。公司无自有产线，向国内供应商采购。须登记供应商、采购合同/PO、计划交付日期与货款支付方式（一次性付清或分期支付），并对供应商做制裁/不可靠实体筛查。计划交付日期或实际交付日期任一晚于关联销售合同交货期，须登记结构化延期并保留客户同意证据。本页展示对照用的关联销售合同交货期。
       </view>
       <view class="muted" v-if="c.currentNode" style="margin-top: 8rpx">本案当前节点：{{ c.currentNode }} {{ currentNodeName }}</view>
     </view>
@@ -87,10 +87,10 @@
       <input class="input" v-model="form.poNo" placeholder="如 PO-2026-011" />
       <view class="label">关联销售合同交货期（对照用）</view>
       <view class="readonly" v-if="salesDeliveryYmd">{{ salesDeliveryYmd }}</view>
-      <view class="muted" v-else>请先选择已签订的销售合同。有交货期时，供应商实际交付日期或实际交付日期任一晚于该日须登记延期。</view>
-      <view class="muted" v-if="salesDeliveryYmd">延期对照此日期：供应商实际交付日期或实际交付日期任一更晚，须登记延期。</view>
-      <view class="label">供应商实际交付日期</view>
-      <input class="input" v-model="form.plannedArrival" placeholder="YYYY-MM-DD，计划交付" />
+      <view class="muted" v-else>请先选择已签订的销售合同。有交货期时，计划交付日期或实际交付日期任一晚于该日须登记延期。</view>
+      <view class="muted" v-if="salesDeliveryYmd">延期对照此日期：计划交付日期或实际交付日期任一更晚，须登记延期。</view>
+      <view class="label">计划交付日期</view>
+      <input class="input" v-model="form.plannedArrival" placeholder="YYYY-MM-DD，计划交付日期" />
       <view class="label">实际交付日期</view>
       <input class="input" v-model="form.actualArrival" placeholder="YYYY-MM-DD，实际交付；可选" />
       <view class="label">采购金额（元）</view>
