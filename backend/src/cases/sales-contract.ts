@@ -1,5 +1,10 @@
 import { CaseStatus, NODE_FLOW, NodeCode, NodeStatus } from '../common/constants';
 import { isBuyerArrangedFreight, isCifFamilyIncoterms } from '../gates/gate.engine';
+import {
+  isSettlementPaid,
+  receivedFenOf,
+  type SettlementLedgerInput,
+} from '../customers/sinosure-exposure';
 
 export { isBuyerArrangedFreight, isCifFamilyIncoterms };
 
@@ -103,18 +108,14 @@ export type SalesShipmentInput = {
   shipmentDate?: Date | string | null;
   domesticPortArrivalAt?: Date | string | null;
   customerPickedUp?: boolean | null;
-  hasRemittance?: boolean | null;
-  remittedFen?: number | null;
   amountFen?: number | null;
-  unpaidFen?: number | null;
+  /** N9 收汇对账。已回款只认此账本，不认 N3 hasRemittance / remittedFen。 */
+  settlement?: SettlementLedgerInput;
   contract?: {
     shipmentDate?: Date | string | null;
     domesticPortArrivalAt?: Date | string | null;
     customerPickedUp?: boolean | null;
-    hasRemittance?: boolean | null;
-    remittedFen?: number | null;
     amountFen?: number | null;
-    unpaidFen?: number | null;
   } | null;
   shipment?: {
     blNo?: string | null;
@@ -149,9 +150,13 @@ export function presentSalesContract<
     hasRemittance?: boolean | null;
     remittedFen?: number | null;
   },
->(row: T): T & {
+>(
+  row: T,
+  settlement?: SettlementLedgerInput,
+): T & {
   remittedFen: number;
   unpaidFen: number;
+  hasRemittance: boolean;
   cifShippingVisible: boolean;
   fobDomesticVisible: boolean;
   ttVisible: boolean;
@@ -172,10 +177,12 @@ export function presentSalesContract<
   },
 >(
   row: T | null | undefined,
+  settlement?: SettlementLedgerInput,
 ):
   | (T & {
       remittedFen: number;
       unpaidFen: number;
+      hasRemittance: boolean;
       cifShippingVisible: boolean;
       fobDomesticVisible: boolean;
       ttVisible: boolean;
@@ -197,10 +204,12 @@ export function presentSalesContract<
   },
 >(
   row: T | null | undefined,
+  settlement?: SettlementLedgerInput,
 ):
   | (T & {
       remittedFen: number;
       unpaidFen: number;
+      hasRemittance: boolean;
       cifShippingVisible: boolean;
       fobDomesticVisible: boolean;
       ttVisible: boolean;
@@ -210,13 +219,16 @@ export function presentSalesContract<
     })
   | null {
   if (!row) return null;
-  const remittedFen = resolveRemittedFen(row);
+  const amountFen = Math.max(0, Number(row.amountFen) || 0);
+  const remittedFen = receivedFenOf(settlement, amountFen);
+  const hasRemittance = !!(settlement && (settlement.receivedAt || settlement.hasRemittanceMemo));
   const tradeTerm = resolveTradeTerm(row.incoterms);
   const ttTiming = resolveTtTiming(row);
   return {
     ...row,
+    hasRemittance,
     remittedFen,
-    unpaidFen: unpaidRemittanceFen(row.amountFen, remittedFen),
+    unpaidFen: unpaidRemittanceFen(amountFen, remittedFen),
     tradeTerm,
     ttTiming,
     cifShippingVisible: tradeTerm === TRADE_TERM.CIF,
@@ -243,20 +255,10 @@ function contractOf(input: SalesShipmentInput) {
   return input.contract || null;
 }
 
-/** 已回款：是否收汇为是，且未收汇金额为 0。 */
+/** 已回款：与中信保占用释放同一口径，只认 N9 水单/到账，且未收汇为 0。 */
 export function isSalesRemittanceComplete(input: SalesShipmentInput): boolean {
-  const ct = contractOf(input);
-  const hasRemittance = input.hasRemittance ?? ct?.hasRemittance;
-  const amountFen = input.amountFen ?? ct?.amountFen;
-  const remittedFen = resolveRemittedFen({
-    hasRemittance,
-    remittedFen: input.remittedFen ?? ct?.remittedFen,
-  });
-  const unpaid =
-    input.unpaidFen != null && Number.isFinite(Number(input.unpaidFen))
-      ? Math.max(0, Number(input.unpaidFen))
-      : unpaidRemittanceFen(amountFen, remittedFen);
-  return !!hasRemittance && unpaid === 0;
+  const amountFen = input.amountFen ?? contractOf(input)?.amountFen ?? 0;
+  return isSettlementPaid(input.settlement, amountFen);
 }
 
 export function isSalesPickedUp(input: SalesShipmentInput): boolean {

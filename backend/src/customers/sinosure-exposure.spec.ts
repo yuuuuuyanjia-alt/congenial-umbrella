@@ -7,6 +7,8 @@ import {
   evaluateBuyerOccupancy,
   evaluateOccupancy,
   isExportFulfilled,
+  isSettlementPaid,
+  receivedFenOf,
   unpaidFenOf,
 } from './sinosure-exposure';
 
@@ -136,6 +138,19 @@ describe('中信保占用公式与超额分档', () => {
     expect(r.fulfilledUnpaidContracts).toHaveLength(1);
     expect(r.openContracts[0].fulfillment).toBe(ContractFulfillment.OPEN);
     expect(r.fulfilledUnpaidContracts[0].fulfillment).toBe(ContractFulfillment.FULFILLED);
+  });
+
+  it('已回款只认 N9 水单/到账，N3 收汇字段不释放占用', () => {
+    expect(receivedFenOf(null, 12_800_000)).toBe(0);
+    expect(receivedFenOf({ hasRemittanceMemo: true, amountFen: 4_000_000 }, 12_800_000)).toBe(4_000_000);
+    expect(receivedFenOf({ receivedAt: '2026-09-10' }, 12_800_000)).toBe(12_800_000);
+    expect(receivedFenOf({ hasRemittanceMemo: true }, 12_800_000)).toBe(0);
+    expect(isSettlementPaid(null, 12_800_000)).toBe(false);
+    expect(isSettlementPaid({ receivedAt: '2026-09-10' }, 12_800_000)).toBe(true);
+    expect(isSettlementPaid({ hasRemittanceMemo: true, amountFen: 12_800_000 }, 12_800_000)).toBe(true);
+    expect(isSettlementPaid({ hasRemittanceMemo: true, amountFen: 2_000_000, receivedAt: '2026-05-20' }, 4_500_000)).toBe(
+      false,
+    );
   });
 
   it('已收齐的已履行合同不占用额度', () => {

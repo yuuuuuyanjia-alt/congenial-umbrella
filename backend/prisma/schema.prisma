@@ -221,9 +221,9 @@ model Contract {
   arrivalPort         String?
   /// 客户是否提货：true 已提货 / false 未提货 / null 未填
   customerPickedUp    Boolean?
-  /// 是否收汇
+  /// 是否收汇（展示缓存）。已回款只认 N9 Settlement 水单/到账；保存销售合同时不改本字段
   hasRemittance       Boolean   @default(false)
-  /// 已收汇金额（分），与合同币种一致；未收汇金额 = 合同总额 − 本字段
+  /// 已收汇金额（分）展示缓存，由 N9 到账回写；未收汇 = 合同总额 − N9 到账
   remittedFen         Int       @default(0)
   updatedAt           DateTime  @updatedAt
   case                TradeCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
@@ -285,7 +285,7 @@ model Settlement {
   hasDocConsistencyProof Boolean   @default(false)
   hasReleaseApproval     Boolean   @default(false)
   amountFen              Int?
-  /// 实际到账/收汇日期，与合同 paymentDueAt 比较得出按期/逾期
+  /// 实际到账/收汇日期，与合同 paymentDueAt 比较得出按期/逾期。已回款（列表已完成 / 占用释放）只认本表水单或到账。
   receivedAt             DateTime?
   updatedAt              DateTime  @updatedAt
   case                   TradeCase @relation(fields: [caseId], references: [id], onDelete: Cascade)

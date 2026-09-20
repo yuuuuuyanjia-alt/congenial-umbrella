@@ -131,15 +131,14 @@ export function unpaidFenOf(amountFen: number, receivedFen: number): number {
   return Math.max(0, (Number(amountFen) || 0) - (Number(receivedFen) || 0));
 }
 
-export function receivedFenOf(
-  settlement: {
-    receivedAt?: Date | string | null;
-    hasRemittanceMemo?: boolean | null;
-    amountFen?: number | null;
-  } | null
-  | undefined,
-  amountFen: number,
-): number {
+/** N9 收汇对账（水单/到账）是已回款唯一事实源；N3 合同上的是否收汇不计入。 */
+export type SettlementLedgerInput = {
+  receivedAt?: Date | string | null;
+  hasRemittanceMemo?: boolean | null;
+  amountFen?: number | null;
+} | null | undefined;
+
+export function receivedFenOf(settlement: SettlementLedgerInput, amountFen: number): number {
   if (!settlement) return 0;
   if (settlement.receivedAt || settlement.hasRemittanceMemo) {
     if (settlement.amountFen != null && Number.isFinite(Number(settlement.amountFen))) {
@@ -148,6 +147,13 @@ export function receivedFenOf(
     return settlement.receivedAt ? Math.max(0, amountFen) : 0;
   }
   return 0;
+}
+
+/** 占用「已回款」与销售列表已完成共用：N9 已登记水单或到账，且未收汇为 0。 */
+export function isSettlementPaid(settlement: SettlementLedgerInput, amountFen: number): boolean {
+  const receivedFen = receivedFenOf(settlement, amountFen);
+  const recorded = !!(settlement && (settlement.receivedAt || settlement.hasRemittanceMemo));
+  return recorded && unpaidFenOf(amountFen, receivedFen) === 0;
 }
 
 export function bandOfExcessFen(excessFen: number): ExposureBandCode {

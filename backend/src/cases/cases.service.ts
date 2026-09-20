@@ -42,7 +42,6 @@ import {
   composeTtPaymentTerms,
   presentSalesContract,
   presentSalesShipmentStatus,
-  resolveRemittedFen,
   resolveTradeTerm,
   resolveTtTiming,
   TRADE_TERM,
@@ -66,6 +65,7 @@ import {
 import { GateResult } from '../common/types';
 import { CustomersService } from '../customers/customers.service';
 import { derivePaymentDueAt } from '../customers/remittance';
+import { receivedFenOf } from '../customers/sinosure-exposure';
 import { SuppliersService } from '../suppliers/suppliers.service';
 import { buildInstallmentRecords, PaymentMode, presentPlanPayment, validateStagedInstallments } from '../suppliers/payment-schedule';
 
@@ -89,6 +89,7 @@ export class CasesService {
         hits: true,
         contract: true,
         shipment: true,
+        settlement: true,
         procurementPlan: {
           include: {
             salesCase: { include: { contract: true, parties: true, nodes: true } },
@@ -106,7 +107,7 @@ export class CasesService {
     return filtered.map((c) => {
       const salesLink = c.procurementPlan?.salesCase ? presentSalesLink(c.procurementPlan.salesCase) : null;
       const supplierName = supplierNameOf(c);
-      const contract = presentSalesContract(c.contract);
+      const contract = presentSalesContract(c.contract, c.settlement);
       const shipmentStatus = presentSalesShipmentStatus({
         status: c.status,
         currentNode: c.currentNode,
@@ -114,6 +115,7 @@ export class CasesService {
         contract,
         shipment: c.shipment,
         amountFen: contract?.amountFen ?? c.amountFen,
+        settlement: c.settlement,
       });
       return {
         ...c,
@@ -168,6 +170,16 @@ export class CasesService {
     const sinosureExposure = await this.customers.occupancyForCase(id);
     const salesLink = c.procurementPlan?.salesCase ? presentSalesLink(c.procurementPlan.salesCase) : null;
     const supplierName = supplierNameOf(c);
+    const contract = presentSalesContract(c.contract, c.settlement);
+    const shipmentStatus = presentSalesShipmentStatus({
+      status: c.status,
+      currentNode: c.currentNode,
+      nodes: c.nodes,
+      contract,
+      shipment: c.shipment,
+      amountFen: contract?.amountFen ?? c.amountFen,
+      settlement: c.settlement,
+    });
     return {
       ...c,
       customer: salesCustomerOf(c),
@@ -181,7 +193,8 @@ export class CasesService {
           : null,
       }),
       catalog: NODE_CATALOG,
-      contract: presentSalesContract(c.contract),
+      contract,
+      ...shipmentStatus,
       sinosureExposure,
       kycReports: c.kycReports.map((k) => ({ ...k, payload: safeJson(k.payload) })),
       documents: c.documents.map((d) => ({ ...d, fields: safeJson(d.fieldsJson) })),
@@ -307,8 +320,8 @@ export class CasesService {
       paymentDueAt,
       shipmentDate,
       etaDate,
-      remittedFen,
-      hasRemittance,
+      remittedFen: _ignoredRemittedFen,
+      hasRemittance: _ignoredHasRemittance,
       customerPickedUp,
       domesticPortArrivalAt,
       ...rest
@@ -323,12 +336,9 @@ export class CasesService {
     }
     const dueSource =
       rest.ttTiming === TT_TIMING.AFTER && parsedShipment ? parsedShipment : parsedDelivery;
-    const resolvedRemitted = resolveRemittedFen({ hasRemittance, remittedFen });
     const data = {
       ...rest,
-      hasRemittance: !!hasRemittance,
       customerPickedUp: customerPickedUp ?? null,
-      remittedFen: resolvedRemitted,
       deliveryDate: parsedDelivery,
       paymentDueAt: parseDate(paymentDueAt) ?? derivePaymentDueAt(dueSource, rest.paymentTerms),
       shipmentDate: parsedShipment,
@@ -363,7 +373,8 @@ export class CasesService {
       newAmountFen: dto.amountFen ?? undefined,
       newCurrency: dto.currency,
     });
-    return { ...presentSalesContract(row), sinosureExposure };
+    const settlement = await this.prisma.settlement.findUnique({ where: { caseId } });
+    return { ...presentSalesContract(row, settlement), sinosureExposure };
   }
 
   async saveSinosure(caseId: string, nodeCode: string, dto: SaveSinosureDto, actorId?: string) {
@@ -1057,6 +1068,20 @@ export class CasesService {
       create: { caseId, ...rest, isThirdParty, receivedAt: parsedReceived },
       update: { ...rest, isThirdParty, receivedAt: parsedReceived },
     });
+    const trade = await this.prisma.tradeCase.findUnique({
+      where: { id: caseId },
+      include: { contract: true },
+    });
+    if (trade?.contract) {
+      const amountFen = trade.contract.amountFen ?? trade.amountFen ?? 0;
+      await this.prisma.contract.update({
+        where: { caseId },
+        data: {
+          hasRemittance: !!(row.receivedAt || row.hasRemittanceMemo),
+          remittedFen: receivedFenOf(row, amountFen),
+        },
+      });
+    }
     await this.touchNode(caseId, 'N9', NodeStatus.IN_PROGRESS);
     await this.audit.append({
       caseId,

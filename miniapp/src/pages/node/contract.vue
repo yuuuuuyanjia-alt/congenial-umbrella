@@ -93,7 +93,7 @@
 
     <view class="card">
       <view class="h2">提货与收汇</view>
-      <view class="muted">在当前所选贸易条件下均可填写。已完成须客户已提货且已回款。收汇金额与未收汇金额都可改，另一侧按合同总额轧差。</view>
+      <view class="muted">客户是否提货可在此填写。是否收汇、收汇金额、未收汇以收汇对账（水单/到账）为准，此处只读，与占用「已回款」同一口径。请到收汇对账节点登记，勾选本页不能假装已完成。</view>
       <view class="label">客户是否提货</view>
       <view class="choice-row">
         <view class="choice-btn" :class="{ 'choice-btn-on': form.customerPickedUp === true }" @click="form.customerPickedUp = true">已提货</view>
@@ -103,19 +103,19 @@
       <input class="input" v-model="form.paymentDueAt" placeholder="年-月-日。后 T/T 未填时按装运日+天数推算" />
       <view class="label">是否收汇</view>
       <view class="choice-row">
-        <view class="choice-btn" :class="{ 'choice-btn-on': form.hasRemittance === true }" @click="form.hasRemittance = true">是</view>
-        <view class="choice-btn" :class="{ 'choice-btn-on': form.hasRemittance === false }" @click="setNoRemittance">否</view>
+        <view class="choice-btn" :class="{ 'choice-btn-on': form.hasRemittance === true }">是</view>
+        <view class="choice-btn" :class="{ 'choice-btn-on': form.hasRemittance === false }">否</view>
       </view>
       <view class="label">收汇金额</view>
       <input
         class="input"
-        v-model="form.remittedYuan"
+        disabled
+        :value="form.remittedYuan"
         :placeholder="`与合同币种一致（${form.currency || 'USD'}）`"
-        @input="onRemittedInput"
       />
       <view class="label">未收汇金额</view>
-      <view class="muted">与收汇金额按合同总额轧差（{{ form.currency || 'USD' }}）</view>
-      <input class="input" v-model="unpaidYuan" :placeholder="`与合同币种一致（${form.currency || 'USD'}）`" />
+      <view class="muted">按收汇对账到账金额与合同总额轧差（{{ form.currency || 'USD' }}）</view>
+      <input class="input" disabled :value="unpaidYuan" :placeholder="`与合同币种一致（${form.currency || 'USD'}）`" />
       <view class="btn" @click="save">保存合同要素</view>
       <view class="muted" v-if="!hasLimit" style="margin-top: 8rpx">须先保存中信保限额，否则保存销售合同将被拒绝。</view>
     </view>
@@ -209,18 +209,7 @@ const exposureView = computed(() => {
 
 const remittedFenEffective = computed(() => (form.hasRemittance ? yuanToFen(form.remittedYuan) : 0));
 
-const unpaidYuan = computed({
-  get() {
-    return fenToYuan(Math.max(0, yuanToFen(form.amountYuan) - remittedFenEffective.value)) || '0.00';
-  },
-  set(v: string) {
-    const amount = yuanToFen(form.amountYuan);
-    const unpaid = Math.max(0, yuanToFen(v));
-    const remitted = Math.max(0, amount - unpaid);
-    form.remittedYuan = remitted ? fenToYuan(remitted) : '';
-    form.hasRemittance = remitted > 0;
-  },
-});
+const unpaidYuan = computed(() => fenToYuan(Math.max(0, yuanToFen(form.amountYuan) - remittedFenEffective.value)) || '0.00');
 
 onLoad(async (q) => {
   id.value = q?.id || '';
@@ -248,8 +237,7 @@ onLoad(async (q) => {
     form.domesticPortArrivalAt = datetimeField(ct.domesticPortArrivalAt);
     form.customerPickedUp = ct.customerPickedUp === true ? true : ct.customerPickedUp === false ? false : null;
     form.paymentDueAt = ct.paymentDueAt ? String(ct.paymentDueAt).slice(0, 10) : '';
-    form.hasRemittance = !!ct.hasRemittance;
-    form.remittedYuan = ct.hasRemittance ? fenToYuan(ct.remittedFen) : '';
+    applyContractRemittance(ct);
     if (resolveTradeTerm(form.incoterms) === 'T/T' && !form.ttTiming) form.ttTiming = 'ADVANCE';
     if (form.ttTiming === 'ADVANCE' && !form.ttAdvanceYuan) syncAdvanceFromPercent();
   } else {
@@ -311,20 +299,16 @@ function syncAdvanceFromPercent() {
   form.ttAdvanceYuan = fenToYuan(Math.round((amt * pct) / 100));
 }
 
+function applyContractRemittance(ct?: { hasRemittance?: boolean | null; remittedFen?: number | null } | null) {
+  form.hasRemittance = !!ct?.hasRemittance;
+  form.remittedYuan = ct?.hasRemittance && ct.remittedFen ? fenToYuan(ct.remittedFen) : '';
+}
+
 function datetimeField(v: unknown) {
   if (v == null || v === '') return '';
   const s = String(v).trim();
   if (s.length >= 16) return s.slice(0, 16).replace('T', ' ');
   return s.slice(0, 10);
-}
-
-function setNoRemittance() {
-  form.hasRemittance = false;
-  form.remittedYuan = '';
-}
-
-function onRemittedInput() {
-  form.hasRemittance = yuanToFen(form.remittedYuan) > 0;
 }
 
 function stubUpload() {
@@ -376,10 +360,9 @@ async function save() {
       domesticPortArrivalAt: ymdOrUndef(form.domesticPortArrivalAt),
       customerPickedUp: form.customerPickedUp,
       paymentDueAt: ymdOrUndef(form.paymentDueAt),
-      hasRemittance: !!form.hasRemittance,
-      remittedFen: form.hasRemittance ? yuanToFen(form.remittedYuan) : 0,
     });
     c.value = await api.case(id.value);
+    applyContractRemittance(c.value?.contract);
     ok.value = '销售合同要素已保存，已按当前金额测算占用；买方已录入或合并至客户管理';
     return true;
   } catch (e: any) {
