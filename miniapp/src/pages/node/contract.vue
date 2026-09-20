@@ -68,7 +68,7 @@
       />
       <view class="label">未收汇金额</view>
       <view class="muted">自动计算：合同总金额 − 收汇金额（{{ form.currency || 'USD' }}）</view>
-      <view class="ok" style="margin-top: 8rpx">{{ form.currency || 'USD' }} {{ unpaidYuan }}</view>
+      <view class="input" style="color: #4b5563">{{ form.currency || 'USD' }} {{ unpaidYuan }}</view>
       <view class="btn" @click="save">保存合同要素</view>
       <view class="muted" v-if="!hasLimit" style="margin-top: 8rpx">须先保存中信保限额，否则保存销售合同将被拒绝。</view>
     </view>
