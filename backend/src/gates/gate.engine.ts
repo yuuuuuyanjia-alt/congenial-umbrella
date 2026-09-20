@@ -21,6 +21,8 @@ import {
   N3_SINOSURE_UNREGISTERED_REASON,
   N5_SALES_LINK_REQUIRED_REASON,
   N5_SALES_NOT_SIGNED_REASON,
+  SINOSURE_EXPOSURE_HIGH_REJECTED_REASON,
+  SINOSURE_EXPOSURE_HIGH_REVIEW_REASON,
   PartyRole,
   PartyRoleLabel,
   PriceBasis,
@@ -43,6 +45,12 @@ import {
   evaluateOccupancy,
   moneyLabel,
 } from '../customers/sinosure-exposure';
+import {
+  OccupancyReviewStatus,
+  SINOSURE_EXPOSURE_HIGH_APPROVED_ALERT,
+  isOccupancyHighApproved,
+  matchingOccupancyReview,
+} from '../workbench/occupancy-review';
 
 const HARD_GATES = new Set(['N6', 'N7', 'N9']);
 
@@ -285,7 +293,11 @@ export function evaluateN3(snap: CaseSnapshot): GateResult {
     r.canProceed = false;
     return r;
   }
-  return finalizeExposureDecision(r, '所有权保留与争议条款齐全，贸易术语、付款条件与中信保占用已校验');
+  return finalizeExposureDecision(
+    r,
+    snap,
+    '所有权保留与争议条款齐全，贸易术语、付款条件与中信保占用已校验',
+  );
 }
 
 export function evaluateN4(snap: CaseSnapshot): GateResult {
@@ -346,7 +358,11 @@ export function evaluateN4(snap: CaseSnapshot): GateResult {
   }
 
   if (hardMissing(r).length) return blockMissing(r);
-  return finalizeExposureDecision(r, '变更单证据链完整（diff → 客户/内部确认 → 新版本），中信保占用已按变更后金额核对');
+  return finalizeExposureDecision(
+    r,
+    snap,
+    '变更单证据链完整（diff → 客户/内部确认 → 新版本），中信保占用已按变更后金额核对',
+  );
 }
 
 export function evaluateN5(snap: CaseSnapshot): GateResult {
@@ -1048,13 +1064,29 @@ function hardMissing(r: GateResult): string[] {
   return (r.missing || []).filter((m) => !/_SINOSURE_EXPOSURE_HIGH$/.test(m));
 }
 
-function finalizeExposureDecision(r: GateResult, passReason: string): GateResult {
+function finalizeExposureDecision(r: GateResult, snap: CaseSnapshot, passReason: string): GateResult {
   const exp = r.exposure;
   if (hardMissing(r).length) return blockMissing(r);
   if (exp?.band === ExposureBand.HIGH) {
+    if (isOccupancyHighApproved(snap.occupancyReviews, r.nodeCode, exp)) {
+      r.decision = Decision.SOFT_ALERT;
+      r.canProceed = true;
+      if (!r.alerts.includes(SINOSURE_EXPOSURE_HIGH_APPROVED_ALERT)) {
+        r.alerts.push(SINOSURE_EXPOSURE_HIGH_APPROVED_ALERT);
+      }
+      return r;
+    }
     r.missing.push(`${r.nodeCode}_SINOSURE_EXPOSURE_HIGH`);
     r.decision = Decision.REVIEW;
     r.canProceed = false;
+    const review = matchingOccupancyReview(snap.occupancyReviews, r.nodeCode, exp);
+    if (review?.status === OccupancyReviewStatus.REJECTED) {
+      if (!r.reasons.includes(SINOSURE_EXPOSURE_HIGH_REJECTED_REASON)) {
+        r.reasons.push(SINOSURE_EXPOSURE_HIGH_REJECTED_REASON);
+      }
+    } else if (!r.reasons.includes(SINOSURE_EXPOSURE_HIGH_REVIEW_REASON)) {
+      r.reasons.push(SINOSURE_EXPOSURE_HIGH_REVIEW_REASON);
+    }
     return r;
   }
   if (r.alerts.length || exp?.band === ExposureBand.MEDIUM || exp?.band === ExposureBand.BELOW_MEDIUM) {

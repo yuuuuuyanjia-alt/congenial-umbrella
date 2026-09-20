@@ -22,7 +22,7 @@ export const NODE_CATALOG = [
     mvp: true,
     isHardGate: false,
     isStub: false,
-    summary: '销售/出口合同与采购合同分开签订。所有权保留与争议解决条款必填；中信保限额未登记不得签订销售合同；须上传保单并登记投保限额；按买方占用测算（未履行完毕未回款+已履行完毕未回款+新签合同），超额分档提示或拦截。运输术语（Incoterms）与结算方式独立：FOB / CIF（及 CIP 等）只表示运输；前 T/T / 后 T/T 只表示结算，可与 FOB/CIF 组合。CIF/CIP 填装运港与装运日期；FOB 填国内段到达口岸/港口时间；T/T 填对应收汇节点。客户是否提货可填；收汇金额以收汇对账（N9）水单/到账为唯一事实源，本节点只读。销售合同列表按未出运/已出运/已完成分组。',
+    summary: '销售/出口合同与采购合同分开签订。所有权保留与争议解决条款必填；中信保限额未登记不得签订销售合同；须上传保单并登记投保限额；按买方占用测算（未履行完毕未回款+已履行完毕未回款+新签合同），超额分档：中风险软提示、高风险工作台领取/放行/驳回、超高风险硬拦截。运输术语（Incoterms）与结算方式独立：FOB / CIF（及 CIP 等）只表示运输；前 T/T / 后 T/T 只表示结算，可与 FOB/CIF 组合。CIF/CIP 填装运港与装运日期；FOB 填国内段到达口岸/港口时间；T/T 填对应收汇节点。客户是否提货可填；收汇金额以收汇对账（N9）水单/到账为唯一事实源，本节点只读。销售合同列表按未出运/已出运/已完成分组。',
   },
   {
     code: 'N4',
@@ -191,6 +191,9 @@ export const WorkbenchActionLabel: Record<string, string> = {
   CONFIRM_TRUE: '确认真实',
   SUPPLEMENT: '补充信息',
   MONITOR: '持续监控',
+  CLAIM: '领取',
+  APPROVE: '放行',
+  REJECT: '驳回',
 };
 
 export const BlControl = {
@@ -443,6 +446,11 @@ export const VAGUE_PRICE_RE =
 
 /** N3 硬规则：买方/案件未登记中信保投保限额时，不得保存或推进合同 */
 export const N3_SINOSURE_UNREGISTERED_REASON = '尚未登记中信保限额，不得签订合同';
+
+/** 占用高风险：真实工作台审核，不是硬拦截 */
+export const SINOSURE_EXPOSURE_HIGH_REVIEW_REASON =
+  '中信保占用属高风险，须在审核工作台领取并放行后方可推进，无需修改合同金额';
+export const SINOSURE_EXPOSURE_HIGH_REJECTED_REASON = '工作台已驳回该高风险占用，禁止推进';
 
 /** N5 硬规则：采购合同须关联已签订的销售合同（先销售后采购） */
 export const N5_SALES_LINK_REQUIRED_REASON =

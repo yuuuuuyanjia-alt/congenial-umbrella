@@ -137,8 +137,14 @@
 
     <view class="card">
       <view class="h2">中信保</view>
-      <view class="muted">须先登记投保限额，否则不得保存或推进合同。请上传出口信用保险保单或限额批注。保存或推进时自动测算占用；超高风险禁止推进，高风险须审核，中风险软提示。</view>
+      <view class="muted">须先登记投保限额，否则不得保存或推进合同。请上传出口信用保险保单或限额批注。保存或推进时自动测算占用；超高风险禁止推进，高风险须工作台领取并放行，中风险软提示。</view>
       <SinosureExposure :exposure="exposureView" :show-new="true" />
+      <view class="err" v-if="occupancyNeedsReview" style="margin-top: 12rpx">
+        占用属高风险，请到审核工作台领取并放行后再推进，无需修改合同金额。
+      </view>
+      <view class="ok" v-if="occupancyApproved" style="margin-top: 12rpx">工作台已放行该高风险占用，可以推进。</view>
+      <view class="err" v-if="occupancyRejected" style="margin-top: 12rpx">工作台已驳回该高风险占用，暂不可推进。</view>
+      <view class="btn btn-ghost" v-if="occupancyNeedsReview || occupancyRejected" @click="goWorkbench">去审核工作台</view>
       <view class="muted" v-if="sinosureHint" style="margin-top: 8rpx">{{ sinosureHint }}</view>
       <view class="label">保单编号 / 附件编号</view>
       <input class="input" v-model="sino.evidenceRef" placeholder="可手填编号，或点下方模拟上传" />
@@ -159,7 +165,7 @@
 </template>
 
 <script setup lang="ts">
-import { onLoad } from '@dcloudio/uni-app';
+import { onLoad, onShow } from '@dcloudio/uni-app';
 import { computed, reactive, ref } from 'vue';
 import { api, fenToYuan, latestSinosure, previewExposure, yuanToFen } from '../../api';
 import SinosureExposure from '../../components/SinosureExposure.vue';
@@ -222,6 +228,33 @@ const exposureView = computed(() => {
   return previewExposure(base, yuanToFen(form.amountYuan)) || base;
 });
 
+const occupancyReview = computed(() => {
+  const rows = (c.value?.occupancyReviews || []).filter(
+    (r: any) => r.nodeCode === 'N3' && r.status !== 'SUPERSEDED',
+  );
+  return (
+    rows.find((r: any) => r.status === 'APPROVED') ||
+    rows.find((r: any) => r.status === 'REJECTED') ||
+    rows[0]
+  );
+});
+
+const occupancyNeedsReview = computed(() => {
+  if (exposureView.value?.band !== 'HIGH') return false;
+  const st = occupancyReview.value?.status;
+  return !st || st === 'OPEN' || st === 'CLAIMED';
+});
+const occupancyApproved = computed(
+  () => exposureView.value?.band === 'HIGH' && occupancyReview.value?.status === 'APPROVED',
+);
+const occupancyRejected = computed(
+  () => exposureView.value?.band === 'HIGH' && occupancyReview.value?.status === 'REJECTED',
+);
+
+function goWorkbench() {
+  uni.navigateTo({ url: '/pages/workbench/index' });
+}
+
 const remittedFenEffective = computed(() => (form.hasRemittance ? yuanToFen(form.remittedYuan) : 0));
 
 const unpaidYuan = computed(() => fenToYuan(Math.max(0, yuanToFen(form.amountYuan) - remittedFenEffective.value)) || '0.00');
@@ -268,6 +301,15 @@ onLoad(async (q) => {
     sino.currency = p.currency || form.currency;
   } else {
     sino.currency = form.currency;
+  }
+});
+
+onShow(async () => {
+  if (!id.value) return;
+  try {
+    c.value = await api.case(id.value);
+  } catch {
+    /* 首次 onLoad 可能尚未写入 id；忽略 */
   }
 });
 
@@ -425,6 +467,9 @@ async function tryAdvance() {
     ok.value = `已推进至 ${r.nextNode}`;
   } catch (e: any) {
     err.value = gateMessage(e);
+    if (Array.isArray(e?.missing) && e.missing.some((m: string) => String(m).includes('SINOSURE_EXPOSURE_HIGH'))) {
+      err.value = `${err.value}\n请到审核工作台领取并放行，无需修改合同金额。`;
+    }
   }
 }
 </script>

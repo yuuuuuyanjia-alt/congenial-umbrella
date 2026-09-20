@@ -71,7 +71,9 @@ export const api = {
 
 export function decisionClass(d?: string | null) {
   if (d === 'HARD_BLOCK' || d === 'BLOCKED' || d === 'HIGH' || d === 'ULTRA_HIGH') return 'badge-block';
-  if (d === 'REVIEW' || d === 'MEDIUM') return 'badge-review';
+  if (d === 'REVIEW' || d === 'MEDIUM' || d === 'CLAIMED' || d === 'OPEN') return 'badge-review';
+  if (d === 'APPROVED') return 'badge-pass';
+  if (d === 'REJECTED') return 'badge-block';
   if (d === 'SOFT_ALERT' || d === 'LOW' || d === 'BELOW_MEDIUM') return 'badge-soft';
   if (d === 'PASS' || d === 'PASSED' || d === 'COMPLETED' || d === 'WITHIN_LIMIT') return 'badge-pass';
   if (d === 'STUB_TODO') return 'badge-stub';
@@ -94,6 +96,13 @@ export function decisionText(d?: string | null) {
     MEDIUM: '中风险',
     HIGH: '高风险',
     OPEN: '待处置',
+    CLAIMED: '已领取',
+    APPROVED: '已放行',
+    REJECTED: '已驳回',
+    CLAIM: '领取',
+    APPROVE: '放行',
+    REJECT: '驳回',
+    SUPERSEDED: '已失效',
     FALSE_POSITIVE: '误报排除',
     CONFIRMED_TRUE: '确认真实',
     SUPPLEMENTED: '已补充',

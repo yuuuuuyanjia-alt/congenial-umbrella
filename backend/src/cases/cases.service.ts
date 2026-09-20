@@ -22,9 +22,16 @@ import {
   PartyRoleLabel,
   QuoteStatus,
   RiskLevel,
+  SINOSURE_EXPOSURE_HIGH_REVIEW_REASON,
   VersionStatus,
 } from '../common/constants';
 import { evaluateN3ContractSave, isChangeField, isSensitiveChange, nextNode } from '../gates/gate.engine';
+import {
+  OCCUPANCY_QUEUE_STATUSES,
+  OccupancyWorkbenchAction,
+  isOccupancyWorkbenchAction,
+  occupancyActionNextStatus,
+} from '../workbench/occupancy-review';
 import {
   explicitSalesCaseId,
   isEligibleSalesCase,
@@ -162,6 +169,13 @@ export class CasesService {
         customs: true,
         evidences: { orderBy: { createdAt: 'asc' } },
         sinosurePolicies: { orderBy: { createdAt: 'asc' } },
+        occupancyReviews: {
+          orderBy: { createdAt: 'desc' },
+          include: {
+            claimedBy: { select: { id: true, name: true, role: true } },
+            decidedBy: { select: { id: true, name: true, role: true } },
+          },
+        },
       },
     });
     if (!c) throw new NotFoundException('案件不存在');
@@ -374,12 +388,14 @@ export class CasesService {
       nodeCode: 'N3',
       detail: dto,
     });
+    const occupancyGate = await this.gates.refreshOccupancyReview(caseId, 'N3');
+    await this.applyOccupancyNodeStatus(caseId, 'N3', occupancyGate);
     const sinosureExposure = await this.customers.occupancyForCase(caseId, {
       newAmountFen: dto.amountFen ?? undefined,
       newCurrency: dto.currency,
     });
     const settlement = await this.prisma.settlement.findUnique({ where: { caseId } });
-    return { ...presentSalesContract(row, settlement), sinosureExposure };
+    return { ...presentSalesContract(row, settlement), sinosureExposure, occupancyGate };
   }
 
   async saveSinosure(caseId: string, nodeCode: string, dto: SaveSinosureDto, actorId?: string) {
@@ -472,10 +488,12 @@ export class CasesService {
         confirmedExisting,
       },
     });
+    const occupancyGate = await this.gates.refreshOccupancyReview(caseId, code);
+    await this.applyOccupancyNodeStatus(caseId, code, occupancyGate);
     const sinosureExposure = await this.customers.occupancyForCase(caseId, {
       newCurrency: currency,
     });
-    return { ...row, sinosureExposure };
+    return { ...row, sinosureExposure, occupancyGate };
   }
 
   async saveQuote(caseId: string, dto: SaveQuoteDto, actorId?: string) {
@@ -1173,8 +1191,15 @@ export class CasesService {
     return { stub: false, result, nextNode: done ? null : next };
   }
 
-  async applyWorkbench(caseId: string, input: { hitId?: string; action: string; comment?: string }, actorId?: string) {
+  async applyWorkbench(
+    caseId: string,
+    input: { hitId?: string; reviewId?: string; action: string; comment?: string },
+    actorId?: string,
+  ) {
     await this.ensureCase(caseId);
+    if (input.reviewId || isOccupancyWorkbenchAction(input.action)) {
+      return this.applyOccupancyWorkbench(caseId, input, actorId);
+    }
     let hit: { id: string; disposition: string; nodeCode?: string } | null = null;
     if (input.hitId) {
       hit = await this.prisma.screeningHit.findUnique({ where: { id: input.hitId } });
@@ -1234,6 +1259,113 @@ export class CasesService {
       },
     });
     return { action, hit, n1: nodeCode === 'N1' ? reeval : undefined, n5: nodeCode === 'N5' ? reeval : undefined, gate: reeval };
+  }
+
+  private async applyOccupancyWorkbench(
+    caseId: string,
+    input: { hitId?: string; reviewId?: string; action: string; comment?: string },
+    actorId?: string,
+  ) {
+    const actor = actorId?.trim() || null;
+    let review = input.reviewId
+      ? await this.prisma.occupancyReview.findUnique({ where: { id: input.reviewId } })
+      : await this.prisma.occupancyReview.findFirst({
+          where: { caseId, status: { in: [...OCCUPANCY_QUEUE_STATUSES] } },
+          orderBy: { createdAt: 'desc' },
+        });
+    if (!review || review.caseId !== caseId) {
+      throw new NotFoundException('占用高风险审核任务不存在');
+    }
+    const next = occupancyActionNextStatus(review.status, input.action);
+    if (!next.ok) throw new BadRequestException(next.error);
+
+    const now = new Date();
+    const data: {
+      status: string;
+      comment?: string | null;
+      claimedById?: string | null;
+      claimedAt?: Date | null;
+      decidedById?: string | null;
+      decidedAt?: Date | null;
+    } = {
+      status: next.status,
+      comment: input.comment ?? review.comment,
+    };
+    if (input.action === OccupancyWorkbenchAction.CLAIM || !review.claimedAt) {
+      data.claimedById = actor || review.claimedById;
+      data.claimedAt = review.claimedAt || now;
+    }
+    if (
+      input.action === OccupancyWorkbenchAction.APPROVE ||
+      input.action === OccupancyWorkbenchAction.REJECT
+    ) {
+      data.decidedById = actor;
+      data.decidedAt = now;
+    }
+    review = await this.prisma.occupancyReview.update({
+      where: { id: review.id },
+      data,
+    });
+    const action = await this.prisma.workbenchAction.create({
+      data: {
+        caseId,
+        occupancyReviewId: review.id,
+        actorId: actor,
+        action: input.action,
+        comment: input.comment,
+      },
+    });
+    await this.audit.append({
+      caseId,
+      actorId: actor,
+      action: `WORKBENCH_${input.action}`,
+      nodeCode: review.nodeCode,
+      detail: {
+        ...input,
+        reviewId: review.id,
+        status: review.status,
+        fingerprint: review.fingerprint,
+        occupancyFen: review.occupancyFen,
+        excessFen: review.excessFen,
+      },
+    });
+    const nodeCode = review.nodeCode;
+    const reeval: GateResult = await this.gates.evaluateAndPersist(caseId, nodeCode);
+    await this.applyOccupancyNodeStatus(caseId, nodeCode, reeval);
+    await this.prisma.tradeCase.update({
+      where: { id: caseId },
+      data: {
+        status: reeval.decision === Decision.HARD_BLOCK ? CaseStatus.BLOCKED : CaseStatus.IN_PROGRESS,
+        overallRisk:
+          reeval.decision === Decision.HARD_BLOCK
+            ? RiskLevel.HIGH
+            : review.status === OccupancyWorkbenchAction.APPROVE || reeval.canProceed
+              ? RiskLevel.MEDIUM
+              : RiskLevel.MEDIUM,
+        currentNode: nodeCode,
+      },
+    });
+    return { action, review, gate: reeval, occupancy: review };
+  }
+
+  private async applyOccupancyNodeStatus(caseId: string, nodeCode: string, result: GateResult) {
+    const high =
+      result.exposure?.band === 'HIGH' ||
+      (result.missing || []).some((m) => /_SINOSURE_EXPOSURE_HIGH$/.test(m));
+    if (!high && result.decision !== Decision.REVIEW) return;
+    const nodeStatus = result.canProceed
+      ? NodeStatus.IN_PROGRESS
+      : result.decision === Decision.REVIEW
+        ? NodeStatus.REVIEW
+        : NodeStatus.BLOCKED;
+    await this.prisma.caseNode.updateMany({
+      where: { caseId, code: nodeCode, status: { not: NodeStatus.PASSED } },
+      data: {
+        status: nodeStatus,
+        decision: result.decision,
+        summary: [...result.reasons, ...result.alerts].join('；'),
+      },
+    });
   }
 
   private async screenParties(caseId: string, nodeCode: 'N1' | 'N5', roles: string[], actorId?: string) {
@@ -1391,6 +1523,7 @@ export class CasesService {
       result.missing.includes('N3_SINOSURE_LIMIT') &&
       result.reasons.includes(N3_SINOSURE_UNREGISTERED_REASON);
     const salesLink = result.missing.includes('N5_SALES_LINK') || result.missing.includes('N5_SALES_NOT_SIGNED');
+    const occupancyHigh = (result.missing || []).some((m) => /_SINOSURE_EXPOSURE_HIGH$/.test(m));
     throw new HttpException(
       {
         code: 'GATE_REFUSED',
@@ -1400,7 +1533,9 @@ export class CasesService {
             ? N3_SINOSURE_UNREGISTERED_REASON
             : salesLink
               ? result.reasons[0] || N5_SALES_LINK_REQUIRED_REASON
-              : '闸门拒绝推进：证据不足或命中硬拦截'),
+              : occupancyHigh
+                ? result.reasons.find((r) => r.includes('工作台')) || SINOSURE_EXPOSURE_HIGH_REVIEW_REASON
+                : '闸门拒绝推进：证据不足或命中硬拦截'),
         ...result,
       },
       HttpStatus.CONFLICT,
