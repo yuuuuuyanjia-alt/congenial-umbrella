@@ -53,12 +53,12 @@ const KIND_NOTES: Record<
     noRecord: '无合同金额与约定收款日',
   },
   delivery: {
-    onTimeNoDue: '已到货，未登记计划到货日，视为按期',
-    onTime: '实际到货不晚于计划到货（或客户合同交期）',
-    overdueOccurred: '实际到货晚于计划到货/客户合同交期',
-    notDue: '尚未到货，计划日期未过',
-    overdueUnoccurred: '计划到货日已过且尚未到货',
-    noRecord: '无计划到货日，也无实际到货记录',
+    onTimeNoDue: '已交付，未登记供应商实际交付日期，视为按期',
+    onTime: '实际交付日期不晚于供应商实际交付日期（或客户合同交期）',
+    overdueOccurred: '实际交付日期晚于供应商实际交付日期/客户合同交期',
+    notDue: '尚未交付，供应商实际交付日期未过',
+    overdueUnoccurred: '供应商实际交付日期已过且尚未交付',
+    noRecord: '无供应商实际交付日期，也无实际交付记录',
   },
   payment: {
     onTimeNoDue: '货款已付清，未登记约定付款日，视为按期',

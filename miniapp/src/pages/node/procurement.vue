@@ -4,7 +4,7 @@
       <view class="h1" style="line-height: 1.35">{{ contractTitle }}</view>
       <view class="muted" style="margin-top: 8rpx">采购合同 / 国内备货</view>
       <view class="muted">
-        销售合同与采购合同分开签订。公司惯例先销售后采购：本页是采购合同，须先从已签订的销售/出口合同中任选一笔关联（不限于本案），否则不得保存或推进。公司无自有产线，向国内供应商采购。须登记供应商、采购合同/PO、计划到货日与货款支付方式（一次性付清或分期支付），并对供应商做制裁/不可靠实体筛查。计划到货对照关联销售合同交货期；若晚于交期须登记结构化延期并保留客户同意证据。
+        销售合同与采购合同分开签订。公司惯例先销售后采购：本页是采购合同，须先从已签订的销售/出口合同中任选一笔关联（不限于本案），否则不得保存或推进。公司无自有产线，向国内供应商采购。须登记供应商、采购合同/PO、供应商实际交付日期与货款支付方式（一次性付清或分期支付），并对供应商做制裁/不可靠实体筛查。供应商实际交付日期对照关联销售合同交货期；若晚于交期须登记结构化延期并保留客户同意证据。
       </view>
     </view>
 
@@ -79,10 +79,10 @@
       <view class="h2">采购合同 / 备货</view>
       <view class="label">采购订单 / 采购合同编号</view>
       <input class="input" v-model="form.poNo" placeholder="如 PO-2026-011" />
-      <view class="label">供应商计划到货 / 备妥日期</view>
+      <view class="label">供应商实际交付日期</view>
       <input class="input" v-model="form.plannedArrival" placeholder="YYYY-MM-DD" />
-      <view class="label">实际到货日期</view>
-      <input class="input" v-model="form.actualArrival" placeholder="YYYY-MM-DD，用于判断是否按期交货" />
+      <view class="label">实际交付日期</view>
+      <input class="input" v-model="form.actualArrival" placeholder="YYYY-MM-DD，用于判断是否按期交付" />
       <view class="label">采购金额（元）</view>
       <input class="input" type="digit" v-model="form.amountYuan" placeholder="采购合同/PO 金额" @blur="syncAmountsFromPercent" />
       <view class="label">币种</view>
