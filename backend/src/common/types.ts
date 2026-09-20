@@ -90,6 +90,7 @@ export interface SettlementSnap {
   remittanceMemoRef?: string | null;
   hasDocConsistencyProof: boolean;
   hasReleaseApproval: boolean;
+  amountFen?: number | null;
   receivedAt?: string | Date | null;
 }
 

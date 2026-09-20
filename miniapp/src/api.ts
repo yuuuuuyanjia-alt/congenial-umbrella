@@ -130,7 +130,7 @@ export function isProcurementListCase(c: any) {
 export const SALES_SHIPMENT_BUCKETS = [
   { key: 'unshipped', label: '未出运', hint: '尚未装运：无装运日期，且装运/提单节点未完成。' },
   { key: 'shipped', label: '已出运', hint: '已装运，但客户尚未提货或尚未回款。' },
-  { key: 'completed', label: '已完成', hint: '已出运，客户已提货，且已收汇、未收汇金额为 0。' },
+  { key: 'completed', label: '已完成', hint: '已出运，客户已提货，且收汇对账已回款（水单/到账，未收汇为 0）。与占用释放同一口径。' },
 ] as const;
 
 export type SalesShipmentBucketKey = (typeof SALES_SHIPMENT_BUCKETS)[number]['key'];
@@ -164,14 +164,16 @@ export function salesShipmentBucketOf(c: any): SalesShipmentBucketKey {
       (filledListText(sh.noBlRef) || filledListText(sh.noBlReason) || filledListText(sh.noBlEvidenceStub)));
   if (!shipped) return 'unshipped';
   const pickedUp = (ct.customerPickedUp ?? c?.customerPickedUp) === true;
-  const hasRemittance = !!(ct.hasRemittance ?? c?.hasRemittance);
+  const st = c?.settlement || {};
   const amount = Number(ct.amountFen ?? c?.amountFen) || 0;
-  const remitted = hasRemittance ? Math.max(0, Number(ct.remittedFen ?? c?.remittedFen) || 0) : 0;
-  const unpaid =
-    ct.unpaidFen != null && Number.isFinite(Number(ct.unpaidFen))
-      ? Math.max(0, Number(ct.unpaidFen))
-      : Math.max(0, amount - remitted);
-  if (pickedUp && hasRemittance && unpaid === 0) return 'completed';
+  const recorded = !!(st.receivedAt || st.hasRemittanceMemo);
+  let remitted = 0;
+  if (recorded) {
+    if (st.amountFen != null && Number.isFinite(Number(st.amountFen))) remitted = Math.max(0, Number(st.amountFen));
+    else if (st.receivedAt) remitted = Math.max(0, amount);
+  }
+  const unpaid = Math.max(0, amount - remitted);
+  if (pickedUp && recorded && unpaid === 0) return 'completed';
   return 'shipped';
 }
 

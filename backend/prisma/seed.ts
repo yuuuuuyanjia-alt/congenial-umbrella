@@ -1477,7 +1477,7 @@ async function seedNordlichtLateCase(salesId: string, approverId: string) {
           arrivalPort: 'Hamburg',
           customerPickedUp: true,
           hasRemittance: true,
-          remittedFen: 4500000,
+          remittedFen: 2000000,
         },
       },
       shipment: {
