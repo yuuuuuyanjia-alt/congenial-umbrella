@@ -587,6 +587,21 @@ describe('闸门引擎 MVP 节点', () => {
     expect(r.reasons.join('')).toContain('剩余额度');
   });
 
+  it('N3 已 PASSED 时闸门不再把本案新签金额叠加上已计入的未回款', () => {
+    const r = evaluateN3(
+      baseSnap({
+        nodes: [
+          { code: 'N3', status: 'PASSED' },
+          { code: 'N5', status: 'IN_PROGRESS' },
+        ],
+        sinosureOccupancy: { openUnpaidFen: 12_800_000, fulfilledUnpaidFen: 0 },
+      }),
+    );
+    expect(r.exposure?.newContractFen).toBe(0);
+    expect(r.exposure?.occupancyFen).toBe(12_800_000);
+    expect(r.canProceed).toBe(true);
+  });
+
   it('N6 缺少书面指示/审批/提单控制拒绝推进', () => {
     const r = evaluateN6(baseSnap({ shipment: null }));
     expect(r.canProceed).toBe(false);

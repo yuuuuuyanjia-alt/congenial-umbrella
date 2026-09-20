@@ -13,6 +13,8 @@ import {
   Disposition,
   EportStatus,
   EvidenceKind,
+  ADVANCE_IDEMPOTENT_REASON,
+  ADVANCE_NOT_CURRENT_REASON,
   N3_SINOSURE_UNREGISTERED_REASON,
   N5_SALES_LINK_REQUIRED_REASON,
   N5_SALES_NOT_SIGNED_REASON,
@@ -45,6 +47,7 @@ import {
   signedSalesOptions,
   supplierNameOf,
 } from './sales-link';
+import { advanceResponseNextNode, laterNode, resolveAdvance } from './advance-guard';
 import {
   composeTtPaymentTerms,
   normalizeTransportIncoterms,
@@ -1130,11 +1133,44 @@ export class CasesService {
   }
 
   async advance(caseId: string, nodeCode: string, actorId?: string) {
-    await this.ensureCase(caseId);
+    const tradeCase = await this.ensureCase(caseId);
     const node = await this.prisma.caseNode.findUnique({
       where: { caseId_code: { caseId, code: nodeCode } },
     });
     if (!node) throw new NotFoundException('节点不存在');
+
+    const guard = resolveAdvance({
+      currentNode: tradeCase.currentNode,
+      requestedNode: nodeCode,
+      requestedStatus: node.status,
+    });
+    if (guard.kind === 'idempotent') {
+      return {
+        stub: false,
+        idempotent: true,
+        result: {
+          nodeCode,
+          decision: node.decision || Decision.PASS,
+          canProceed: true,
+          missing: [],
+          reasons: [guard.reason || ADVANCE_IDEMPOTENT_REASON],
+          alerts: [],
+        },
+        nextNode: advanceResponseNextNode(tradeCase.currentNode),
+        currentNode: tradeCase.currentNode,
+      };
+    }
+    if (guard.kind === 'reject') {
+      throw new HttpException(
+        {
+          code: guard.code,
+          message: guard.message || ADVANCE_NOT_CURRENT_REASON,
+          currentNode: tradeCase.currentNode,
+          requestedNode: nodeCode,
+        },
+        HttpStatus.CONFLICT,
+      );
+    }
 
     const result = await this.gates.evaluateAndPersist(caseId, nodeCode);
     await this.audit.append({
@@ -1160,7 +1196,7 @@ export class CasesService {
           data: {
             status: blocked ? CaseStatus.BLOCKED : CaseStatus.IN_PROGRESS,
             overallRisk: blocked ? RiskLevel.HIGH : RiskLevel.MEDIUM,
-            currentNode: nodeCode,
+            currentNode: laterNode(tradeCase.currentNode, nodeCode),
           },
         });
       }
@@ -1179,16 +1215,17 @@ export class CasesService {
     const snap = await this.gates.snapshot(caseId);
     const next = nextNode(nodeCode, snap);
     const done = nodeCode === 'N9';
+    const currentNode = laterNode(tradeCase.currentNode, done ? 'N9' : next ?? nodeCode);
     await this.prisma.tradeCase.update({
       where: { id: caseId },
       data: {
-        currentNode: done ? 'N9' : next ?? nodeCode,
+        currentNode,
         status: done ? CaseStatus.COMPLETED : CaseStatus.IN_PROGRESS,
         overallRisk: result.decision === Decision.SOFT_ALERT ? RiskLevel.LOW : undefined,
       },
     });
     await this.enrollBuyerIfReachedN3(caseId, actorId);
-    return { stub: false, result, nextNode: done ? null : next };
+    return { stub: false, result, nextNode: done ? null : next, currentNode };
   }
 
   async applyWorkbench(

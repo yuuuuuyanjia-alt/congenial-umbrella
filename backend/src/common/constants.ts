@@ -452,6 +452,10 @@ export const SINOSURE_EXPOSURE_HIGH_REVIEW_REASON =
   '中信保占用属高风险，须在审核工作台领取并放行后方可推进，无需修改合同金额';
 export const SINOSURE_EXPOSURE_HIGH_REJECTED_REASON = '工作台已驳回该高风险占用，禁止推进';
 
+/** advance 状态机：只允许推进当前节点；已通过则幂等；禁止 currentNode 回退 */
+export const ADVANCE_NOT_CURRENT_REASON = '只能推进当前节点，不能回退或跨节点推进';
+export const ADVANCE_IDEMPOTENT_REASON = '节点已通过，重复推进无副作用';
+
 /** N5 硬规则：采购合同须关联已签订的销售合同（先销售后采购） */
 export const N5_SALES_LINK_REQUIRED_REASON =
   '须关联已签订的销售合同（先销售后采购），否则不得保存或推进采购合同';
