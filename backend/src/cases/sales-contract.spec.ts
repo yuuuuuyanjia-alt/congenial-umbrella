@@ -64,8 +64,10 @@ describe('销售合同 CIF 装运节点与收汇', () => {
       remittedFen: 99,
     });
     expect(fob?.cifShippingVisible).toBe(false);
+    expect(fob?.fobDomesticVisible).toBe(true);
     expect(fob?.remittedFen).toBe(0);
     expect(fob?.unpaidFen).toBe(3_600_000);
+    expect(cif?.fobDomesticVisible).toBe(false);
   });
 });
 
@@ -86,8 +88,12 @@ describe('销售合同出运/履约分组', () => {
     expect(isSalesShipped({ shipmentDate: '', currentNode: 'N3' })).toBe(false);
   });
 
-  it('FOB 无装运日期时以 N6 已通过或提单/无提单路径为准', () => {
+  it('FOB 无装运日期时以国内段到达口岸、N6 已通过或提单/无提单路径为准', () => {
     expect(isSalesShipped({ currentNode: 'N6', nodes: [{ code: 'N6', status: 'IN_PROGRESS' }] })).toBe(false);
+    expect(isSalesShipped({ domesticPortArrivalAt: '2026-12-08 10:00', currentNode: 'N3' })).toBe(true);
+    expect(isSalesShipped({ contract: { domesticPortArrivalAt: new Date('2026-12-08T10:00:00.000Z') }, currentNode: 'N3' })).toBe(
+      true,
+    );
     expect(isSalesShipped({ currentNode: 'N6', nodes: [{ code: 'N6', status: 'PASSED' }] })).toBe(true);
     expect(isSalesShipped({ currentNode: 'N7', nodes: [{ code: 'N6', status: 'IN_PROGRESS' }] })).toBe(true);
     expect(isSalesShipped({ currentNode: 'N6', shipment: { blNo: 'COSU8899001' } })).toBe(true);
@@ -131,6 +137,16 @@ describe('销售合同出运/履约分组', () => {
         ...cifShipped,
         hasRemittance: true,
         remittedFen: 4_000_000,
+      }),
+    ).toBe('shipped');
+
+    expect(
+      salesShipmentBucketOf({
+        domesticPortArrivalAt: '2026-12-08 10:00',
+        currentNode: 'N3',
+        customerPickedUp: false,
+        hasRemittance: false,
+        amountFen: 3_600_000,
       }),
     ).toBe('shipped');
 

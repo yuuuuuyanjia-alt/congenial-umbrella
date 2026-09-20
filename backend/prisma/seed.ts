@@ -946,6 +946,8 @@ async function seedFobNoBlCase(salesId: string, approverId: string) {
           ...fields,
           destination: 'Singapore',
           paymentDueAt: new Date('2027-01-04T00:00:00.000Z'),
+          domesticPortArrivalAt: new Date('2026-12-08T10:00:00.000Z'),
+          customerPickedUp: false,
           hasRemittance: false,
           remittedFen: 0,
         },

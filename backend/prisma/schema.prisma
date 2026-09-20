@@ -205,6 +205,8 @@ model Contract {
   shipmentPort        String?
   /// CIF/CIP 装运日期
   shipmentDate        DateTime?
+  /// FOB/EXW/FAS/FCA：国内段到达口岸/港口时间；到达即完成国内交付
+  domesticPortArrivalAt DateTime?
   /// 货物状态：预计到达日期
   etaDate             DateTime?
   /// 货物状态：到达港口（预计到达哪个港口）

@@ -2,7 +2,7 @@
   <view class="wrap" v-if="c">
     <view class="card">
       <view class="h2">销售合同 / 订单确认</view>
-      <view class="muted">销售合同与采购合同分开签订。硬规则：中信保限额未登记，不得签订销售合同。请先登记投保限额，再保存合同要素。所有权保留、争议解决条款为必填。占用 = 未履行完毕合同未回款 + 已履行完毕合同未回款 + 新签订合同金额；超额将按分档提示或拦截。保存合同或推进本节点后，本案买方将自动录入或合并至客户管理。公司惯例先销售后采购：国内采购合同在 N5 另签，并须关联本销售合同。CIF/CIP 另登记装运与到港货物状态；约定客户付款日期与收汇信息适用于全部贸易术语。</view>
+      <view class="muted">销售合同与采购合同分开签订。硬规则：中信保限额未登记，不得签订销售合同。请先登记投保限额，再保存合同要素。所有权保留、争议解决条款为必填。占用 = 未履行完毕合同未回款 + 已履行完毕合同未回款 + 新签订合同金额；超额将按分档提示或拦截。保存合同或推进本节点后，本案买方将自动录入或合并至客户管理。公司惯例先销售后采购：国内采购合同在 N5 另签，并须关联本销售合同。CIF/CIP 另登记装运与到港货物状态；FOB 等登记国内段到达口岸/港口时间。约定客户付款日期与收汇信息适用于全部贸易术语。</view>
       <view class="err" v-if="!hasLimit" style="margin-top: 12rpx">尚未登记中信保限额，不得签订销售合同。</view>
     </view>
     <view class="card">
@@ -30,7 +30,7 @@
 
     <view class="card" v-if="showCifShipping">
       <view class="h2">CIF 装运节点</view>
-      <view class="muted">贸易术语为 CIF（及同类 CIP）时填写。含义：装运后预计什么时候到达哪个港口。FOB 等买方安排运输的术语不显示本区块，装运/提单仍在后续节点办理。客户是否提货在下方「提货与收汇」填写。</view>
+      <view class="muted">贸易术语为 CIF（及同类 CIP）时填写。含义：装运后预计什么时候到达哪个港口。FOB 等买方安排运输的术语不显示本区块，国内段见下方「到达口岸/港口时间」，装运/提单仍在后续节点办理。客户是否提货在下方「提货与收汇」填写。</view>
       <view class="label">装运港口</view>
       <input class="input" v-model="form.shipmentPort" placeholder="如 Shanghai" />
       <view class="label">装运日期</view>
@@ -40,6 +40,13 @@
       <input class="input" v-model="form.etaDate" placeholder="年-月-日，如 2026-09-20" />
       <view class="label">到达港口</view>
       <input class="input" v-model="form.arrivalPort" placeholder="预计到达的港口，如 Hamburg" />
+    </view>
+
+    <view class="card" v-if="showFobDomestic">
+      <view class="h2">国内段：到达口岸 / 港口时间</view>
+      <view class="muted">贸易术语为 FOB（及同类 EXW / FAS / FCA）时填写。货物到达指定口岸/港口即完成国内交付。CIF 海运装运区块不在此显示。约定付款与收汇仍用下方字段，不重复填写。</view>
+      <view class="label">到达口岸/港口时间</view>
+      <input class="input" v-model="form.domesticPortArrivalAt" placeholder="年-月-日 或 年-月-日 时:分，如 2026-12-08 10:00" />
     </view>
 
     <view class="card">
@@ -101,6 +108,7 @@ import { api, fenToYuan, latestSinosure, previewExposure, yuanToFen } from '../.
 import SinosureExposure from '../../components/SinosureExposure.vue';
 
 const CIF_FAMILY = ['CIF', 'CIP'];
+const FOB_FAMILY = ['FOB', 'EXW', 'FAS', 'FCA'];
 
 const id = ref('');
 const c = ref<any>(null);
@@ -121,6 +129,7 @@ const form = reactive({
   shipmentDate: '',
   etaDate: '',
   arrivalPort: '',
+  domesticPortArrivalAt: '',
   customerPickedUp: null as boolean | null,
   paymentDueAt: '',
   hasRemittance: false,
@@ -151,6 +160,7 @@ const exposureView = computed(() => {
 });
 
 const showCifShipping = computed(() => CIF_FAMILY.includes(incotermsCode(form.incoterms)));
+const showFobDomestic = computed(() => FOB_FAMILY.includes(incotermsCode(form.incoterms)));
 
 const remittedFenEffective = computed(() => (form.hasRemittance ? yuanToFen(form.remittedYuan) : 0));
 
@@ -175,6 +185,7 @@ onLoad(async (q) => {
     form.shipmentDate = ct.shipmentDate ? String(ct.shipmentDate).slice(0, 10) : '';
     form.etaDate = ct.etaDate ? String(ct.etaDate).slice(0, 10) : '';
     form.arrivalPort = ct.arrivalPort || '';
+    form.domesticPortArrivalAt = datetimeField(ct.domesticPortArrivalAt);
     form.customerPickedUp = ct.customerPickedUp === true ? true : ct.customerPickedUp === false ? false : null;
     form.paymentDueAt = ct.paymentDueAt ? String(ct.paymentDueAt).slice(0, 10) : '';
     form.hasRemittance = !!ct.hasRemittance;
@@ -194,6 +205,13 @@ onLoad(async (q) => {
     sino.currency = form.currency;
   }
 });
+
+function datetimeField(v: unknown) {
+  if (v == null || v === '') return '';
+  const s = String(v).trim();
+  if (s.length >= 16) return s.slice(0, 16).replace('T', ' ');
+  return s.slice(0, 10);
+}
 
 function incotermsCode(raw: string) {
   return (raw || '')
@@ -243,6 +261,7 @@ async function save() {
       shipmentDate: ymdOrUndef(form.shipmentDate),
       etaDate: ymdOrUndef(form.etaDate),
       arrivalPort: form.arrivalPort,
+      domesticPortArrivalAt: ymdOrUndef(form.domesticPortArrivalAt),
       customerPickedUp: form.customerPickedUp,
       paymentDueAt: ymdOrUndef(form.paymentDueAt),
       hasRemittance: !!form.hasRemittance,

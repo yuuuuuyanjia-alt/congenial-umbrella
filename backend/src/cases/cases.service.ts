@@ -301,6 +301,7 @@ export class CasesService {
       remittedFen,
       hasRemittance,
       customerPickedUp,
+      domesticPortArrivalAt,
       ...rest
     } = dto;
     const parsedDelivery = parseDate(deliveryDate);
@@ -314,6 +315,7 @@ export class CasesService {
       paymentDueAt: parseDate(paymentDueAt) ?? derivePaymentDueAt(parsedDelivery, dto.paymentTerms),
       shipmentDate: parseDate(shipmentDate),
       etaDate: parseDate(etaDate),
+      domesticPortArrivalAt: parseDate(domesticPortArrivalAt),
     };
     const row = await this.prisma.contract.upsert({
       where: { caseId },

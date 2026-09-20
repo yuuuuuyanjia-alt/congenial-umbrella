@@ -153,6 +153,8 @@ export function salesShipmentBucketOf(c: any): SalesShipmentBucketKey {
   const sh = c?.shipment || {};
   const shipped =
     filledListDate(ct.shipmentDate) ||
+    filledListDate(ct.domesticPortArrivalAt) ||
+    filledListDate(c?.domesticPortArrivalAt) ||
     String(c?.status || '').toUpperCase() === 'COMPLETED' ||
     (c?.nodes || []).some((n: any) => n.code === 'N6' && n.status === 'PASSED') ||
     hasReachedNode(c?.currentNode, 'N7') ||

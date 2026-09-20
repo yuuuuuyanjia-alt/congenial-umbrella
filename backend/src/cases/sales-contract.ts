@@ -1,7 +1,7 @@
 import { CaseStatus, NODE_FLOW, NodeCode, NodeStatus } from '../common/constants';
-import { isCifFamilyIncoterms } from '../gates/gate.engine';
+import { isBuyerArrangedFreight, isCifFamilyIncoterms } from '../gates/gate.engine';
 
-export { isCifFamilyIncoterms };
+export { isBuyerArrangedFreight, isCifFamilyIncoterms };
 
 /** 销售合同列表出运/履约分组（中文标签固定）。 */
 export const SALES_SHIPMENT_BUCKET = {
@@ -29,6 +29,7 @@ export type SalesShipmentInput = {
   currentNode?: string | null;
   nodes?: Array<{ code: string; status: string }> | null;
   shipmentDate?: Date | string | null;
+  domesticPortArrivalAt?: Date | string | null;
   customerPickedUp?: boolean | null;
   hasRemittance?: boolean | null;
   remittedFen?: number | null;
@@ -36,6 +37,7 @@ export type SalesShipmentInput = {
   unpaidFen?: number | null;
   contract?: {
     shipmentDate?: Date | string | null;
+    domesticPortArrivalAt?: Date | string | null;
     customerPickedUp?: boolean | null;
     hasRemittance?: boolean | null;
     remittedFen?: number | null;
@@ -75,7 +77,7 @@ export function presentSalesContract<
     hasRemittance?: boolean | null;
     remittedFen?: number | null;
   },
->(row: T): T & { remittedFen: number; unpaidFen: number; cifShippingVisible: boolean };
+>(row: T): T & { remittedFen: number; unpaidFen: number; cifShippingVisible: boolean; fobDomesticVisible: boolean };
 export function presentSalesContract<
   T extends {
     incoterms?: string | null;
@@ -85,7 +87,7 @@ export function presentSalesContract<
   },
 >(
   row: T | null | undefined,
-): (T & { remittedFen: number; unpaidFen: number; cifShippingVisible: boolean }) | null;
+): (T & { remittedFen: number; unpaidFen: number; cifShippingVisible: boolean; fobDomesticVisible: boolean }) | null;
 export function presentSalesContract<
   T extends {
     incoterms?: string | null;
@@ -95,7 +97,7 @@ export function presentSalesContract<
   },
 >(
   row: T | null | undefined,
-): (T & { remittedFen: number; unpaidFen: number; cifShippingVisible: boolean }) | null {
+): (T & { remittedFen: number; unpaidFen: number; cifShippingVisible: boolean; fobDomesticVisible: boolean }) | null {
   if (!row) return null;
   const remittedFen = resolveRemittedFen(row);
   return {
@@ -103,6 +105,7 @@ export function presentSalesContract<
     remittedFen,
     unpaidFen: unpaidRemittanceFen(row.amountFen, remittedFen),
     cifShippingVisible: isCifFamilyIncoterms(row.incoterms),
+    fobDomesticVisible: isBuyerArrangedFreight(row.incoterms),
   };
 }
 
@@ -144,12 +147,13 @@ export function isSalesPickedUp(input: SalesShipmentInput): boolean {
 }
 
 /**
- * 已出运：CIF/CIP 以装运日期为准；任意术语若已填装运日期亦计。
- * 非 CIF（如 FOB）无装运日期时，以 N6 已通过、已过装运节点、提单号或无提单路径为依据。
+ * 已出运：CIF/CIP 以装运日期为准；FOB 等以国内段到达口岸/港口时间为国内交付完成。
+ * 任意术语若已填上述日期亦计。否则以 N6 已通过、已过装运节点、提单号或无提单路径为依据。
  */
 export function isSalesShipped(input: SalesShipmentInput): boolean {
   const ct = contractOf(input);
   if (filledDate(input.shipmentDate ?? ct?.shipmentDate ?? null)) return true;
+  if (filledDate(input.domesticPortArrivalAt ?? ct?.domesticPortArrivalAt ?? null)) return true;
   if (String(input.status || '').toUpperCase() === CaseStatus.COMPLETED) return true;
   const n6 = (input.nodes || []).find((n) => n.code === 'N6');
   if (n6?.status === NodeStatus.PASSED) return true;
