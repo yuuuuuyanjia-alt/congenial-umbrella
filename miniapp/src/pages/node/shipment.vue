@@ -3,9 +3,10 @@
     <view class="card">
       <view class="h2">装运 / 提单指示 · 硬闸门</view>
       <view class="muted">
-        须同时具备客户书面指示与内部审批。CIF / CFR 等卖方出单：点选「正本提单」或「电放提单」其一即可（不必两样都有）。FOB / EXW / FAS / FCA 等买方安排运输：可不控提单，走「无提单」路径并留下依据。T/T 是结算方式不是运输术语；装运规则跟随所选 Incoterm，未填运输术语时按 FOB 回退。
+        须同时具备客户书面指示与内部审批。CIF / CFR 等卖方出单：点选「正本提单」或「电放提单」其一即可（不必两样都有）。FOB / EXW / FAS / FCA 等买方安排运输：可不控提单，走「无提单」路径并留下依据。T/T 是结算方式不是运输术语；装运规则跟随所选 Incoterm，未填运输术语时按 FOB 回退。存在未生效变更单时禁止装运。
       </view>
     </view>
+    <PendingChangeBlock :case-id="id" :case-data="c" />
     <view class="card">
       <view class="label">合同运输术语（N3）</view>
       <view class="muted">{{ contractIncoterms || '尚未从合同读取，可在下方手工填写' }}</view>
@@ -86,12 +87,14 @@
 import { onLoad } from '@dcloudio/uni-app';
 import { computed, reactive, ref } from 'vue';
 import { api } from '../../api';
+import PendingChangeBlock from '../../components/PendingChangeBlock.vue';
 
 const BUYER_FREIGHT = ['FOB', 'EXW', 'FAS', 'FCA'];
 
 const id = ref('');
 const err = ref('');
 const ok = ref('');
+const c = ref<any>(null);
 const contractIncoterms = ref('');
 const form = reactive({
   hasCustomerWrittenInstruction: false,
@@ -119,9 +122,9 @@ const blLabel = computed(() => {
 
 onLoad(async (q) => {
   id.value = q?.id || '';
-  const c = await api.case(id.value);
-  contractIncoterms.value = displayTransport(c.contract?.incoterms || '');
-  const s = c.shipment;
+  c.value = await api.case(id.value);
+  contractIncoterms.value = displayTransport(c.value.contract?.incoterms || '');
+  const s = c.value.shipment;
   if (s) {
     form.hasCustomerWrittenInstruction = !!s.hasCustomerWrittenInstruction;
     form.instructionRef = s.instructionRef || '';

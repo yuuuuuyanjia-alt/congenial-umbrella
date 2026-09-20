@@ -2,8 +2,9 @@
   <view class="wrap">
     <view class="card">
       <view class="h2">收汇对账 · 硬闸门</view>
-      <view class="muted">付款人≠买方时必须有第三方关系证明；另需汇款附言、单证一致证明与放行审批。水单/到账金额是已回款唯一账本：保存后销售列表「已完成」与中信保占用「已回款」同步更新。</view>
+      <view class="muted">付款人≠买方时必须有第三方关系证明；另需汇款附言、单证一致证明与放行审批。水单/到账金额是已回款唯一账本：保存后销售列表「已完成」与中信保占用「已回款」同步更新。存在未生效变更单时禁止放行。</view>
     </view>
+    <PendingChangeBlock :case-id="id" :case-data="c" />
     <view class="card">
       <view class="label">买方名称</view>
       <input class="input" v-model="form.buyerName" />
@@ -38,10 +39,12 @@
 import { onLoad } from '@dcloudio/uni-app';
 import { computed, reactive, ref } from 'vue';
 import { api, fenToYuan, yuanToFen } from '../../api';
+import PendingChangeBlock from '../../components/PendingChangeBlock.vue';
 
 const id = ref('');
 const err = ref('');
 const ok = ref('');
+const c = ref<any>(null);
 const currency = ref('USD');
 const contractAmountFen = ref(0);
 const form = reactive({
@@ -67,21 +70,21 @@ const unpaidYuan = computed(() => {
 
 onLoad(async (q) => {
   id.value = q?.id || '';
-  const c = await api.case(id.value);
-  const buyer = c.parties?.find((p: any) => p.role === 'BUYER')?.name || '';
-  currency.value = c.contract?.currency || c.currency || 'USD';
-  contractAmountFen.value = Number(c.contract?.amountFen ?? c.amountFen) || 0;
-  form.buyerName = c.settlement?.buyerName || buyer;
-  form.payerName = c.settlement?.payerName || buyer;
-  if (c.settlement) {
-    form.remittanceMemoRef = c.settlement.remittanceMemoRef || '';
-    form.hasRemittanceMemo = !!c.settlement.hasRemittanceMemo;
-    form.hasDocConsistencyProof = !!c.settlement.hasDocConsistencyProof;
-    form.hasReleaseApproval = !!c.settlement.hasReleaseApproval;
-    form.hasThirdPartyProof = !!c.settlement.hasThirdPartyProof;
-    if (c.settlement.amountFen != null) form.amountYuan = fenToYuan(c.settlement.amountFen);
+  c.value = await api.case(id.value);
+  const buyer = c.value.parties?.find((p: any) => p.role === 'BUYER')?.name || '';
+  currency.value = c.value.contract?.currency || c.value.currency || 'USD';
+  contractAmountFen.value = Number(c.value.contract?.amountFen ?? c.value.amountFen) || 0;
+  form.buyerName = c.value.settlement?.buyerName || buyer;
+  form.payerName = c.value.settlement?.payerName || buyer;
+  if (c.value.settlement) {
+    form.remittanceMemoRef = c.value.settlement.remittanceMemoRef || '';
+    form.hasRemittanceMemo = !!c.value.settlement.hasRemittanceMemo;
+    form.hasDocConsistencyProof = !!c.value.settlement.hasDocConsistencyProof;
+    form.hasReleaseApproval = !!c.value.settlement.hasReleaseApproval;
+    form.hasThirdPartyProof = !!c.value.settlement.hasThirdPartyProof;
+    if (c.value.settlement.amountFen != null) form.amountYuan = fenToYuan(c.value.settlement.amountFen);
   }
-  form.receivedAt = (c.settlement?.receivedAt || '').toString().slice(0, 10);
+  form.receivedAt = (c.value.settlement?.receivedAt || '').toString().slice(0, 10);
 });
 
 async function save() {

@@ -1,4 +1,4 @@
-import { Decision, N3_SINOSURE_UNREGISTERED_REASON, SINOSURE_EXPOSURE_HIGH_REVIEW_REASON } from '../common/constants';
+import { Decision, N3_SINOSURE_UNREGISTERED_REASON, N6_PLUS_PENDING_CHANGE_REASON, SINOSURE_EXPOSURE_HIGH_REVIEW_REASON } from '../common/constants';
 import { CaseSnapshot } from '../common/types';
 import {
   evaluateN1,
@@ -1724,6 +1724,76 @@ describe('闸门引擎 N8 报关放行', () => {
 
   it('要素齐全可通过', () => {
     expect(evaluateN8(baseSnap()).canProceed).toBe(true);
+  });
+});
+
+describe('闸门引擎 N6+ 未生效变更硬拦截', () => {
+  const pending = {
+    id: 'ch-pending',
+    changeNo: 'CO-PENDING',
+    version: 2,
+    status: 'PENDING_ACK',
+    isSensitive: false,
+    customerAck: false,
+    internalAck: false,
+    approved: false,
+    diffs: [{ field: 'quantity', fieldLabel: '数量', oldValue: '10', newValue: '12' }],
+  };
+  const ackedNotApplied = {
+    ...pending,
+    customerAck: true,
+    customerAckEvidenceId: 'ev-c',
+    internalAck: true,
+    internalAckEvidenceId: 'ev-i',
+  };
+  const applied = {
+    ...ackedNotApplied,
+    status: 'APPLIED',
+  };
+  const evaluators: Array<[string, (snap: CaseSnapshot) => ReturnType<typeof evaluateN6>]> = [
+    ['N6', evaluateN6],
+    ['N7', evaluateN7],
+    ['N8', evaluateN8],
+    ['N9', evaluateN9],
+  ];
+
+  it.each(evaluators)('%s 存在待确认（未生效）变更单时硬拦截', (code, evalFn) => {
+    const r = evalFn(baseSnap({ changeOrders: [pending] }));
+    expect(r.canProceed).toBe(false);
+    expect(r.decision).toBe(Decision.HARD_BLOCK);
+    expect(r.missing).toContain(`${code}_PENDING_CHANGE`);
+    expect(r.reasons).toContain(N6_PLUS_PENDING_CHANGE_REASON);
+  });
+
+  it.each(evaluators)('%s 已确认但尚未应用新版本仍硬拦截', (code, evalFn) => {
+    const r = evalFn(baseSnap({ changeOrders: [ackedNotApplied] }));
+    expect(r.canProceed).toBe(false);
+    expect(r.decision).toBe(Decision.HARD_BLOCK);
+    expect(r.missing).toContain(`${code}_PENDING_CHANGE`);
+    expect(r.reasons).toContain(N6_PLUS_PENDING_CHANGE_REASON);
+  });
+
+  it.each(evaluators)('%s 变更已生效后可按其他闸门推进', (code, evalFn) => {
+    const r = evalFn(baseSnap({ changeOrders: [applied] }));
+    expect(r.canProceed).toBe(true);
+    expect(r.missing).not.toContain(`${code}_PENDING_CHANGE`);
+  });
+
+  it('N6 未生效变更优先于装运缺项，不混报其他缺失', () => {
+    const r = evaluateN6(baseSnap({ shipment: null, changeOrders: [pending] }));
+    expect(r.canProceed).toBe(false);
+    expect(r.missing).toEqual(['N6_PENDING_CHANGE']);
+    expect(r.reasons).toContain(N6_PLUS_PENDING_CHANGE_REASON);
+  });
+
+  it('已废止变更不挡 N6+', () => {
+    const r = evaluateN6(
+      baseSnap({
+        changeOrders: [{ ...pending, status: 'SUPERSEDED' }],
+      }),
+    );
+    expect(r.canProceed).toBe(true);
+    expect(r.missing).not.toContain('N6_PENDING_CHANGE');
   });
 });
 

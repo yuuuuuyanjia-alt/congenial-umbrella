@@ -120,6 +120,16 @@ export function decisionText(d?: string | null) {
 
 const NODE_FLOW = ['N1', 'N2', 'N3', 'N4', 'N5', 'N6', 'N7', 'N8', 'N9'];
 
+/** 与后端 N6_PLUS_PENDING_CHANGE_REASON 一致 */
+export const N6_PLUS_PENDING_CHANGE_REASON =
+  '存在未生效变更单，禁止装运及后续节点；须先完成变更管理并应用新版本';
+
+export function pendingChangesOf(c: any) {
+  return (c?.changeOrders || []).filter(
+    (co: any) => co && co.status !== 'APPLIED' && co.status !== 'SUPERSEDED',
+  );
+}
+
 /** 与后端 NODE_CATALOG / pipeline-nav 中文名对齐。 */
 export const NODE_LABELS: Record<string, string> = {
   N1: '询盘/客户KYC',
