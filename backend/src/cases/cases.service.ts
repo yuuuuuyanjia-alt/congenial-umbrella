@@ -38,7 +38,16 @@ import {
   signedSalesOptions,
   supplierNameOf,
 } from './sales-link';
-import { presentSalesContract, resolveRemittedFen } from './sales-contract';
+import {
+  composeTtPaymentTerms,
+  presentSalesContract,
+  presentSalesShipmentStatus,
+  resolveRemittedFen,
+  resolveTradeTerm,
+  resolveTtTiming,
+  TRADE_TERM,
+  TT_TIMING,
+} from './sales-contract';
 import {
   AckChangeDto,
   CreateCaseDto,
@@ -79,6 +88,7 @@ export class CasesService {
         parties: true,
         hits: true,
         contract: true,
+        shipment: true,
         procurementPlan: {
           include: {
             salesCase: { include: { contract: true, parties: true, nodes: true } },
@@ -96,6 +106,15 @@ export class CasesService {
     return filtered.map((c) => {
       const salesLink = c.procurementPlan?.salesCase ? presentSalesLink(c.procurementPlan.salesCase) : null;
       const supplierName = supplierNameOf(c);
+      const contract = presentSalesContract(c.contract);
+      const shipmentStatus = presentSalesShipmentStatus({
+        status: c.status,
+        currentNode: c.currentNode,
+        nodes: c.nodes,
+        contract,
+        shipment: c.shipment,
+        amountFen: contract?.amountFen ?? c.amountFen,
+      });
       return {
         ...c,
         customer: salesCustomerOf(c),
@@ -110,7 +129,8 @@ export class CasesService {
           supplierName,
           salesLink,
         }),
-        contract: presentSalesContract(c.contract),
+        contract,
+        ...shipmentStatus,
       };
     });
   }
@@ -290,9 +310,19 @@ export class CasesService {
       remittedFen,
       hasRemittance,
       customerPickedUp,
+      domesticPortArrivalAt,
       ...rest
     } = dto;
     const parsedDelivery = parseDate(deliveryDate);
+    const parsedShipment = parseDate(shipmentDate);
+    const ttTiming = resolveTtTiming({ ttTiming: rest.ttTiming, paymentTerms: rest.paymentTerms });
+    if (resolveTradeTerm(rest.incoterms) === TRADE_TERM.TT) {
+      rest.incoterms = TRADE_TERM.TT;
+      rest.ttTiming = ttTiming || TT_TIMING.ADVANCE;
+      rest.paymentTerms = composeTtPaymentTerms(rest.ttTiming, rest.ttDaysAfterShipment);
+    }
+    const dueSource =
+      rest.ttTiming === TT_TIMING.AFTER && parsedShipment ? parsedShipment : parsedDelivery;
     const resolvedRemitted = resolveRemittedFen({ hasRemittance, remittedFen });
     const data = {
       ...rest,
@@ -300,9 +330,10 @@ export class CasesService {
       customerPickedUp: customerPickedUp ?? null,
       remittedFen: resolvedRemitted,
       deliveryDate: parsedDelivery,
-      paymentDueAt: parseDate(paymentDueAt) ?? derivePaymentDueAt(parsedDelivery, dto.paymentTerms),
-      shipmentDate: parseDate(shipmentDate),
+      paymentDueAt: parseDate(paymentDueAt) ?? derivePaymentDueAt(dueSource, rest.paymentTerms),
+      shipmentDate: parsedShipment,
       etaDate: parseDate(etaDate),
+      domesticPortArrivalAt: parseDate(domesticPortArrivalAt),
     };
     const row = await this.prisma.contract.upsert({
       where: { caseId },

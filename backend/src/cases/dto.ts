@@ -39,11 +39,16 @@ export class SaveContractDto {
   @IsOptional() @IsString() paymentDueAt?: string;
   @IsOptional() @IsString() shipmentPort?: string;
   @IsOptional() @IsString() shipmentDate?: string;
+  @IsOptional() @IsString() domesticPortArrivalAt?: string;
   @IsOptional() @IsString() etaDate?: string;
   @IsOptional() @IsString() arrivalPort?: string;
   @IsOptional() @IsBoolean() customerPickedUp?: boolean | null;
   @IsOptional() @IsBoolean() hasRemittance?: boolean;
   @IsOptional() @IsInt() remittedFen?: number;
+  @IsOptional() @IsString() ttTiming?: string;
+  @IsOptional() @IsInt() ttPercentBps?: number;
+  @IsOptional() @IsInt() ttAdvanceFen?: number;
+  @IsOptional() @IsInt() ttDaysAfterShipment?: number;
 }
 
 export class SaveShipmentDto {

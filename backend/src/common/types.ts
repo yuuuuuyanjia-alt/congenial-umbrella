@@ -39,11 +39,16 @@ export interface ContractSnap {
   paymentDueAt?: string | Date | null;
   shipmentPort?: string | null;
   shipmentDate?: string | Date | null;
+  domesticPortArrivalAt?: string | Date | null;
   etaDate?: string | Date | null;
   arrivalPort?: string | null;
   customerPickedUp?: boolean | null;
   hasRemittance?: boolean | null;
   remittedFen?: number | null;
+  ttTiming?: string | null;
+  ttPercentBps?: number | null;
+  ttAdvanceFen?: number | null;
+  ttDaysAfterShipment?: number | null;
 }
 
 export interface ShipmentSnap {

@@ -127,6 +127,72 @@ export function isProcurementListCase(c: any) {
   return hasReachedNode(c?.currentNode, 'N5') || !!c?.procurementPlan || !!c?.poNo;
 }
 
+export const SALES_SHIPMENT_BUCKETS = [
+  { key: 'unshipped', label: '未出运', hint: '尚未装运：无装运日期，且装运/提单节点未完成。' },
+  { key: 'shipped', label: '已出运', hint: '已装运，但客户尚未提货或尚未回款。' },
+  { key: 'completed', label: '已完成', hint: '已出运，客户已提货，且已收汇、未收汇金额为 0。' },
+] as const;
+
+export type SalesShipmentBucketKey = (typeof SALES_SHIPMENT_BUCKETS)[number]['key'];
+
+function filledListDate(v: unknown) {
+  if (v == null || v === '') return false;
+  const s = String(v).trim();
+  return s.length >= 8;
+}
+
+function filledListText(v: unknown) {
+  return !!String(v ?? '').trim();
+}
+
+/** 与后端一致的回退分组：优先用接口 shipmentBucket。 */
+export function salesShipmentBucketOf(c: any): SalesShipmentBucketKey {
+  const given = c?.shipmentBucket;
+  if (given === 'unshipped' || given === 'shipped' || given === 'completed') return given;
+  const ct = c?.contract || {};
+  const sh = c?.shipment || {};
+  const shipped =
+    filledListDate(ct.shipmentDate) ||
+    filledListDate(ct.domesticPortArrivalAt) ||
+    filledListDate(c?.domesticPortArrivalAt) ||
+    String(c?.status || '').toUpperCase() === 'COMPLETED' ||
+    (c?.nodes || []).some((n: any) => n.code === 'N6' && n.status === 'PASSED') ||
+    hasReachedNode(c?.currentNode, 'N7') ||
+    filledListText(sh.blNo) ||
+    ((String(sh.blControl || '').toUpperCase() === 'NO_BL' ||
+      String(sh.blControl || '').toUpperCase() === 'FOB_NO_BL') &&
+      (filledListText(sh.noBlRef) || filledListText(sh.noBlReason) || filledListText(sh.noBlEvidenceStub)));
+  if (!shipped) return 'unshipped';
+  const pickedUp = (ct.customerPickedUp ?? c?.customerPickedUp) === true;
+  const hasRemittance = !!(ct.hasRemittance ?? c?.hasRemittance);
+  const amount = Number(ct.amountFen ?? c?.amountFen) || 0;
+  const remitted = hasRemittance ? Math.max(0, Number(ct.remittedFen ?? c?.remittedFen) || 0) : 0;
+  const unpaid =
+    ct.unpaidFen != null && Number.isFinite(Number(ct.unpaidFen))
+      ? Math.max(0, Number(ct.unpaidFen))
+      : Math.max(0, amount - remitted);
+  if (pickedUp && hasRemittance && unpaid === 0) return 'completed';
+  return 'shipped';
+}
+
+export function salesShipmentBucketLabel(c: any) {
+  const key = salesShipmentBucketOf(c);
+  return SALES_SHIPMENT_BUCKETS.find((b) => b.key === key)?.label || '未出运';
+}
+
+export function salesShipmentBadgeClass(c: any) {
+  const key = salesShipmentBucketOf(c);
+  if (key === 'completed') return 'badge-pass';
+  if (key === 'shipped') return 'badge-review';
+  return 'badge-soft';
+}
+
+export function groupSalesListByShipment(rows: any[]) {
+  const bags: Record<SalesShipmentBucketKey, any[]> = { unshipped: [], shipped: [], completed: [] };
+  for (const row of rows) bags[salesShipmentBucketOf(row)].push(row);
+  return SALES_SHIPMENT_BUCKETS.map((b) => ({ ...b, items: bags[b.key] }));
+}
+
 function firstNonEmpty(...vals: Array<string | null | undefined>) {
   for (const v of vals) {
     const t = String(v ?? '').trim();
