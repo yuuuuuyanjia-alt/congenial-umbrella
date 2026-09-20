@@ -13,6 +13,7 @@ export type SalesLinkCaseInput = {
   contract?: {
     counterparty?: string | null;
     buyerName?: string | null;
+    goodsDesc?: string | null;
     amountFen?: number | null;
     currency?: string | null;
     deliveryDate?: Date | string | null;
@@ -181,4 +182,68 @@ export function isProcurementContractListItem(row: {
 
 export function supplierNameOf(row: { parties?: Array<{ role: string; name: string }> | null }): string {
   return row.parties?.find((p) => p.role === 'SUPPLIER')?.name?.trim() || '';
+}
+
+function firstNonEmpty(...vals: Array<string | null | undefined>): string {
+  for (const v of vals) {
+    const t = (v || '').trim();
+    if (t) return t;
+  }
+  return '';
+}
+
+export type ProcurementTitleInput = {
+  supplierName?: string | null;
+  goodsDesc?: string | null;
+  customer?: string | null;
+  parties?: Array<{ role: string; name: string }> | null;
+  contract?: { goodsDesc?: string | null; counterparty?: string | null; buyerName?: string | null } | null;
+  customs?: { productName?: string | null } | null;
+  salesLink?: { customer?: string | null; goodsDesc?: string | null } | null;
+  procurementPlan?: {
+    salesLink?: { customer?: string | null; goodsDesc?: string | null } | null;
+    salesCase?: SalesLinkCaseInput | null;
+  } | null;
+};
+
+/**
+ * 采购合同品名：优先关联销售合同货物描述（出口品名），
+ * 其次本案 goodsDesc、销售合同 goodsDesc、报关品名。
+ */
+export function procurementProductOf(row: ProcurementTitleInput): string {
+  const linked = row.salesLink || row.procurementPlan?.salesLink;
+  const salesCase = row.procurementPlan?.salesCase;
+  return firstNonEmpty(
+    linked?.goodsDesc,
+    salesCase?.goodsDesc,
+    salesCase?.contract?.goodsDesc,
+    row.goodsDesc,
+    row.contract?.goodsDesc,
+    row.customs?.productName,
+  );
+}
+
+/** 出口客户：优先关联销售合同买方，其次本案买方/合同相对方。 */
+export function procurementExportCustomerOf(row: ProcurementTitleInput): string {
+  const linked = row.salesLink || row.procurementPlan?.salesLink;
+  const salesCase = row.procurementPlan?.salesCase;
+  return firstNonEmpty(
+    linked?.customer,
+    salesCase ? salesCustomerOf(salesCase) : '',
+    row.customer,
+    row.contract?.counterparty,
+    row.contract?.buyerName,
+    row.parties?.find((p) => p.role === 'BUYER')?.name,
+  );
+}
+
+/**
+ * 采购合同主标题：`{供应商名称}采购{产品}出口{客户公司}`。
+ * 缺供应商/客户用中文占位，缺品名回退为「货物」，避免空标题。
+ */
+export function procurementContractTitle(row: ProcurementTitleInput): string {
+  const supplier = firstNonEmpty(row.supplierName, supplierNameOf(row)) || '供应商待登记';
+  const product = procurementProductOf(row) || '货物';
+  const customer = procurementExportCustomerOf(row) || '客户待关联';
+  return `${supplier}采购${product}出口${customer}`;
 }

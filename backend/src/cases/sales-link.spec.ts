@@ -9,6 +9,9 @@ import {
   isSalesContractSigned,
   parseContractListKind,
   presentSalesLink,
+  procurementContractTitle,
+  procurementExportCustomerOf,
+  procurementProductOf,
   signedSalesOptions,
 } from './sales-link';
 
@@ -241,5 +244,70 @@ describe('销售/采购合同列表分流（同一案件模型，按节点过滤
     expect(sales.every((c) => !('poNo' in c && c.poNo && !c.caseNo))).toBe(true);
     const proc = [blocked, unsignedN3, fillingN3, wipN5, withPo].filter(isProcurementContractListItem);
     expect(proc.map((c) => c.caseNo)).toEqual(['DEMO-NORD-WIP', 'DEMO-PASS']);
+  });
+});
+
+describe('采购合同主标题（供应商采购产品出口客户）', () => {
+  it('完整字段拼成「供应商采购产品出口客户」', () => {
+    expect(
+      procurementContractTitle({
+        supplierName: '苏州精工机械有限公司',
+        goodsDesc: '数控机床配件',
+        salesLink: { customer: 'Nordlicht GmbH', goodsDesc: '数控机床配件' },
+      }),
+    ).toBe('苏州精工机械有限公司采购数控机床配件出口Nordlicht GmbH');
+  });
+
+  it('品名优先取关联销售合同货物，其次本案 goodsDesc、合同货物、报关品名', () => {
+    expect(
+      procurementProductOf({
+        goodsDesc: '本案货物',
+        contract: { goodsDesc: '合同货物' },
+        customs: { productName: '报关品名' },
+        salesLink: { customer: 'Nordlicht GmbH', goodsDesc: '出口品名' },
+      }),
+    ).toBe('出口品名');
+    expect(
+      procurementProductOf({
+        goodsDesc: '本案货物',
+        contract: { goodsDesc: '合同货物' },
+        customs: { productName: '报关品名' },
+      }),
+    ).toBe('本案货物');
+    expect(
+      procurementProductOf({
+        goodsDesc: '  ',
+        contract: { goodsDesc: '合同货物' },
+        customs: { productName: '报关品名' },
+      }),
+    ).toBe('合同货物');
+    expect(procurementProductOf({ customs: { productName: '报关品名' } })).toBe('报关品名');
+    expect(procurementProductOf({})).toBe('');
+  });
+
+  it('出口客户优先取关联销售合同买方，否则回退本案买方', () => {
+    expect(
+      procurementExportCustomerOf({
+        customer: '本案买方',
+        contract: { counterparty: '合同相对方' },
+        parties: [{ role: 'BUYER', name: '当事方买方' }],
+        salesLink: { customer: 'Harbor View Ltd', goodsDesc: '工业泵' },
+      }),
+    ).toBe('Harbor View Ltd');
+    expect(
+      procurementExportCustomerOf({
+        parties: [{ role: 'BUYER', name: 'Nordlicht GmbH' }],
+      }),
+    ).toBe('Nordlicht GmbH');
+  });
+
+  it('缺字段用占位，不出现空白主标题', () => {
+    expect(procurementContractTitle({})).toBe('供应商待登记采购货物出口客户待关联');
+    expect(
+      procurementContractTitle({
+        parties: [{ role: 'SUPPLIER', name: '宁波五金制品有限公司' }],
+        goodsDesc: '手工具套装',
+      }),
+    ).toBe('宁波五金制品有限公司采购手工具套装出口客户待关联');
   });
 });

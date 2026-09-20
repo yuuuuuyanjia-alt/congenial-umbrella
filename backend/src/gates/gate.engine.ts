@@ -373,13 +373,9 @@ export function evaluateN5(snap: CaseSnapshot): GateResult {
   }
   if (!plan.plannedArrival) {
     r.missing.push('N5_PLANNED_ARRIVAL');
-    r.reasons.push('未填写供应商计划到货/备妥日期');
+    r.reasons.push('未填写供应商实际交付日期');
   }
   const contractDelivery = plan.contractDelivery || snap.contract?.deliveryDate;
-  if (!contractDelivery) {
-    r.missing.push('N5_CONTRACT_DELIVERY');
-    r.reasons.push('缺少客户合同交货期，无法核对采购到货');
-  }
   if (!snap.supplierScreened) {
     r.missing.push('N5_SCREENING_NOT_RUN');
     r.reasons.push('尚未完成国内供应商制裁/不可靠实体筛查');
@@ -409,16 +405,16 @@ export function evaluateN5(snap: CaseSnapshot): GateResult {
   }
 
   const planned = startOfDay(toDate(plan.plannedArrival as string | Date));
-  const contracted = startOfDay(toDate(contractDelivery as string | Date));
-  if (planned.getTime() <= contracted.getTime()) {
-    r.reasons.push('采购计划到货不晚于客户合同交货期');
+  const contracted = contractDelivery ? startOfDay(toDate(contractDelivery as string | Date)) : null;
+  if (!contracted || planned.getTime() <= contracted.getTime()) {
+    if (contracted) r.reasons.push('供应商实际交付日期不晚于关联销售合同交货期');
     applyLowScreeningAlert(r, buckets, '国内供应商低置信/低风险命中：软提示，不阻断，须保留审计痕迹');
     return r;
   }
 
   if (!plan.delayRegistered) {
     r.missing.push('N5_DELAY_NOT_REGISTERED');
-    r.reasons.push('采购计划到货晚于客户合同交货期，须登记延期');
+    r.reasons.push('供应商实际交付日期晚于关联销售合同交货期，须登记延期');
   }
   const validTrigger =
     !!plan.delayTriggerCode &&

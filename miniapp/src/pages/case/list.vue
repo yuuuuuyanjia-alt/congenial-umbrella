@@ -5,9 +5,9 @@
 
     <view class="card" v-for="c in list" :key="c.id" @click="open(c)">
       <view class="row">
-        <view>
+        <view class="title-block" style="flex: 1; min-width: 0">
           <view class="muted">{{ primaryNo(c) }}</view>
-          <view class="h2" style="margin: 6rpx 0 0">{{ primaryTitle(c) }}</view>
+          <view class="h2" style="margin: 6rpx 0 0; line-height: 1.4">{{ primaryTitle(c) }}</view>
         </view>
         <view class="badge" :class="badgeClass(c)">{{ badgeText(c) }}</view>
       </view>
@@ -23,7 +23,7 @@
 <script setup lang="ts">
 import { onLoad, onShow } from '@dcloudio/uni-app';
 import { computed, ref } from 'vue';
-import { api, decisionClass, decisionText, isProcurementListCase, isSalesListCase, money } from '../../api';
+import { api, decisionClass, decisionText, isProcurementListCase, isSalesListCase, money, procurementContractTitle } from '../../api';
 
 const kind = ref<'sales' | 'procurement' | ''>('');
 const raw = ref<any[]>([]);
@@ -75,7 +75,7 @@ function primaryNo(c: any) {
 }
 
 function primaryTitle(c: any) {
-  if (kind.value === 'procurement') return c.supplierName || c.title || '尚未登记供应商';
+  if (kind.value === 'procurement') return c.procurementTitle || procurementContractTitle(c);
   return c.customer || c.title;
 }
 
