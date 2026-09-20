@@ -3,17 +3,17 @@
     <view class="card">
       <view class="h2">装运 / 提单指示 · 硬闸门</view>
       <view class="muted">
-        须同时具备客户书面指示与内部审批。CIF / CFR 等卖方出单：点选「正本提单」或「电放提单」其一即可（不必两样都有）。FOB / EXW / FAS / FCA 等买方安排运输：可不控提单，走「无提单」路径并留下依据。
+        须同时具备客户书面指示与内部审批。CIF / CFR 等卖方出单：点选「正本提单」或「电放提单」其一即可（不必两样都有）。FOB / EXW / FAS / FCA 等买方安排运输：可不控提单，走「无提单」路径并留下依据。T/T 是结算方式不是运输术语；装运规则跟随所选 Incoterm，未填运输术语时按 FOB 回退。
       </view>
     </view>
     <view class="card">
-      <view class="label">合同贸易术语（N3）</view>
+      <view class="label">合同运输术语（N3）</view>
       <view class="muted">{{ contractIncoterms || '尚未从合同读取，可在下方手工填写' }}</view>
-      <view class="label">本节点用于闸门的贸易术语（可改）</view>
+      <view class="label">本节点用于闸门的运输术语（可改）</view>
       <input
         class="input"
         v-model="form.n6Incoterms"
-        placeholder="默认带出合同术语，必要时改为 FOB / CIF 等"
+        placeholder="默认带出合同术语，必要时改为 FOB / CIF 等；不要填 T/T"
       />
       <view class="muted" v-if="buyerFreight">
         已识别为买方安排运输（FOB / EXW / FAS / FCA）：不强制正本或电放，请走「无提单」或仍选择其一。
@@ -109,7 +109,7 @@ const isNoBl = computed(() => form.blControl === 'NO_BL' || form.blControl === '
 const blTypeSelected = computed(
   () => form.blControl === 'ORIGINAL' || form.blControl === 'TELEX_RELEASE',
 );
-const buyerFreight = computed(() => BUYER_FREIGHT.includes(incotermsCode(form.n6Incoterms)));
+const buyerFreight = computed(() => BUYER_FREIGHT.includes(effectiveIncotermsCode(form.n6Incoterms)));
 const blLabel = computed(() => {
   if (form.blControl === 'ORIGINAL') return '正本提单';
   if (form.blControl === 'TELEX_RELEASE') return '电放提单';
@@ -120,7 +120,7 @@ const blLabel = computed(() => {
 onLoad(async (q) => {
   id.value = q?.id || '';
   const c = await api.case(id.value);
-  contractIncoterms.value = c.contract?.incoterms || '';
+  contractIncoterms.value = displayTransport(c.contract?.incoterms || '');
   const s = c.shipment;
   if (s) {
     form.hasCustomerWrittenInstruction = !!s.hasCustomerWrittenInstruction;
@@ -131,18 +131,36 @@ onLoad(async (q) => {
     form.noBlReason = s.noBlReason || '';
     form.noBlRef = s.noBlRef || '';
     form.noBlEvidenceStub = s.noBlEvidenceStub || '';
-    form.n6Incoterms = s.incotermsOverride || contractIncoterms.value;
+    form.n6Incoterms = displayTransport(s.incotermsOverride || contractIncoterms.value);
   } else {
     form.n6Incoterms = contractIncoterms.value;
   }
 });
 
 function incotermsCode(raw: string) {
-  return (raw || '')
-    .trim()
-    .toUpperCase()
-    .replace(/^INCOTERMS(?:\s*20\d{2})?\s+/i, '')
-    .split(/[\s,;/:：-]+/)[0];
+  const s = (raw || '').trim().toUpperCase().replace(/^INCOTERMS(?:\s*20\d{2})?\s+/, '');
+  if (!s) return '';
+  const known = ['EXW', 'FCA', 'FAS', 'FOB', 'CFR', 'CIF', 'CPT', 'CIP', 'DAP', 'DPU', 'DDP'];
+  const found = s.match(/[A-Z]{3}/g) || [];
+  for (const code of found) {
+    if (known.includes(code)) return code;
+  }
+  return '';
+}
+
+function isTtOnly(raw: string) {
+  const s = (raw || '').trim();
+  if (!s || incotermsCode(s)) return false;
+  return /t\s*\/\s*t/i.test(s) || /^tt(?:\b|\s|$)/i.test(s);
+}
+
+function effectiveIncotermsCode(raw: string) {
+  return incotermsCode(raw) || (isTtOnly(raw) ? 'FOB' : '');
+}
+
+function displayTransport(raw: string) {
+  if (isTtOnly(raw)) return 'FOB';
+  return raw;
 }
 
 function selectBl(v: string) {
@@ -160,8 +178,8 @@ function stubUpload() {
 }
 
 function payload() {
-  const contractCode = incotermsCode(contractIncoterms.value);
-  const n6Code = incotermsCode(form.n6Incoterms);
+  const contractCode = effectiveIncotermsCode(contractIncoterms.value);
+  const n6Code = effectiveIncotermsCode(form.n6Incoterms);
   const override = n6Code && n6Code !== contractCode ? form.n6Incoterms.trim() : '';
   return {
     hasCustomerWrittenInstruction: form.hasCustomerWrittenInstruction,

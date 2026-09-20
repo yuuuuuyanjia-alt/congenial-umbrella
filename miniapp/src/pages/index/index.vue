@@ -14,7 +14,7 @@
       <view class="btn" @click="go('/pages/case/hub')">合同管理</view>
       <view class="btn" @click="go('/pages/supplier/list')">供应商管理</view>
       <view class="btn" @click="go('/pages/customer/list')">客户管理</view>
-      <view class="btn" @click="go('/pages/workbench/index')">命中处置</view>
+      <view class="btn" @click="go('/pages/workbench/index')">审核工作台</view>
     </view>
 
     <view class="h2" style="margin: 8rpx 8rpx 16rpx">演示路径</view>
@@ -81,7 +81,7 @@ const paths = [
     title: '中信保高风险',
     tag: 'REVIEW',
     cls: 'badge-review',
-    desc: '新签使占用超额 2.5 万美元，高风险进入审核队列，N3 不得直接推进。',
+    desc: '新签使占用超额 2.5 万美元，高风险进入工作台（领取/放行/驳回）。放行后可推进，无需改金额；驳回后仍阻断。',
   },
   {
     caseNo: 'DEMO-NOLIMIT',

@@ -64,7 +64,7 @@ export interface ShipmentSnap {
   noBlRef?: string | null;
   /** 演示上传占位（文件名或附件编号） */
   noBlEvidenceStub?: string | null;
-  /** N6 手工覆盖合同贸易术语；空则沿用 N3 contract.incoterms */
+  /** N6 手工覆盖合同运输术语；空则沿用 N3 contract.incoterms。不得写入 T/T */
   incotermsOverride?: string | null;
 }
 
@@ -90,6 +90,7 @@ export interface SettlementSnap {
   remittanceMemoRef?: string | null;
   hasDocConsistencyProof: boolean;
   hasReleaseApproval: boolean;
+  amountFen?: number | null;
   receivedAt?: string | Date | null;
 }
 
@@ -248,6 +249,21 @@ export interface CaseSnapshot {
   sinosurePolicies: SinosurePolicySnap[];
   /** 买方其余合同未回款（不含本笔新签金额） */
   sinosureOccupancy?: SinosureOccupancySnap | null;
+  /** 中信保占用高风险工作台审核（领取 / 放行 / 驳回） */
+  occupancyReviews?: OccupancyReviewSnap[] | null;
+}
+
+export interface OccupancyReviewSnap {
+  id?: string;
+  nodeCode: string;
+  status: string;
+  band?: string | null;
+  occupancyFen: number;
+  excessFen: number;
+  insuredLimitFen: number;
+  fingerprint?: string | null;
+  claimedById?: string | null;
+  comment?: string | null;
 }
 
 export interface GateResult {

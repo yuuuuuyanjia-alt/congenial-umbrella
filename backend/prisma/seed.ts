@@ -3,6 +3,7 @@ import { NODE_CATALOG } from '../src/common/constants';
 import { enrollBuyerForCase } from '../src/customers/customer-enroll';
 import { derivePaymentDueAt } from '../src/customers/remittance';
 import { PaymentMode, resolveSchedule, rollupPaymentFields } from '../src/suppliers/payment-schedule';
+import { OccupancyReviewStatus, occupancyFingerprint } from '../src/workbench/occupancy-review';
 
 const prisma = new PrismaClient();
 
@@ -132,6 +133,7 @@ async function main() {
   await prisma.gateCheck.deleteMany();
   await prisma.auditLog.deleteMany();
   await prisma.workbenchAction.deleteMany();
+  await prisma.occupancyReview.deleteMany();
   await prisma.docMismatchFix.deleteMany();
   await prisma.tradeDocument.deleteMany();
   await prisma.settlement.deleteMany();
@@ -212,7 +214,7 @@ async function main() {
   console.log('  SINOSURE  ', limit.caseNo, limit.id, '（超额 50,000 USD 超高风险，N3 硬拦截）');
   console.log('  NOLIMIT   ', noLimit.caseNo, noLimit.id, '（中信保限额未登记，不得签订合同）');
   console.log('  LIMIT_MED ', helios.n3.caseNo, helios.n3.id, '（Helios 占用超额 13,000，中风险软提示）');
-  console.log('  LIMIT_HIGH', high.caseNo, high.id, '（超额 25,000 USD 高风险，N3 审核）');
+  console.log('  LIMIT_HIGH', high.caseNo, high.id, '（超额 25,000 USD 高风险，工作台领取/放行/驳回）');
   console.log('  SUPPLIER  ', supplierBlock.caseNo, supplierBlock.id, '（国内供应商命中不可靠实体，N5 硬拦截）');
   console.log(`客户管理：${customerCount} 个客户，${enrolledBuyers} 个已达 N3 的买方已挂档（询盘未达 N3 的如 DEMO-BLOCK 不录入）`);
   console.log('采购合同 ↔ 销售合同（先销售后采购）：');
@@ -1477,7 +1479,7 @@ async function seedNordlichtLateCase(salesId: string, approverId: string) {
           arrivalPort: 'Hamburg',
           customerPickedUp: true,
           hasRemittance: true,
-          remittedFen: 4500000,
+          remittedFen: 2000000,
         },
       },
       shipment: {
@@ -1888,7 +1890,7 @@ async function seedBareExport(opts: {
 async function seedNordlichtWipCase(salesId: string) {
   return seedBareExport({
     caseNo: 'DEMO-NORD-WIP',
-    title: '北海机电出口德国 Nordlicht（后 T/T，在手未装运）',
+    title: '北海机电出口德国 Nordlicht（CIF + 后 T/T，在手未装运）',
     scenario: 'OPEN_UNFULFILLED',
     status: 'IN_PROGRESS',
     currentNode: 'N5',
@@ -1897,7 +1899,7 @@ async function seedNordlichtWipCase(salesId: string) {
     goodsDesc: '数控机床配件',
     destination: 'Hamburg, DE',
     amountFen: 1_800_000,
-    incoterms: 'T/T',
+    incoterms: 'CIF',
     paymentTerms: '后 T/T 30 days',
     ttTiming: 'AFTER',
     ttDaysAfterShipment: 30,
@@ -1951,7 +1953,7 @@ async function seedHeliosMediumBundle(salesId: string, approverId: string) {
   });
   const wip = await seedBareExport({
     caseNo: 'DEMO-HELIOS-WIP',
-    title: '闽南泵业出口 Helios（前 T/T，未履行完毕未回款）',
+    title: '闽南泵业出口 Helios（FOB + 前 T/T，未履行完毕未回款）',
     scenario: 'EXPOSURE_OPEN_UNPAID',
     status: 'IN_PROGRESS',
     currentNode: 'N5',
@@ -1960,7 +1962,7 @@ async function seedHeliosMediumBundle(salesId: string, approverId: string) {
     goodsDesc: '工业泵',
     destination: 'Piraeus, GR',
     amountFen: 800_000,
-    incoterms: 'T/T',
+    incoterms: 'FOB',
     paymentTerms: '前 T/T',
     ttTiming: 'ADVANCE',
     ttPercentBps: 3_000,
@@ -2007,7 +2009,7 @@ async function seedHeliosMediumBundle(salesId: string, approverId: string) {
 }
 
 async function seedSinosureHighCase(salesId: string) {
-  return seedBareExport({
+  const c = await seedBareExport({
     caseNo: 'DEMO-LIMIT-HIGH',
     title: '闽南泵业出口 Caspian Spare（占用超额高风险）',
     scenario: 'SINOSURE_EXPOSURE_HIGH',
@@ -2027,12 +2029,44 @@ async function seedSinosureHighCase(salesId: string) {
       N1: { status: 'PASSED', decision: 'PASS', summary: '筛查通过' },
       N2: { status: 'PASSED', decision: 'PASS', summary: '报价要素齐全' },
       N3: {
-        status: 'IN_PROGRESS',
-        decision: null,
-        summary: '新签使占用超额 2.5 万美元，高风险须审核',
+        status: 'REVIEW',
+        decision: 'REVIEW',
+        summary: '新签使占用超额 2.5 万美元，高风险须工作台领取并放行',
       },
     },
   });
+  const occupancyFen = 7_500_000;
+  const insuredLimitFen = 5_000_000;
+  const excessFen = occupancyFen - insuredLimitFen;
+  await prisma.occupancyReview.create({
+    data: {
+      caseId: c.id,
+      nodeCode: 'N3',
+      status: OccupancyReviewStatus.OPEN,
+      band: 'HIGH',
+      occupancyFen,
+      excessFen,
+      insuredLimitFen,
+      currency: 'USD',
+      fingerprint: occupancyFingerprint({ occupancyFen, excessFen, insuredLimitFen }),
+    },
+  });
+  await prisma.auditLog.create({
+    data: {
+      caseId: c.id,
+      actorId: salesId,
+      action: 'OCCUPANCY_REVIEW_ENQUEUED',
+      nodeCode: 'N3',
+      detail: JSON.stringify({
+        band: 'HIGH',
+        occupancyFen,
+        excessFen,
+        insuredLimitFen,
+        note: '种子：占用高风险进入工作台，放行后可推进，无需改金额',
+      }),
+    },
+  });
+  return c;
 }
 
 async function attachBuyersToCustomers() {

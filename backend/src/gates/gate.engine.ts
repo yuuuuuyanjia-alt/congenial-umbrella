@@ -4,6 +4,8 @@ import {
   BUYER_ARRANGED_FREIGHT_INCOTERMS,
   CHANGE_FIELDS,
   CIF_FAMILY_INCOTERMS,
+  INCOTERMS_CODES,
+  N6_MISSING_TRANSPORT_FALLBACK,
   COMPARE_FIELDS,
   ChangeStatus,
   Decision,
@@ -19,6 +21,8 @@ import {
   N3_SINOSURE_UNREGISTERED_REASON,
   N5_SALES_LINK_REQUIRED_REASON,
   N5_SALES_NOT_SIGNED_REASON,
+  SINOSURE_EXPOSURE_HIGH_REJECTED_REASON,
+  SINOSURE_EXPOSURE_HIGH_REVIEW_REASON,
   PartyRole,
   PartyRoleLabel,
   PriceBasis,
@@ -40,7 +44,14 @@ import {
   ExposureBand,
   evaluateOccupancy,
   moneyLabel,
+  newContractFenForNode,
 } from '../customers/sinosure-exposure';
+import {
+  OccupancyReviewStatus,
+  SINOSURE_EXPOSURE_HIGH_APPROVED_ALERT,
+  isOccupancyHighApproved,
+  matchingOccupancyReview,
+} from '../workbench/occupancy-review';
 
 const HARD_GATES = new Set(['N6', 'N7', 'N9']);
 
@@ -252,10 +263,15 @@ export function evaluateN3(snap: CaseSnapshot): GateResult {
     r.missing.push('N3_DISPUTE_CLAUSE');
     r.reasons.push('缺少争议解决条款（必填）');
   }
-  if (!c.incoterms) {
+  const transportCode = parseIncotermsCode(c.incoterms);
+  if (!transportCode) {
     r.missing.push('N3_INCOTERMS');
-    r.reasons.push('未填写国际贸易术语（Incoterms）');
-  } else if (['EXW', 'DDP'].includes(c.incoterms.toUpperCase())) {
+    r.reasons.push(
+      isSettlementOnlyIncoterms(c.incoterms)
+        ? 'T/T 是结算方式，不能写入国际贸易术语；请另选 FOB/CIF 等运输术语'
+        : '未填写国际贸易术语（Incoterms）',
+    );
+  } else if (['EXW', 'DDP'].includes(transportCode)) {
     r.alerts.push(`国际贸易术语 ${c.incoterms} 对出口方货权/清关责任不利，软提示关注`);
   }
   if (!c.paymentTerms) {
@@ -278,7 +294,11 @@ export function evaluateN3(snap: CaseSnapshot): GateResult {
     r.canProceed = false;
     return r;
   }
-  return finalizeExposureDecision(r, '所有权保留与争议条款齐全，贸易术语、付款条件与中信保占用已校验');
+  return finalizeExposureDecision(
+    r,
+    snap,
+    '所有权保留与争议条款齐全，贸易术语、付款条件与中信保占用已校验',
+  );
 }
 
 export function evaluateN4(snap: CaseSnapshot): GateResult {
@@ -339,7 +359,11 @@ export function evaluateN4(snap: CaseSnapshot): GateResult {
   }
 
   if (hardMissing(r).length) return blockMissing(r);
-  return finalizeExposureDecision(r, '变更单证据链完整（diff → 客户/内部确认 → 新版本），中信保占用已按变更后金额核对');
+  return finalizeExposureDecision(
+    r,
+    snap,
+    '变更单证据链完整（diff → 客户/内部确认 → 新版本），中信保占用已按变更后金额核对',
+  );
 }
 
 export function evaluateN5(snap: CaseSnapshot): GateResult {
@@ -437,14 +461,36 @@ export function evaluateN5(snap: CaseSnapshot): GateResult {
   return r;
 }
 
-/** 从「FOB Shanghai」「Incoterms 2020 CIF」等文本取出术语代码。 */
+const KNOWN_INCOTERMS = new Set<string>(INCOTERMS_CODES);
+
+/** 文本是否含电汇结算（T/T），不论是否同时写了运输术语。 */
+export function isTtSettlementText(raw?: string | null): boolean {
+  const s = String(raw || '').trim();
+  if (!s) return false;
+  return /t\s*\/\s*t/i.test(s) || /^tt(?:\b|\s|$)/i.test(s);
+}
+
+/** 整段只是结算方式、没有可识别的运输术语（历史把 T/T 写入 incoterms）。 */
+export function isSettlementOnlyIncoterms(raw?: string | null): boolean {
+  return isTtSettlementText(raw) && !parseIncotermsCode(raw);
+}
+
+/**
+ * 从「FOB Shanghai」「Incoterms 2020 CIF」等文本取出运输术语代码。
+ * 只认国际商会 Incoterms；电汇 T/T 不是术语，**不得**按斜杠切成 `T`。
+ */
 export function parseIncotermsCode(raw?: string | null): string {
   if (!raw) return '';
-  return raw
+  const s = raw
     .trim()
     .toUpperCase()
-    .replace(/^INCOTERMS(?:\s*20\d{2})?\s+/i, '')
-    .split(/[\s,;/:：-]+/)[0];
+    .replace(/^INCOTERMS(?:\s*20\d{2})?\s+/, '');
+  if (!s) return '';
+  const found = s.match(/[A-Z]{3}/g) || [];
+  for (const code of found) {
+    if (KNOWN_INCOTERMS.has(code)) return code;
+  }
+  return '';
 }
 
 export function isBuyerArrangedFreight(incoterms?: string | null): boolean {
@@ -458,10 +504,30 @@ export function isCifFamilyIncoterms(incoterms?: string | null): boolean {
   return (CIF_FAMILY_INCOTERMS as readonly string[]).includes(code);
 }
 
-/** N6 闸门使用的贸易术语：本节点手工覆盖优先，否则取 N3 合同。 */
-export function effectiveN6Incoterms(snap: CaseSnapshot): string {
-  return parseIncotermsCode(snap.shipment?.incotermsOverride || snap.contract?.incoterms);
+function contractHasTtSettlement(contract?: { ttTiming?: string | null; paymentTerms?: string | null } | null): boolean {
+  const t = String(contract?.ttTiming || '').trim().toUpperCase();
+  if (t === 'ADVANCE' || t === 'AFTER') return true;
+  const terms = String(contract?.paymentTerms || '');
+  return /前\s*T\s*\/\s*T|后\s*T\s*\/\s*T/i.test(terms);
 }
+
+/**
+ * N6/N7 使用的运输术语：本节点手工覆盖优先，否则取 N3 合同运输术语。
+ * T/T 是结算方式，装运规则跟随所选 Incoterm。
+ * 无有效运输术语时（含历史 T/T 写入 incoterms、或已选前/后 T/T 却未填运输术语）
+ * 明确回退为 FOB（买方安排运输），避免把 T/T 切成 T 后误走卖方提单路径。
+ */
+export function effectiveN6Incoterms(snap: CaseSnapshot): string {
+  const raw = snap.shipment?.incotermsOverride || snap.contract?.incoterms;
+  const code = parseIncotermsCode(raw);
+  if (code) return code;
+  if (isSettlementOnlyIncoterms(raw) || contractHasTtSettlement(snap.contract)) {
+    return N6_MISSING_TRANSPORT_FALLBACK;
+  }
+  return '';
+}
+
+export { N6_MISSING_TRANSPORT_FALLBACK };
 
 export function isBlTypeControl(blControl?: string | null): boolean {
   return blControl === BlControl.ORIGINAL || blControl === BlControl.TELEX_RELEASE;
@@ -493,10 +559,16 @@ export function evaluateN6(snap: CaseSnapshot): GateResult {
     r.reasons.push('硬闸门：缺少内部审批');
   }
 
+  const rawIncoterms = s.incotermsOverride || snap.contract?.incoterms;
   const incoterms = effectiveN6Incoterms(snap);
   const buyerFreight = isBuyerArrangedFreight(incoterms);
   const blType = isBlTypeControl(s.blControl);
   const noBl = isNoBlControl(s.blControl);
+  if (!parseIncotermsCode(rawIncoterms) && incoterms === N6_MISSING_TRANSPORT_FALLBACK) {
+    r.alerts.push(
+      '未识别到运输术语（T/T 为结算方式，不是 Incoterm）。N6 按 FOB（买方安排运输）回退执行，不按卖方提单路径。',
+    );
+  }
 
   if (noBl) {
     if (!buyerFreight) {
@@ -564,7 +636,8 @@ export function evaluateN7(snap: CaseSnapshot): GateResult {
     const values = docs
       .map((d) => d!.fields[field])
       .filter((v) => v !== undefined && v !== null && String(v).trim() !== '')
-      .map((v) => String(v).trim().toUpperCase());
+      .map((v) => comparableDocField(field, v))
+      .filter((v): v is string => !!v);
     if (values.length < 2) continue;
     const unique = new Set(values);
     if (unique.size > 1 && !fixed.has(field)) {
@@ -575,6 +648,16 @@ export function evaluateN7(snap: CaseSnapshot): GateResult {
     }
   }
   return finalizeHard(r);
+}
+
+function comparableDocField(field: string, v: unknown): string | null {
+  const s = String(v).trim();
+  if (!s) return null;
+  if (field !== 'incoterms') return s.toUpperCase();
+  const code = parseIncotermsCode(s);
+  if (code) return code;
+  if (isSettlementOnlyIncoterms(s)) return null;
+  return s.toUpperCase();
 }
 
 export function evaluateN8(snap: CaseSnapshot): GateResult {
@@ -947,7 +1030,7 @@ function applySinosureGate(
   const exp = evaluateOccupancy({
     openUnpaidFen: snap.sinosureOccupancy?.openUnpaidFen ?? 0,
     fulfilledUnpaidFen: snap.sinosureOccupancy?.fulfilledUnpaidFen ?? 0,
-    newContractFen: Math.max(0, totalFen || 0),
+    newContractFen: newContractFenForNode({ nodeCode, nodes: snap.nodes, totalFen }),
     insuredLimitFen: pol?.insuredLimitFen ?? 0,
     currency: pol?.currency || currency || 'USD',
     limitCurrency: pol?.currency || null,
@@ -982,13 +1065,29 @@ function hardMissing(r: GateResult): string[] {
   return (r.missing || []).filter((m) => !/_SINOSURE_EXPOSURE_HIGH$/.test(m));
 }
 
-function finalizeExposureDecision(r: GateResult, passReason: string): GateResult {
+function finalizeExposureDecision(r: GateResult, snap: CaseSnapshot, passReason: string): GateResult {
   const exp = r.exposure;
   if (hardMissing(r).length) return blockMissing(r);
   if (exp?.band === ExposureBand.HIGH) {
+    if (isOccupancyHighApproved(snap.occupancyReviews, r.nodeCode, exp)) {
+      r.decision = Decision.SOFT_ALERT;
+      r.canProceed = true;
+      if (!r.alerts.includes(SINOSURE_EXPOSURE_HIGH_APPROVED_ALERT)) {
+        r.alerts.push(SINOSURE_EXPOSURE_HIGH_APPROVED_ALERT);
+      }
+      return r;
+    }
     r.missing.push(`${r.nodeCode}_SINOSURE_EXPOSURE_HIGH`);
     r.decision = Decision.REVIEW;
     r.canProceed = false;
+    const review = matchingOccupancyReview(snap.occupancyReviews, r.nodeCode, exp);
+    if (review?.status === OccupancyReviewStatus.REJECTED) {
+      if (!r.reasons.includes(SINOSURE_EXPOSURE_HIGH_REJECTED_REASON)) {
+        r.reasons.push(SINOSURE_EXPOSURE_HIGH_REJECTED_REASON);
+      }
+    } else if (!r.reasons.includes(SINOSURE_EXPOSURE_HIGH_REVIEW_REASON)) {
+      r.reasons.push(SINOSURE_EXPOSURE_HIGH_REVIEW_REASON);
+    }
     return r;
   }
   if (r.alerts.length || exp?.band === ExposureBand.MEDIUM || exp?.band === ExposureBand.BELOW_MEDIUM) {

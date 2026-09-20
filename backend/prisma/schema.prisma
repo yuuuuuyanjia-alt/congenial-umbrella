@@ -19,6 +19,8 @@ model User {
   auditLogs        AuditLog[]
   workbenchActions WorkbenchAction[]
   approvals        Shipment[]        @relation("ShipmentApprover")
+  occupancyClaims    OccupancyReview[] @relation("OccupancyClaimedBy")
+  occupancyDecisions OccupancyReview[] @relation("OccupancyDecidedBy")
 }
 
 /// 客户主数据：案件到达 N3 后由买方录入；按规范化名称+国家或税号合并，跨案件查看限额与收汇
@@ -94,6 +96,7 @@ model TradeCase {
   customs                 CustomsDeclaration?
   evidences               Evidence[]
   sinosurePolicies        SinosurePolicy[]
+  occupancyReviews        OccupancyReview[]
 }
 
 model Party {
@@ -185,7 +188,9 @@ model Contract {
   id                  String    @id @default(cuid())
   caseId              String    @unique
   counterparty        String
+  /// 运输术语（Incoterms）：FOB / CIF / CIP 等。不得写入 T/T 等结算方式
   incoterms           String?
+  /// 结算/付款条件：L/C、OA、前 T/T、后 T/T 30 days 等。与 incoterms 独立
   paymentTerms        String?
   hasRetentionOfTitle Boolean   @default(false)
   hasDisputeClause    Boolean   @default(false)
@@ -207,7 +212,7 @@ model Contract {
   shipmentDate        DateTime?
   /// FOB/EXW/FAS/FCA：国内段到达口岸/港口时间；到达即完成国内交付
   domesticPortArrivalAt DateTime?
-  /// T/T 子类：ADVANCE 前 T/T / AFTER 后 T/T（与 FOB、CIF 并列的贸易条件，不是独立结算方式）
+  /// 电汇结算子类：ADVANCE 前 T/T / AFTER 后 T/T。独立于运输术语，可与 FOB/CIF 组合
   ttTiming            String?
   /// 前 T/T 预付款比例（基点，10000=100%）
   ttPercentBps        Int?
@@ -221,9 +226,9 @@ model Contract {
   arrivalPort         String?
   /// 客户是否提货：true 已提货 / false 未提货 / null 未填
   customerPickedUp    Boolean?
-  /// 是否收汇
+  /// 是否收汇（展示缓存）。已回款只认 N9 Settlement 水单/到账；保存销售合同时不改本字段
   hasRemittance       Boolean   @default(false)
-  /// 已收汇金额（分），与合同币种一致；未收汇金额 = 合同总额 − 本字段
+  /// 已收汇金额（分）展示缓存，由 N9 到账回写；未收汇 = 合同总额 − N9 到账
   remittedFen         Int       @default(0)
   updatedAt           DateTime  @updatedAt
   case                TradeCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
@@ -285,24 +290,57 @@ model Settlement {
   hasDocConsistencyProof Boolean   @default(false)
   hasReleaseApproval     Boolean   @default(false)
   amountFen              Int?
-  /// 实际到账/收汇日期，与合同 paymentDueAt 比较得出按期/逾期
+  /// 实际到账/收汇日期，与合同 paymentDueAt 比较得出按期/逾期。已回款（列表已完成 / 占用释放）只认本表水单或到账。
   receivedAt             DateTime?
   updatedAt              DateTime  @updatedAt
   case                   TradeCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
 }
 
-/// 案例工作台处置（误报排除 / 确认真实 / 补充信息 / 持续监控）
+/// 中信保占用高风险审核（领取 / 放行 / 驳回）。超高风险不入列；中风险不入列。
+model OccupancyReview {
+  id              String   @id @default(cuid())
+  caseId          String
+  nodeCode        String
+  status          String
+  band            String   @default("HIGH")
+  occupancyFen    Int
+  excessFen       Int
+  insuredLimitFen Int
+  currency        String   @default("USD")
+  fingerprint     String
+  claimedById     String?
+  claimedAt       DateTime?
+  decidedById     String?
+  decidedAt       DateTime?
+  comment         String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  case            TradeCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  claimedBy       User?     @relation("OccupancyClaimedBy", fields: [claimedById], references: [id], onDelete: SetNull)
+  decidedBy       User?     @relation("OccupancyDecidedBy", fields: [decidedById], references: [id], onDelete: SetNull)
+  actions         WorkbenchAction[]
+
+  @@index([caseId, nodeCode])
+  @@index([status])
+  @@index([fingerprint])
+}
+
+/// 案例工作台处置（筛查命中 + 占用高风险领取/放行/驳回）
 model WorkbenchAction {
-  id        String         @id @default(cuid())
-  caseId    String
-  hitId     String?
-  actorId   String?
-  action    String
-  comment   String?
-  createdAt DateTime       @default(now())
-  case      TradeCase      @relation(fields: [caseId], references: [id], onDelete: Cascade)
-  hit       ScreeningHit?  @relation(fields: [hitId], references: [id], onDelete: SetNull)
-  actor     User?          @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  id                String           @id @default(cuid())
+  caseId            String
+  hitId             String?
+  occupancyReviewId String?
+  actorId           String?
+  action            String
+  comment           String?
+  createdAt         DateTime         @default(now())
+  case              TradeCase        @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  hit               ScreeningHit?    @relation(fields: [hitId], references: [id], onDelete: SetNull)
+  occupancyReview   OccupancyReview? @relation(fields: [occupancyReviewId], references: [id], onDelete: SetNull)
+  actor             User?            @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([occupancyReviewId])
 }
 
 /// 仅追加审计日志：禁止更新/删除接口

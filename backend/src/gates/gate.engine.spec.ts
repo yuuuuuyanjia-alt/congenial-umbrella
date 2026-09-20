@@ -1,4 +1,4 @@
-import { Decision, N3_SINOSURE_UNREGISTERED_REASON } from '../common/constants';
+import { Decision, N3_SINOSURE_UNREGISTERED_REASON, SINOSURE_EXPOSURE_HIGH_REVIEW_REASON } from '../common/constants';
 import { CaseSnapshot } from '../common/types';
 import {
   evaluateN1,
@@ -11,9 +11,12 @@ import {
   evaluateN7,
   evaluateN8,
   evaluateN9,
+  effectiveN6Incoterms,
   isCifFamilyIncoterms,
   nextNode,
+  parseIncotermsCode,
 } from './gate.engine';
+import { OccupancyReviewStatus, occupancyFingerprint } from '../workbench/occupancy-review';
 
 function baseSnap(over: Partial<CaseSnapshot> = {}): CaseSnapshot {
   return {
@@ -183,6 +186,7 @@ function baseSnap(over: Partial<CaseSnapshot> = {}): CaseSnapshot {
         confirmedExisting: true,
       },
     ],
+    occupancyReviews: [],
     ...over,
   };
 }
@@ -447,6 +451,104 @@ describe('闸门引擎 MVP 节点', () => {
     expect(r.missing).toContain('N3_SINOSURE_EXPOSURE_HIGH');
     expect(r.exposure?.band).toBe('HIGH');
     expect(r.exposure?.excessFen).toBe(2_800_000);
+    expect(r.reasons.join('')).toContain('工作台');
+  });
+
+  it('N3 高风险经工作台放行后可推进，驳回后仍阻断', () => {
+    const highPolicy = {
+      nodeCode: 'N3',
+      evidenceRef: 'SIN-HIGH',
+      evidenceId: 'ev-sin-high',
+      insuredLimitFen: 10_000_000,
+      currency: 'USD',
+    };
+    const exp = { occupancyFen: 12_800_000, excessFen: 2_800_000, insuredLimitFen: 10_000_000 };
+    const approved = evaluateN3(
+      baseSnap({
+        sinosurePolicies: [highPolicy],
+        occupancyReviews: [
+          {
+            nodeCode: 'N3',
+            status: OccupancyReviewStatus.APPROVED,
+            ...exp,
+            fingerprint: occupancyFingerprint(exp),
+          },
+        ],
+      }),
+    );
+    expect(approved.canProceed).toBe(true);
+    expect(approved.decision).toBe(Decision.SOFT_ALERT);
+    expect(approved.missing).not.toContain('N3_SINOSURE_EXPOSURE_HIGH');
+    expect(approved.alerts.join('')).toContain('已放行');
+
+    const rejected = evaluateN3(
+      baseSnap({
+        sinosurePolicies: [highPolicy],
+        occupancyReviews: [
+          {
+            nodeCode: 'N3',
+            status: OccupancyReviewStatus.REJECTED,
+            ...exp,
+            fingerprint: occupancyFingerprint(exp),
+          },
+        ],
+      }),
+    );
+    expect(rejected.canProceed).toBe(false);
+    expect(rejected.decision).toBe(Decision.REVIEW);
+    expect(rejected.missing).toContain('N3_SINOSURE_EXPOSURE_HIGH');
+    expect(rejected.reasons.join('')).toContain('驳回');
+
+    const stale = evaluateN3(
+      baseSnap({
+        sinosurePolicies: [highPolicy],
+        occupancyReviews: [
+          {
+            nodeCode: 'N3',
+            status: OccupancyReviewStatus.APPROVED,
+            occupancyFen: 1,
+            excessFen: 1,
+            insuredLimitFen: 1,
+            fingerprint: '1|1|1',
+          },
+        ],
+      }),
+    );
+    expect(stale.canProceed).toBe(false);
+    expect(stale.reasons).toEqual(expect.arrayContaining([SINOSURE_EXPOSURE_HIGH_REVIEW_REASON]));
+  });
+
+  it('N3 超高风险即使工作台已放行仍硬拦截', () => {
+    const r = evaluateN3(
+      baseSnap({
+        sinosurePolicies: [
+          {
+            nodeCode: 'N3',
+            evidenceRef: 'SIN-ULTRA',
+            evidenceId: 'ev-sin-ultra',
+            insuredLimitFen: 100000,
+            currency: 'USD',
+          },
+        ],
+        occupancyReviews: [
+          {
+            nodeCode: 'N3',
+            status: OccupancyReviewStatus.APPROVED,
+            occupancyFen: 12_800_000,
+            excessFen: 12_700_000,
+            insuredLimitFen: 100000,
+            fingerprint: occupancyFingerprint({
+              occupancyFen: 12_800_000,
+              excessFen: 12_700_000,
+              insuredLimitFen: 100000,
+            }),
+          },
+        ],
+      }),
+    );
+    expect(r.canProceed).toBe(false);
+    expect(r.decision).toBe(Decision.HARD_BLOCK);
+    expect(r.missing).toContain('N3_SINOSURE_OVER_LIMIT');
   });
 
   it('N3 买方占用含未履行/已履行未回款 + 新签，超额满 5 万硬拦截', () => {
@@ -483,6 +585,21 @@ describe('闸门引擎 MVP 节点', () => {
     expect(r.exposure?.remainingFen).toBe(32_900_000);
     expect(r.exposure?.band).toBe('WITHIN_LIMIT');
     expect(r.reasons.join('')).toContain('剩余额度');
+  });
+
+  it('N3 已 PASSED 时闸门不再把本案新签金额叠加上已计入的未回款', () => {
+    const r = evaluateN3(
+      baseSnap({
+        nodes: [
+          { code: 'N3', status: 'PASSED' },
+          { code: 'N5', status: 'IN_PROGRESS' },
+        ],
+        sinosureOccupancy: { openUnpaidFen: 12_800_000, fulfilledUnpaidFen: 0 },
+      }),
+    );
+    expect(r.exposure?.newContractFen).toBe(0);
+    expect(r.exposure?.occupancyFen).toBe(12_800_000);
+    expect(r.canProceed).toBe(true);
   });
 
   it('N6 缺少书面指示/审批/提单控制拒绝推进', () => {
@@ -716,6 +833,80 @@ describe('闸门引擎 MVP 节点', () => {
     expect(evaluateN6(baseSnap()).canProceed).toBe(true);
   });
 
+  it('parseIncotermsCode 永不把 T/T 切成 T', () => {
+    expect(parseIncotermsCode('T/T')).toBe('');
+    expect(parseIncotermsCode('T/T')).not.toBe('T');
+    expect(parseIncotermsCode('t/t 预付')).toBe('');
+    expect(parseIncotermsCode('FOB Shanghai')).toBe('FOB');
+    expect(parseIncotermsCode('FOB + 前 T/T')).toBe('FOB');
+  });
+
+  it('N6 FOB + 前 T/T 跟随 FOB 运输规则，不因结算方式走卖方提单', () => {
+    const r = evaluateN6(
+      baseSnap({
+        contract: {
+          ...baseSnap().contract!,
+          incoterms: 'FOB',
+          paymentTerms: '前 T/T',
+          ttTiming: 'ADVANCE',
+        },
+        shipment: {
+          hasCustomerWrittenInstruction: true,
+          instructionRef: 'INST-TT-FOB',
+          hasInternalApproval: true,
+          blControl: null,
+        },
+      }),
+    );
+    expect(r.canProceed).toBe(false);
+    expect(r.missing).toContain('N6_NO_BL_PATH');
+    expect(r.missing).not.toContain('N6_BL_CONTROL');
+  });
+
+  it('N6 CIF + 后 T/T 仍按 CIF 卖方出单，须正本或电放', () => {
+    const r = evaluateN6(
+      baseSnap({
+        contract: {
+          ...baseSnap().contract!,
+          incoterms: 'CIF',
+          paymentTerms: '后 T/T 30 days',
+          ttTiming: 'AFTER',
+        },
+        shipment: {
+          hasCustomerWrittenInstruction: true,
+          instructionRef: 'INST-CIF-TT',
+          hasInternalApproval: true,
+          blControl: null,
+        },
+      }),
+    );
+    expect(r.missing).toContain('N6_BL_CONTROL');
+    expect(r.missing).not.toContain('N6_NO_BL_PATH');
+  });
+
+  it('N6 历史把 T/T 写入 incoterms 时回退 FOB，不得切成 T 后走卖方提单', () => {
+    const snap = baseSnap({
+      contract: {
+        ...baseSnap().contract!,
+        incoterms: 'T/T',
+        paymentTerms: '后 T/T 30 days',
+        ttTiming: 'AFTER',
+      },
+      shipment: {
+        hasCustomerWrittenInstruction: true,
+        instructionRef: 'INST-TT-LEGACY',
+        hasInternalApproval: true,
+        blControl: null,
+      },
+    });
+    expect(parseIncotermsCode('T/T')).toBe('');
+    expect(effectiveN6Incoterms(snap)).toBe('FOB');
+    const r = evaluateN6(snap);
+    expect(r.missing).toContain('N6_NO_BL_PATH');
+    expect(r.missing).not.toContain('N6_BL_CONTROL');
+    expect(r.alerts.some((a) => a.includes('FOB'))).toBe(true);
+  });
+
   it('N7 缺终稿合同或单证不一致且无修改记录则拒绝', () => {
     const missingFinal = evaluateN7(
       baseSnap({
@@ -756,6 +947,20 @@ describe('闸门引擎 MVP 节点', () => {
       }),
     );
     expect(r.canProceed).toBe(true);
+  });
+
+  it('N7 运输术语按 Incoterms 比对，文档里的 T/T 结算不参与、不与 FOB 误判不一致', () => {
+    const r = evaluateN7(
+      baseSnap({
+        contract: { ...baseSnap().contract!, incoterms: 'FOB', ttTiming: 'ADVANCE', paymentTerms: '前 T/T' },
+        documents: baseSnap().documents.map((d) => ({
+          ...d,
+          fields: { ...d.fields, incoterms: d.type === 'INVOICE' ? 'T/T' : 'FOB' },
+        })),
+      }),
+    );
+    expect(r.canProceed).toBe(true);
+    expect(r.missing.some((m) => m.includes('incoterms'))).toBe(false);
   });
 
   it('N9 缺少第三方证明/汇款附言/单证证明/放行审批拒绝', () => {
@@ -1036,6 +1241,67 @@ describe('闸门引擎 N4 变更管理', () => {
     expect(r.exposure?.band).toBe('BELOW_MEDIUM');
     expect(r.exposure?.excessFen).toBe(800_000);
     expect(r.alerts.join('')).toContain('超额');
+  });
+
+  it('N4 高风险占用须工作台放行，放行后可推进', () => {
+    const applied = {
+      id: 'ch1',
+      changeNo: 'CO-001',
+      version: 1,
+      status: 'APPLIED',
+      isSensitive: false,
+      customerAck: true,
+      customerAckEvidenceId: 'ev-c',
+      internalAck: true,
+      internalAckEvidenceId: 'ev-i',
+      approved: false,
+      diffs: [{ field: 'quantity', fieldLabel: '数量', oldValue: '8', newValue: '10' }],
+    };
+    const policies = [
+      {
+        nodeCode: 'N3',
+        evidenceRef: 'SIN-HIGH',
+        evidenceId: 'ev-sin-n3',
+        insuredLimitFen: 10_000_000,
+        currency: 'USD',
+      },
+      {
+        nodeCode: 'N4',
+        evidenceRef: 'SIN-HIGH',
+        evidenceId: 'ev-sin-n4',
+        insuredLimitFen: 10_000_000,
+        currency: 'USD',
+        confirmedExisting: true,
+      },
+    ];
+    const blocked = evaluateN4(baseSnap({ sinosurePolicies: policies, changeOrders: [applied] }));
+    expect(blocked.canProceed).toBe(false);
+    expect(blocked.decision).toBe(Decision.REVIEW);
+    expect(blocked.missing).toContain('N4_SINOSURE_EXPOSURE_HIGH');
+
+    const exp = {
+      occupancyFen: blocked.exposure!.occupancyFen,
+      excessFen: blocked.exposure!.excessFen,
+      insuredLimitFen: blocked.exposure!.insuredLimitFen,
+    };
+    const released = evaluateN4(
+      baseSnap({
+        sinosurePolicies: policies,
+        changeOrders: [applied],
+        occupancyReviews: [
+          {
+            nodeCode: 'N4',
+            status: OccupancyReviewStatus.APPROVED,
+            occupancyFen: exp.occupancyFen,
+            excessFen: exp.excessFen,
+            insuredLimitFen: exp.insuredLimitFen ?? 0,
+            fingerprint: occupancyFingerprint(exp),
+          },
+        ],
+      }),
+    );
+    expect(released.canProceed).toBe(true);
+    expect(released.missing).not.toContain('N4_SINOSURE_EXPOSURE_HIGH');
   });
 
   it('无变更单可直接过闸且不要求 N4 中信保', () => {

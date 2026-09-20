@@ -13,6 +13,8 @@ import {
   Disposition,
   EportStatus,
   EvidenceKind,
+  ADVANCE_IDEMPOTENT_REASON,
+  ADVANCE_NOT_CURRENT_REASON,
   N3_SINOSURE_UNREGISTERED_REASON,
   N5_SALES_LINK_REQUIRED_REASON,
   N5_SALES_NOT_SIGNED_REASON,
@@ -22,9 +24,16 @@ import {
   PartyRoleLabel,
   QuoteStatus,
   RiskLevel,
+  SINOSURE_EXPOSURE_HIGH_REVIEW_REASON,
   VersionStatus,
 } from '../common/constants';
 import { evaluateN3ContractSave, isChangeField, isSensitiveChange, nextNode } from '../gates/gate.engine';
+import {
+  OCCUPANCY_QUEUE_STATUSES,
+  OccupancyWorkbenchAction,
+  isOccupancyWorkbenchAction,
+  occupancyActionNextStatus,
+} from '../workbench/occupancy-review';
 import {
   explicitSalesCaseId,
   isEligibleSalesCase,
@@ -38,14 +47,13 @@ import {
   signedSalesOptions,
   supplierNameOf,
 } from './sales-link';
+import { advanceResponseNextNode, laterNode, resolveAdvance } from './advance-guard';
 import {
   composeTtPaymentTerms,
+  normalizeTransportIncoterms,
   presentSalesContract,
   presentSalesShipmentStatus,
-  resolveRemittedFen,
-  resolveTradeTerm,
   resolveTtTiming,
-  TRADE_TERM,
   TT_TIMING,
 } from './sales-contract';
 import {
@@ -66,6 +74,7 @@ import {
 import { GateResult } from '../common/types';
 import { CustomersService } from '../customers/customers.service';
 import { derivePaymentDueAt } from '../customers/remittance';
+import { receivedFenOf } from '../customers/sinosure-exposure';
 import { SuppliersService } from '../suppliers/suppliers.service';
 import { buildInstallmentRecords, PaymentMode, presentPlanPayment, validateStagedInstallments } from '../suppliers/payment-schedule';
 
@@ -89,6 +98,7 @@ export class CasesService {
         hits: true,
         contract: true,
         shipment: true,
+        settlement: true,
         procurementPlan: {
           include: {
             salesCase: { include: { contract: true, parties: true, nodes: true } },
@@ -106,7 +116,7 @@ export class CasesService {
     return filtered.map((c) => {
       const salesLink = c.procurementPlan?.salesCase ? presentSalesLink(c.procurementPlan.salesCase) : null;
       const supplierName = supplierNameOf(c);
-      const contract = presentSalesContract(c.contract);
+      const contract = presentSalesContract(c.contract, c.settlement);
       const shipmentStatus = presentSalesShipmentStatus({
         status: c.status,
         currentNode: c.currentNode,
@@ -114,6 +124,7 @@ export class CasesService {
         contract,
         shipment: c.shipment,
         amountFen: contract?.amountFen ?? c.amountFen,
+        settlement: c.settlement,
       });
       return {
         ...c,
@@ -161,6 +172,13 @@ export class CasesService {
         customs: true,
         evidences: { orderBy: { createdAt: 'asc' } },
         sinosurePolicies: { orderBy: { createdAt: 'asc' } },
+        occupancyReviews: {
+          orderBy: { createdAt: 'desc' },
+          include: {
+            claimedBy: { select: { id: true, name: true, role: true } },
+            decidedBy: { select: { id: true, name: true, role: true } },
+          },
+        },
       },
     });
     if (!c) throw new NotFoundException('案件不存在');
@@ -168,6 +186,16 @@ export class CasesService {
     const sinosureExposure = await this.customers.occupancyForCase(id);
     const salesLink = c.procurementPlan?.salesCase ? presentSalesLink(c.procurementPlan.salesCase) : null;
     const supplierName = supplierNameOf(c);
+    const contract = presentSalesContract(c.contract, c.settlement);
+    const shipmentStatus = presentSalesShipmentStatus({
+      status: c.status,
+      currentNode: c.currentNode,
+      nodes: c.nodes,
+      contract,
+      shipment: c.shipment,
+      amountFen: contract?.amountFen ?? c.amountFen,
+      settlement: c.settlement,
+    });
     return {
       ...c,
       customer: salesCustomerOf(c),
@@ -181,7 +209,8 @@ export class CasesService {
           : null,
       }),
       catalog: NODE_CATALOG,
-      contract: presentSalesContract(c.contract),
+      contract,
+      ...shipmentStatus,
       sinosureExposure,
       kycReports: c.kycReports.map((k) => ({ ...k, payload: safeJson(k.payload) })),
       documents: c.documents.map((d) => ({ ...d, fields: safeJson(d.fieldsJson) })),
@@ -307,28 +336,31 @@ export class CasesService {
       paymentDueAt,
       shipmentDate,
       etaDate,
-      remittedFen,
-      hasRemittance,
+      remittedFen: _ignoredRemittedFen,
+      hasRemittance: _ignoredHasRemittance,
       customerPickedUp,
       domesticPortArrivalAt,
       ...rest
     } = dto;
     const parsedDelivery = parseDate(deliveryDate);
     const parsedShipment = parseDate(shipmentDate);
-    const ttTiming = resolveTtTiming({ ttTiming: rest.ttTiming, paymentTerms: rest.paymentTerms });
-    if (resolveTradeTerm(rest.incoterms) === TRADE_TERM.TT) {
-      rest.incoterms = TRADE_TERM.TT;
-      rest.ttTiming = ttTiming || TT_TIMING.ADVANCE;
-      rest.paymentTerms = composeTtPaymentTerms(rest.ttTiming, rest.ttDaysAfterShipment);
+    const ttTiming = resolveTtTiming({
+      ttTiming: rest.ttTiming,
+      paymentTerms: rest.paymentTerms,
+      incoterms: rest.incoterms,
+    });
+    rest.incoterms = normalizeTransportIncoterms(rest.incoterms);
+    if (ttTiming) {
+      rest.ttTiming = ttTiming;
+      rest.paymentTerms = composeTtPaymentTerms(ttTiming, rest.ttDaysAfterShipment);
+    } else {
+      delete rest.ttTiming;
     }
-    const dueSource =
-      rest.ttTiming === TT_TIMING.AFTER && parsedShipment ? parsedShipment : parsedDelivery;
-    const resolvedRemitted = resolveRemittedFen({ hasRemittance, remittedFen });
+    const dueSource = ttTiming === TT_TIMING.AFTER && parsedShipment ? parsedShipment : parsedDelivery;
     const data = {
       ...rest,
-      hasRemittance: !!hasRemittance,
+      ttTiming: ttTiming || null,
       customerPickedUp: customerPickedUp ?? null,
-      remittedFen: resolvedRemitted,
       deliveryDate: parsedDelivery,
       paymentDueAt: parseDate(paymentDueAt) ?? derivePaymentDueAt(dueSource, rest.paymentTerms),
       shipmentDate: parsedShipment,
@@ -359,11 +391,14 @@ export class CasesService {
       nodeCode: 'N3',
       detail: dto,
     });
+    const occupancyGate = await this.gates.refreshOccupancyReview(caseId, 'N3');
+    await this.applyOccupancyNodeStatus(caseId, 'N3', occupancyGate);
     const sinosureExposure = await this.customers.occupancyForCase(caseId, {
       newAmountFen: dto.amountFen ?? undefined,
       newCurrency: dto.currency,
     });
-    return { ...presentSalesContract(row), sinosureExposure };
+    const settlement = await this.prisma.settlement.findUnique({ where: { caseId } });
+    return { ...presentSalesContract(row, settlement), sinosureExposure, occupancyGate };
   }
 
   async saveSinosure(caseId: string, nodeCode: string, dto: SaveSinosureDto, actorId?: string) {
@@ -456,10 +491,12 @@ export class CasesService {
         confirmedExisting,
       },
     });
+    const occupancyGate = await this.gates.refreshOccupancyReview(caseId, code);
+    await this.applyOccupancyNodeStatus(caseId, code, occupancyGate);
     const sinosureExposure = await this.customers.occupancyForCase(caseId, {
       newCurrency: currency,
     });
-    return { ...row, sinosureExposure };
+    return { ...row, sinosureExposure, occupancyGate };
   }
 
   async saveQuote(caseId: string, dto: SaveQuoteDto, actorId?: string) {
@@ -988,7 +1025,7 @@ export class CasesService {
       noBlReason: dto.noBlReason || null,
       noBlRef: dto.noBlRef || null,
       noBlEvidenceStub: dto.noBlEvidenceStub || null,
-      incotermsOverride: dto.incotermsOverride || null,
+      incotermsOverride: normalizeTransportIncoterms(dto.incotermsOverride) || null,
     };
     const row = await this.prisma.shipment.upsert({
       where: { caseId },
@@ -1057,6 +1094,20 @@ export class CasesService {
       create: { caseId, ...rest, isThirdParty, receivedAt: parsedReceived },
       update: { ...rest, isThirdParty, receivedAt: parsedReceived },
     });
+    const trade = await this.prisma.tradeCase.findUnique({
+      where: { id: caseId },
+      include: { contract: true },
+    });
+    if (trade?.contract) {
+      const amountFen = trade.contract.amountFen ?? trade.amountFen ?? 0;
+      await this.prisma.contract.update({
+        where: { caseId },
+        data: {
+          hasRemittance: !!(row.receivedAt || row.hasRemittanceMemo),
+          remittedFen: receivedFenOf(row, amountFen),
+        },
+      });
+    }
     await this.touchNode(caseId, 'N9', NodeStatus.IN_PROGRESS);
     await this.audit.append({
       caseId,
@@ -1082,11 +1133,44 @@ export class CasesService {
   }
 
   async advance(caseId: string, nodeCode: string, actorId?: string) {
-    await this.ensureCase(caseId);
+    const tradeCase = await this.ensureCase(caseId);
     const node = await this.prisma.caseNode.findUnique({
       where: { caseId_code: { caseId, code: nodeCode } },
     });
     if (!node) throw new NotFoundException('节点不存在');
+
+    const guard = resolveAdvance({
+      currentNode: tradeCase.currentNode,
+      requestedNode: nodeCode,
+      requestedStatus: node.status,
+    });
+    if (guard.kind === 'idempotent') {
+      return {
+        stub: false,
+        idempotent: true,
+        result: {
+          nodeCode,
+          decision: node.decision || Decision.PASS,
+          canProceed: true,
+          missing: [],
+          reasons: [guard.reason || ADVANCE_IDEMPOTENT_REASON],
+          alerts: [],
+        },
+        nextNode: advanceResponseNextNode(tradeCase.currentNode),
+        currentNode: tradeCase.currentNode,
+      };
+    }
+    if (guard.kind === 'reject') {
+      throw new HttpException(
+        {
+          code: guard.code,
+          message: guard.message || ADVANCE_NOT_CURRENT_REASON,
+          currentNode: tradeCase.currentNode,
+          requestedNode: nodeCode,
+        },
+        HttpStatus.CONFLICT,
+      );
+    }
 
     const result = await this.gates.evaluateAndPersist(caseId, nodeCode);
     await this.audit.append({
@@ -1112,7 +1196,7 @@ export class CasesService {
           data: {
             status: blocked ? CaseStatus.BLOCKED : CaseStatus.IN_PROGRESS,
             overallRisk: blocked ? RiskLevel.HIGH : RiskLevel.MEDIUM,
-            currentNode: nodeCode,
+            currentNode: laterNode(tradeCase.currentNode, nodeCode),
           },
         });
       }
@@ -1131,20 +1215,28 @@ export class CasesService {
     const snap = await this.gates.snapshot(caseId);
     const next = nextNode(nodeCode, snap);
     const done = nodeCode === 'N9';
+    const currentNode = laterNode(tradeCase.currentNode, done ? 'N9' : next ?? nodeCode);
     await this.prisma.tradeCase.update({
       where: { id: caseId },
       data: {
-        currentNode: done ? 'N9' : next ?? nodeCode,
+        currentNode,
         status: done ? CaseStatus.COMPLETED : CaseStatus.IN_PROGRESS,
         overallRisk: result.decision === Decision.SOFT_ALERT ? RiskLevel.LOW : undefined,
       },
     });
     await this.enrollBuyerIfReachedN3(caseId, actorId);
-    return { stub: false, result, nextNode: done ? null : next };
+    return { stub: false, result, nextNode: done ? null : next, currentNode };
   }
 
-  async applyWorkbench(caseId: string, input: { hitId?: string; action: string; comment?: string }, actorId?: string) {
+  async applyWorkbench(
+    caseId: string,
+    input: { hitId?: string; reviewId?: string; action: string; comment?: string },
+    actorId?: string,
+  ) {
     await this.ensureCase(caseId);
+    if (input.reviewId || isOccupancyWorkbenchAction(input.action)) {
+      return this.applyOccupancyWorkbench(caseId, input, actorId);
+    }
     let hit: { id: string; disposition: string; nodeCode?: string } | null = null;
     if (input.hitId) {
       hit = await this.prisma.screeningHit.findUnique({ where: { id: input.hitId } });
@@ -1204,6 +1296,113 @@ export class CasesService {
       },
     });
     return { action, hit, n1: nodeCode === 'N1' ? reeval : undefined, n5: nodeCode === 'N5' ? reeval : undefined, gate: reeval };
+  }
+
+  private async applyOccupancyWorkbench(
+    caseId: string,
+    input: { hitId?: string; reviewId?: string; action: string; comment?: string },
+    actorId?: string,
+  ) {
+    const actor = actorId?.trim() || null;
+    let review = input.reviewId
+      ? await this.prisma.occupancyReview.findUnique({ where: { id: input.reviewId } })
+      : await this.prisma.occupancyReview.findFirst({
+          where: { caseId, status: { in: [...OCCUPANCY_QUEUE_STATUSES] } },
+          orderBy: { createdAt: 'desc' },
+        });
+    if (!review || review.caseId !== caseId) {
+      throw new NotFoundException('占用高风险审核任务不存在');
+    }
+    const next = occupancyActionNextStatus(review.status, input.action);
+    if (!next.ok) throw new BadRequestException(next.error);
+
+    const now = new Date();
+    const data: {
+      status: string;
+      comment?: string | null;
+      claimedById?: string | null;
+      claimedAt?: Date | null;
+      decidedById?: string | null;
+      decidedAt?: Date | null;
+    } = {
+      status: next.status,
+      comment: input.comment ?? review.comment,
+    };
+    if (input.action === OccupancyWorkbenchAction.CLAIM || !review.claimedAt) {
+      data.claimedById = actor || review.claimedById;
+      data.claimedAt = review.claimedAt || now;
+    }
+    if (
+      input.action === OccupancyWorkbenchAction.APPROVE ||
+      input.action === OccupancyWorkbenchAction.REJECT
+    ) {
+      data.decidedById = actor;
+      data.decidedAt = now;
+    }
+    review = await this.prisma.occupancyReview.update({
+      where: { id: review.id },
+      data,
+    });
+    const action = await this.prisma.workbenchAction.create({
+      data: {
+        caseId,
+        occupancyReviewId: review.id,
+        actorId: actor,
+        action: input.action,
+        comment: input.comment,
+      },
+    });
+    await this.audit.append({
+      caseId,
+      actorId: actor,
+      action: `WORKBENCH_${input.action}`,
+      nodeCode: review.nodeCode,
+      detail: {
+        ...input,
+        reviewId: review.id,
+        status: review.status,
+        fingerprint: review.fingerprint,
+        occupancyFen: review.occupancyFen,
+        excessFen: review.excessFen,
+      },
+    });
+    const nodeCode = review.nodeCode;
+    const reeval: GateResult = await this.gates.evaluateAndPersist(caseId, nodeCode);
+    await this.applyOccupancyNodeStatus(caseId, nodeCode, reeval);
+    await this.prisma.tradeCase.update({
+      where: { id: caseId },
+      data: {
+        status: reeval.decision === Decision.HARD_BLOCK ? CaseStatus.BLOCKED : CaseStatus.IN_PROGRESS,
+        overallRisk:
+          reeval.decision === Decision.HARD_BLOCK
+            ? RiskLevel.HIGH
+            : review.status === OccupancyWorkbenchAction.APPROVE || reeval.canProceed
+              ? RiskLevel.MEDIUM
+              : RiskLevel.MEDIUM,
+        currentNode: nodeCode,
+      },
+    });
+    return { action, review, gate: reeval, occupancy: review };
+  }
+
+  private async applyOccupancyNodeStatus(caseId: string, nodeCode: string, result: GateResult) {
+    const high =
+      result.exposure?.band === 'HIGH' ||
+      (result.missing || []).some((m) => /_SINOSURE_EXPOSURE_HIGH$/.test(m));
+    if (!high && result.decision !== Decision.REVIEW) return;
+    const nodeStatus = result.canProceed
+      ? NodeStatus.IN_PROGRESS
+      : result.decision === Decision.REVIEW
+        ? NodeStatus.REVIEW
+        : NodeStatus.BLOCKED;
+    await this.prisma.caseNode.updateMany({
+      where: { caseId, code: nodeCode, status: { not: NodeStatus.PASSED } },
+      data: {
+        status: nodeStatus,
+        decision: result.decision,
+        summary: [...result.reasons, ...result.alerts].join('；'),
+      },
+    });
   }
 
   private async screenParties(caseId: string, nodeCode: 'N1' | 'N5', roles: string[], actorId?: string) {
@@ -1361,6 +1560,7 @@ export class CasesService {
       result.missing.includes('N3_SINOSURE_LIMIT') &&
       result.reasons.includes(N3_SINOSURE_UNREGISTERED_REASON);
     const salesLink = result.missing.includes('N5_SALES_LINK') || result.missing.includes('N5_SALES_NOT_SIGNED');
+    const occupancyHigh = (result.missing || []).some((m) => /_SINOSURE_EXPOSURE_HIGH$/.test(m));
     throw new HttpException(
       {
         code: 'GATE_REFUSED',
@@ -1370,7 +1570,9 @@ export class CasesService {
             ? N3_SINOSURE_UNREGISTERED_REASON
             : salesLink
               ? result.reasons[0] || N5_SALES_LINK_REQUIRED_REASON
-              : '闸门拒绝推进：证据不足或命中硬拦截'),
+              : occupancyHigh
+                ? result.reasons.find((r) => r.includes('工作台')) || SINOSURE_EXPOSURE_HIGH_REVIEW_REASON
+                : '闸门拒绝推进：证据不足或命中硬拦截'),
         ...result,
       },
       HttpStatus.CONFLICT,

@@ -75,7 +75,7 @@
     <view class="card" v-for="t in c.contracts" :key="'ct-' + t.id" @click="openCase(t.id)">
       <view class="row">
         <view>
-          <view class="muted">{{ t.caseNo }} · {{ t.contract?.incoterms || '合同' }}</view>
+          <view class="muted">{{ t.caseNo }} · {{ t.contract?.incoterms || '合同' }}{{ t.contract?.paymentTerms ? ' · ' + t.contract.paymentTerms : '' }}</view>
           <view class="h2" style="margin: 6rpx 0 0">{{ t.goodsDesc }}</view>
         </view>
         <view class="badge" :class="remittanceClass(t.collection?.code)">

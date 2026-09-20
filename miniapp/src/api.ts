@@ -71,7 +71,9 @@ export const api = {
 
 export function decisionClass(d?: string | null) {
   if (d === 'HARD_BLOCK' || d === 'BLOCKED' || d === 'HIGH' || d === 'ULTRA_HIGH') return 'badge-block';
-  if (d === 'REVIEW' || d === 'MEDIUM') return 'badge-review';
+  if (d === 'REVIEW' || d === 'MEDIUM' || d === 'CLAIMED' || d === 'OPEN') return 'badge-review';
+  if (d === 'APPROVED') return 'badge-pass';
+  if (d === 'REJECTED') return 'badge-block';
   if (d === 'SOFT_ALERT' || d === 'LOW' || d === 'BELOW_MEDIUM') return 'badge-soft';
   if (d === 'PASS' || d === 'PASSED' || d === 'COMPLETED' || d === 'WITHIN_LIMIT') return 'badge-pass';
   if (d === 'STUB_TODO') return 'badge-stub';
@@ -94,6 +96,13 @@ export function decisionText(d?: string | null) {
     MEDIUM: '中风险',
     HIGH: '高风险',
     OPEN: '待处置',
+    CLAIMED: '已领取',
+    APPROVED: '已放行',
+    REJECTED: '已驳回',
+    CLAIM: '领取',
+    APPROVE: '放行',
+    REJECT: '驳回',
+    SUPERSEDED: '已失效',
     FALSE_POSITIVE: '误报排除',
     CONFIRMED_TRUE: '确认真实',
     SUPPLEMENTED: '已补充',
@@ -195,7 +204,7 @@ export function isProcurementListCase(c: any) {
 export const SALES_SHIPMENT_BUCKETS = [
   { key: 'unshipped', label: '未出运', hint: '尚未装运：无装运日期，且装运/提单节点未完成。' },
   { key: 'shipped', label: '已出运', hint: '已装运，但客户尚未提货或尚未回款。' },
-  { key: 'completed', label: '已完成', hint: '已出运，客户已提货，且已收汇、未收汇金额为 0。' },
+  { key: 'completed', label: '已完成', hint: '已出运，客户已提货，且收汇对账已回款（水单/到账，未收汇为 0）。与占用释放同一口径。' },
 ] as const;
 
 export type SalesShipmentBucketKey = (typeof SALES_SHIPMENT_BUCKETS)[number]['key'];
@@ -229,14 +238,16 @@ export function salesShipmentBucketOf(c: any): SalesShipmentBucketKey {
       (filledListText(sh.noBlRef) || filledListText(sh.noBlReason) || filledListText(sh.noBlEvidenceStub)));
   if (!shipped) return 'unshipped';
   const pickedUp = (ct.customerPickedUp ?? c?.customerPickedUp) === true;
-  const hasRemittance = !!(ct.hasRemittance ?? c?.hasRemittance);
+  const st = c?.settlement || {};
   const amount = Number(ct.amountFen ?? c?.amountFen) || 0;
-  const remitted = hasRemittance ? Math.max(0, Number(ct.remittedFen ?? c?.remittedFen) || 0) : 0;
-  const unpaid =
-    ct.unpaidFen != null && Number.isFinite(Number(ct.unpaidFen))
-      ? Math.max(0, Number(ct.unpaidFen))
-      : Math.max(0, amount - remitted);
-  if (pickedUp && hasRemittance && unpaid === 0) return 'completed';
+  const recorded = !!(st.receivedAt || st.hasRemittanceMemo);
+  let remitted = 0;
+  if (recorded) {
+    if (st.amountFen != null && Number.isFinite(Number(st.amountFen))) remitted = Math.max(0, Number(st.amountFen));
+    else if (st.receivedAt) remitted = Math.max(0, amount);
+  }
+  const unpaid = Math.max(0, amount - remitted);
+  if (pickedUp && recorded && unpaid === 0) return 'completed';
   return 'shipped';
 }
 

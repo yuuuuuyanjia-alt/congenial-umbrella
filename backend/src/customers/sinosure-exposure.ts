@@ -114,6 +114,65 @@ export function isUsd(currency?: string | null): boolean {
   return String(currency || '').trim().toUpperCase() === EXPOSURE_CURRENCY;
 }
 
+function nodeStatusOf(
+  nodes: Array<{ code: string; status: string }> | null | undefined,
+  code: string,
+): string | null {
+  return (nodes || []).find((n) => n.code === code)?.status ?? null;
+}
+
+/**
+ * 新签占用只在 N3/N4 尚未通过时计入一次。
+ * N3 已 PASSED 后本案改走未履行/已履行未回款，避免与新签金额叠算。
+ */
+export function shouldTreatAsNewContract(input: {
+  currentNode?: string | null;
+  nodes?: Array<{ code: string; status: string }> | null;
+}): boolean {
+  const current = String(input.currentNode || '').toUpperCase();
+  if (current === 'N4') return nodeStatusOf(input.nodes, 'N4') !== 'PASSED';
+  if (current === 'N3') return nodeStatusOf(input.nodes, 'N3') !== 'PASSED';
+  return false;
+}
+
+/** 该节点已通过则新签金额为 0，防止闸门把本案再加一遍。 */
+export function newContractFenForNode(input: {
+  nodeCode: string;
+  nodes?: Array<{ code: string; status: string }> | null;
+  totalFen?: number | null;
+}): number {
+  if (nodeStatusOf(input.nodes, input.nodeCode) === 'PASSED') return 0;
+  return Math.max(0, Number(input.totalFen) || 0);
+}
+
+export function occupancyNewContractOpts(
+  self: {
+    id: string;
+    currentNode?: string | null;
+    nodes?: Array<{ code: string; status: string }> | null;
+    contract?: { amountFen?: number | null; currency?: string | null } | null;
+    amountFen?: number | null;
+    currency?: string | null;
+  },
+  override?: { newAmountFen?: number | null; newCurrency?: string | null },
+): {
+  newCaseId: string | null;
+  newAmountFen: number;
+  newCurrency: string;
+} {
+  const treatAsNew = shouldTreatAsNewContract(self);
+  const amountFen =
+    override?.newAmountFen != null
+      ? override.newAmountFen
+      : self.contract?.amountFen ?? self.amountFen ?? 0;
+  const currency = override?.newCurrency || self.contract?.currency || self.currency || EXPOSURE_CURRENCY;
+  return {
+    newCaseId: treatAsNew ? self.id : null,
+    newAmountFen: treatAsNew ? Math.max(0, Number(amountFen) || 0) : 0,
+    newCurrency: currency,
+  };
+}
+
 /** 已装运（N6 已过）或案件已完成 → 出口合同已履行完毕 */
 export function isExportFulfilled(input: {
   status?: string | null;
@@ -131,15 +190,14 @@ export function unpaidFenOf(amountFen: number, receivedFen: number): number {
   return Math.max(0, (Number(amountFen) || 0) - (Number(receivedFen) || 0));
 }
 
-export function receivedFenOf(
-  settlement: {
-    receivedAt?: Date | string | null;
-    hasRemittanceMemo?: boolean | null;
-    amountFen?: number | null;
-  } | null
-  | undefined,
-  amountFen: number,
-): number {
+/** N9 收汇对账（水单/到账）是已回款唯一事实源；N3 合同上的是否收汇不计入。 */
+export type SettlementLedgerInput = {
+  receivedAt?: Date | string | null;
+  hasRemittanceMemo?: boolean | null;
+  amountFen?: number | null;
+} | null | undefined;
+
+export function receivedFenOf(settlement: SettlementLedgerInput, amountFen: number): number {
   if (!settlement) return 0;
   if (settlement.receivedAt || settlement.hasRemittanceMemo) {
     if (settlement.amountFen != null && Number.isFinite(Number(settlement.amountFen))) {
@@ -148,6 +206,13 @@ export function receivedFenOf(
     return settlement.receivedAt ? Math.max(0, amountFen) : 0;
   }
   return 0;
+}
+
+/** 占用「已回款」与销售列表已完成共用：N9 已登记水单或到账，且未收汇为 0。 */
+export function isSettlementPaid(settlement: SettlementLedgerInput, amountFen: number): boolean {
+  const receivedFen = receivedFenOf(settlement, amountFen);
+  const recorded = !!(settlement && (settlement.receivedAt || settlement.hasRemittanceMemo));
+  return recorded && unpaidFenOf(amountFen, receivedFen) === 0;
 }
 
 export function bandOfExcessFen(excessFen: number): ExposureBandCode {

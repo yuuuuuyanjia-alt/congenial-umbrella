@@ -7,6 +7,10 @@ import {
   evaluateBuyerOccupancy,
   evaluateOccupancy,
   isExportFulfilled,
+  isSettlementPaid,
+  occupancyNewContractOpts,
+  receivedFenOf,
+  shouldTreatAsNewContract,
   unpaidFenOf,
 } from './sinosure-exposure';
 
@@ -138,6 +142,19 @@ describe('中信保占用公式与超额分档', () => {
     expect(r.fulfilledUnpaidContracts[0].fulfillment).toBe(ContractFulfillment.FULFILLED);
   });
 
+  it('已回款只认 N9 水单/到账，N3 收汇字段不释放占用', () => {
+    expect(receivedFenOf(null, 12_800_000)).toBe(0);
+    expect(receivedFenOf({ hasRemittanceMemo: true, amountFen: 4_000_000 }, 12_800_000)).toBe(4_000_000);
+    expect(receivedFenOf({ receivedAt: '2026-09-10' }, 12_800_000)).toBe(12_800_000);
+    expect(receivedFenOf({ hasRemittanceMemo: true }, 12_800_000)).toBe(0);
+    expect(isSettlementPaid(null, 12_800_000)).toBe(false);
+    expect(isSettlementPaid({ receivedAt: '2026-09-10' }, 12_800_000)).toBe(true);
+    expect(isSettlementPaid({ hasRemittanceMemo: true, amountFen: 12_800_000 }, 12_800_000)).toBe(true);
+    expect(isSettlementPaid({ hasRemittanceMemo: true, amountFen: 2_000_000, receivedAt: '2026-05-20' }, 4_500_000)).toBe(
+      false,
+    );
+  });
+
   it('已收齐的已履行合同不占用额度', () => {
     expect(unpaidFenOf(12_800_000, 12_800_000)).toBe(0);
     const r = evaluateBuyerOccupancy(
@@ -178,5 +195,61 @@ describe('中信保占用公式与超额分档', () => {
     expect(r.usdBandsApply).toBe(false);
     expect(r.band).toBe(ExposureBand.ULTRA_HIGH);
     expect(r.gateDecision).toBe(ExposureGateDecision.HARD_BLOCK);
+  });
+
+  it('N3 已通过后不再把本案当新签，避免占用双计', () => {
+    expect(
+      shouldTreatAsNewContract({
+        currentNode: 'N3',
+        nodes: [{ code: 'N3', status: 'IN_PROGRESS' }],
+      }),
+    ).toBe(true);
+    expect(
+      shouldTreatAsNewContract({
+        currentNode: 'N3',
+        nodes: [{ code: 'N3', status: 'PASSED' }],
+      }),
+    ).toBe(false);
+    expect(
+      shouldTreatAsNewContract({
+        currentNode: 'N5',
+        nodes: [{ code: 'N3', status: 'PASSED' }],
+      }),
+    ).toBe(false);
+    expect(
+      shouldTreatAsNewContract({
+        currentNode: 'N4',
+        nodes: [
+          { code: 'N3', status: 'PASSED' },
+          { code: 'N4', status: 'IN_PROGRESS' },
+        ],
+      }),
+    ).toBe(true);
+
+    const self = {
+      id: 'n5-case',
+      hasContract: true,
+      amountFen: 1_800_000,
+      receivedFen: 0,
+      currency: 'USD',
+      status: 'IN_PROGRESS',
+      currentNode: 'N5',
+      nodes: [
+        { code: 'N3', status: 'PASSED' },
+        { code: 'N5', status: 'IN_PROGRESS' },
+        { code: 'N6', status: 'NOT_STARTED' },
+      ],
+    };
+    const opts = occupancyNewContractOpts(self);
+    expect(opts.newCaseId).toBeNull();
+    expect(opts.newAmountFen).toBe(0);
+    const r = evaluateBuyerOccupancy([self], {
+      insuredLimitFen: 15_000_000,
+      limitCurrency: 'USD',
+      ...opts,
+    });
+    expect(r.openUnpaidFen).toBe(1_800_000);
+    expect(r.newContractFen).toBe(0);
+    expect(r.occupancyFen).toBe(1_800_000);
   });
 });
