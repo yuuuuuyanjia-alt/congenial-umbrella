@@ -1,6 +1,11 @@
+import { config as loadEnv } from 'dotenv';
+import { resolve } from 'path';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
+
+loadEnv({ path: resolve(__dirname, '../.env') });
+if (!process.env.DATABASE_URL) process.env.DATABASE_URL = 'file:./dev.db';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);

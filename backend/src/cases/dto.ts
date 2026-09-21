@@ -20,6 +20,18 @@ export class UpsertPartyDto {
   @IsOptional() @IsString() relationNote?: string;
 }
 
+export class DirectPortDto {
+  @IsOptional() @IsString() goodsWhereAnswer?: string | null;
+  @IsOptional() @IsString() goodsWhereRef?: string | null;
+  @IsOptional() @IsString() customsPartyAnswer?: string | null;
+  @IsOptional() @IsString() customsPartyRef?: string | null;
+  @IsOptional() @IsString() remittanceBoundAnswer?: string | null;
+  @IsOptional() @IsString() remittanceBoundRef?: string | null;
+  @IsOptional() @IsBoolean() emptyTurnLikely?: boolean | null;
+  @IsOptional() @IsString() emptyTurnAnswer?: string | null;
+  @IsOptional() @IsString() emptyTurnRef?: string | null;
+}
+
 export class SaveContractDto {
   @IsString() counterparty: string;
   @IsOptional() @IsString() incoterms?: string;
@@ -54,18 +66,6 @@ export class SaveContractDto {
   @ValidateNested()
   @Type(() => DirectPortDto)
   directPort?: DirectPortDto;
-}
-
-export class DirectPortDto {
-  @IsOptional() @IsString() goodsWhereAnswer?: string | null;
-  @IsOptional() @IsString() goodsWhereRef?: string | null;
-  @IsOptional() @IsString() customsPartyAnswer?: string | null;
-  @IsOptional() @IsString() customsPartyRef?: string | null;
-  @IsOptional() @IsString() remittanceBoundAnswer?: string | null;
-  @IsOptional() @IsString() remittanceBoundRef?: string | null;
-  @IsOptional() @IsBoolean() emptyTurnLikely?: boolean | null;
-  @IsOptional() @IsString() emptyTurnAnswer?: string | null;
-  @IsOptional() @IsString() emptyTurnRef?: string | null;
 }
 
 export class SaveShipmentDto {
