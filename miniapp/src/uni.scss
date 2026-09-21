@@ -2,3 +2,13 @@ $page-bg: #f4f1ea;
 $forest: #0f3d2e;
 $ink: #1f2933;
 $muted: #6b7280;
+
+// Keep in sync with page CSS vars in App.vue. +4rpx vs previous (two steps / ~+2px on 375 H5).
+$font-xs: 30rpx;
+$font-sm: 32rpx;
+$font-md: 34rpx;
+$font-lg: 36rpx;
+$font-h2: 38rpx;
+$font-stat: 40rpx;
+$font-title: 44rpx;
+$font-h1: 48rpx;
