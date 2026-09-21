@@ -73,6 +73,8 @@ model TradeCase {
   currentNode String
   overallRisk String
   goodsDesc   String
+  /// 规格（与货物名称分列，贯通 N1/N2/N3）
+  goodsSpec   String?
   destination String
   amountFen   Int
   currency    String   @default("USD")
@@ -201,6 +203,8 @@ model Contract {
   hasDisputeClause    Boolean   @default(false)
   isFinal             Boolean   @default(false)
   goodsDesc           String?
+  /// 规格（与货物名称分列，贯通 N1/N2/N3）
+  goodsSpec           String?
   amountFen           Int?
   currency            String    @default("USD")
   destination         String?
@@ -235,10 +239,12 @@ model Contract {
   hasRemittance       Boolean   @default(false)
   /// 已收汇金额（分）展示缓存，由 N9 到账回写；未收汇 = 合同总额 − N9 到账
   remittedFen         Int       @default(0)
-  /// 交货方式：OWN_WAREHOUSE 自有仓 | BONDED 保税 | DIRECT_PORT 港口直出。不强制自有仓。
+  /// 交货方式：OWN_WAREHOUSE 自有仓 | BONDED 保税（遗留） | DIRECT_PORT 港口直出。本轮表单仅自有仓 / 港口直出。
   deliveryMode        String?
-  /// 港口直出四问 + 证据编号（JSON）。自有仓/保税可空。
+  /// 港口直出：货物仓储地点 / 批次号 / 电子底账编号（JSON）。自有仓可空。
   directPortJson      String?
+  /// 前 T/T 收汇水单/凭证（JSON 数组：{ ref, fileName }）
+  ttVoucherJson       String?
   updatedAt           DateTime  @updatedAt
   case                TradeCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
 }
@@ -432,6 +438,10 @@ model Quote {
   priceBasis        String
   includedItems     String?
   excludedItems     String?
+  /// 货物名称（报价页可改，带入 N3）
+  goodsDesc         String?
+  /// 规格
+  goodsSpec         String?
   validityUntil     DateTime?
   freightBearer     String?
   taxBearer         String?

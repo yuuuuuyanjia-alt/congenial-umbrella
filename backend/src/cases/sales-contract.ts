@@ -182,6 +182,28 @@ export function sanitizeSalesContractModeFields<T extends SalesContractModeField
   };
 }
 
+type CifShipmentFields = {
+  shipmentPort?: string | null;
+  shipmentDate?: Date | string | null;
+  etaDate?: Date | string | null;
+  arrivalPort?: string | null;
+};
+
+/** N3 保存省略 CIF 装运字段时保留库中已有值，避免装运页已填数据被清空。 */
+export function mergeOmittedCifShipmentFields<T extends CifShipmentFields>(
+  incoming: T,
+  existing?: CifShipmentFields | null,
+): T {
+  if (!existing) return incoming;
+  return {
+    ...incoming,
+    shipmentPort: incoming.shipmentPort !== undefined ? incoming.shipmentPort : existing.shipmentPort ?? null,
+    shipmentDate: incoming.shipmentDate !== undefined ? incoming.shipmentDate : existing.shipmentDate ?? null,
+    etaDate: incoming.etaDate !== undefined ? incoming.etaDate : existing.etaDate ?? null,
+    arrivalPort: incoming.arrivalPort !== undefined ? incoming.arrivalPort : existing.arrivalPort ?? null,
+  };
+}
+
 export function resolveTtAdvanceFen(input: {
   ttAdvanceFen?: number | null;
   ttPercentBps?: number | null;

@@ -124,7 +124,7 @@ export function presentSalesLink(row: SalesLinkCaseInput): SalesLinkView {
     deliveryMode: row.contract?.deliveryMode ?? null,
     deliveryModeLabel:
       row.contract?.deliveryMode === 'OWN_WAREHOUSE'
-        ? '自有仓发运'
+        ? '自有仓'
         : row.contract?.deliveryMode === 'BONDED'
           ? '保税仓储'
           : row.contract?.deliveryMode === 'DIRECT_PORT'

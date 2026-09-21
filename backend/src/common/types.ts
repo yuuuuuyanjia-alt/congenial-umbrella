@@ -30,6 +30,7 @@ export interface ContractSnap {
   buyerName?: string | null;
   consigneeName?: string | null;
   goodsDesc?: string | null;
+  goodsSpec?: string | null;
   amountFen?: number | null;
   currency?: string | null;
   destination?: string | null;
@@ -51,9 +52,13 @@ export interface ContractSnap {
   ttDaysAfterShipment?: number | null;
   deliveryMode?: string | null;
   directPort?: DirectPortSnap | null;
+  ttVouchers?: Array<{ ref: string; fileName?: string | null }> | null;
 }
 
 export interface DirectPortSnap {
+  warehouseLocation?: string | null;
+  batchNo?: string | null;
+  eLedgerNo?: string | null;
   goodsWhereAnswer?: string | null;
   goodsWhereRef?: string | null;
   customsPartyAnswer?: string | null;
@@ -129,6 +134,8 @@ export interface QuoteSnap {
   amountFen?: number | null;
   notes?: string | null;
   abnormalPriceNote?: string | null;
+  goodsDesc?: string | null;
+  goodsSpec?: string | null;
 }
 
 export interface ChangeDiffSnap {
@@ -280,6 +287,7 @@ export interface CaseSnapshot {
 export interface SalesContractSideSnap {
   deliveryMode?: string | null;
   goodsDesc?: string | null;
+  goodsSpec?: string | null;
   amountFen?: number | null;
   quantity?: number | null;
   currency?: string | null;

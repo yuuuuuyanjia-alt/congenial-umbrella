@@ -10,6 +10,13 @@
       <view class="muted" style="margin-top: 8rpx">买方在本节点填写后，待案件到达合同/订单确认（N3）时自动录入客户管理；若已有同一客户（按名称+国家或税号匹配）则合并到已有档案，不重复建档。</view>
     </view>
 
+    <view class="card">
+      <view class="label">货物名称</view>
+      <input class="input" v-model="goods.goodsDesc" placeholder="货物名称" />
+      <view class="label">规格</view>
+      <input class="input" v-model="goods.goodsSpec" placeholder="如型号、尺寸" />
+    </view>
+
     <view class="card" v-for="role in roles" :key="role.key">
       <view class="label">{{ role.label }}</view>
       <input class="input" v-model="forms[role.key].name" :placeholder="'输入' + role.label + '名称'" />
@@ -48,6 +55,7 @@
 import { onLoad } from '@dcloudio/uni-app';
 import { computed, reactive, ref } from 'vue';
 import { api, decisionClass, decisionText, goToNode, nextWorkNodeFromForm, pipelineNodeName, toastErr } from '../../api';
+import { resolveCarriedGoods } from '../../goods-fields';
 import NextNodeCta from '../../components/NextNodeCta.vue';
 import { useDemoRole } from '../../role';
 
@@ -68,6 +76,7 @@ const forms = reactive<any>({
   BUYER: { name: '', country: '' },
   CONSIGNEE: { name: '', country: '' },
 });
+const goods = reactive({ goodsDesc: '', goodsSpec: '' });
 const kycReport = computed(() => (c.value?.kycReports || []).find((r: any) => r.nodeCode === 'N1') || (c.value?.kycReports || []).find((r: any) => !r.nodeCode));
 const customerHits = computed(() =>
   (c.value?.hits || []).filter((h: any) => h.nodeCode !== 'N5' && h.party?.role !== 'SUPPLIER'),
@@ -109,12 +118,24 @@ async function reload() {
     const p = (c.value.parties || []).find((x: any) => x.role === role.key);
     forms[role.key] = { name: p?.name || '', country: p?.country || '' };
   }
+  const carried = resolveCarriedGoods({
+    quote: (c.value.quotes || []).find((x: any) => x.status === 'ACTIVE') || c.value.quotes?.[0],
+    caseGoodsDesc: c.value.goodsDesc,
+    caseGoodsSpec: c.value.goodsSpec,
+  });
+  goods.goodsDesc = carried.goodsDesc;
+  goods.goodsSpec = carried.goodsSpec;
+}
+
+async function saveGoods() {
+  await api.saveInquiry(id.value, { goodsDesc: goods.goodsDesc, goodsSpec: goods.goodsSpec });
 }
 
 async function save(role: string) {
   err.value = '';
   const roleLabel = roles.find((r) => r.key === role)?.label || role;
   await api.upsertParty(id.value, { role, name: forms[role].name, country: forms[role].country });
+  await saveGoods();
   ok.value = `${roleLabel} 已保存。到达合同确认（N3）后将自动录入客户管理。`;
   await reload();
 }
@@ -123,6 +144,7 @@ async function runScreen() {
   err.value = '';
   ok.value = '';
   try {
+    await saveGoods();
     await api.screen(id.value);
     ok.value = '筛查完成（模拟黑名单，无真实 API Key）';
     await reload();
@@ -136,6 +158,7 @@ async function tryAdvance() {
   err.value = '';
   ok.value = '';
   try {
+    await saveGoods();
     const r = await api.advance(id.value, 'N1');
     ok.value = r.stub ? r.message : `已推进，下一节点 ${r.nextNode || '结束'}`;
     advancedTo.value = r.nextNode || null;

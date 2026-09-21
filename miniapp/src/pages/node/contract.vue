@@ -6,27 +6,29 @@
     <template v-else>
     <view class="card">
       <view class="h2">销售合同 / 订单确认</view>
-      <view class="muted">销售合同与采购合同分开签订。硬规则：中信保限额未登记，不得签订销售合同。请先登记投保限额，再保存合同要素。所有权保留、争议解决条款为必填。运输术语（FOB / CIF）与结算方式（前 T/T / 后 T/T）独立，可组合例如 FOB + 前 T/T。CIF 填装运节点，FOB 填国内段到达口岸/港口时间，电汇填对应收汇节点。所选路径下的字段均可填写。公司惯例先销售后采购：国内采购合同在 N5 另签，并须关联本销售合同。</view>
+      <view class="muted">销售合同与采购合同分开签订。须先登记中信保限额（美元）再保存合同。运输术语仅 FOB / CIF，结算方式为前 T/T / 后 T/T，可组合。</view>
       <view class="muted" v-if="c.currentNode" style="margin-top: 8rpx">本案当前节点：{{ c.currentNode }} {{ currentNodeName }}</view>
       <view class="err" v-if="needsKycFirst" style="margin-top: 12rpx">
-        本案尚未到达销售合同节点。请先完成询盘/客户 KYC 与报价，再确认签订。保存本合同仍须先登记中信保限额。
+        本案尚未到达销售合同节点。请先完成询盘/客户 KYC 与报价，再确认签订。
       </view>
       <view class="btn" v-if="needsKycFirst && canWriteBusiness" @click="goEarliest">去办询盘 / 客户 KYC</view>
       <view class="err" v-if="!hasLimit" style="margin-top: 12rpx">尚未登记中信保限额，不得签订销售合同。</view>
       <view class="err" v-if="!canWriteBusiness" style="margin-top: 12rpx">当前为{{ roleLabel }}，合同只读，不可保存或推进。</view>
     </view>
-    <NextNodeCta :target="nextTarget" :ready="nextReady" :hint="nextHint" @go="goNext" />
+
     <view class="card">
       <view class="label">相对方</view>
-      <input class="input" v-model="form.counterparty" />
+      <view class="readonly">{{ form.counterparty || '（询盘买方未填）' }}</view>
+      <view class="label">货物名称</view>
+      <input class="input" v-model="form.goodsDesc" placeholder="与询盘/报价相同，可改" />
+      <view class="label">规格</view>
+      <input class="input" v-model="form.goodsSpec" placeholder="如型号、尺寸" />
       <view class="label">运输术语（Incoterms）<text class="req">必填</text></view>
-      <view class="muted">只选 FOB / CIF 等运输条件。T/T 不是 Incoterm，请在下方结算方式勾选。切换 FOB / CIF 会清空上一术语的港口、日期等专属字段。</view>
       <view class="choice-row">
         <view class="choice-btn" :class="{ 'choice-btn-on': tradeTerm === 'FOB' }" @click="selectTerm('FOB')">FOB</view>
         <view class="choice-btn" :class="{ 'choice-btn-on': tradeTerm === 'CIF' }" @click="selectTerm('CIF')">CIF</view>
       </view>
       <view class="label">结算方式</view>
-      <view class="muted">与运输术语独立，可组合例如 FOB + 前 T/T。再点一次可取消，改为填写其他付款条件。切换前/后 T/T 会清空另一时点的预付比例、账期天数等；合同金额、交货期、提货与收汇（N9）不受影响。</view>
       <view class="choice-row">
         <view class="choice-btn" :class="{ 'choice-btn-on': form.ttTiming === 'ADVANCE' }" @click="selectTtTiming('ADVANCE')">前 T/T</view>
         <view class="choice-btn" :class="{ 'choice-btn-on': form.ttTiming === 'AFTER' }" @click="selectTtTiming('AFTER')">后 T/T</view>
@@ -38,149 +40,67 @@
         v-model="form.paymentTerms"
         placeholder="如 L/C、OA 30 days；电汇请点选上方前 T/T / 后 T/T"
       />
-      <view class="label">合同交货期（年-月-日）</view>
-      <input class="input" v-model="form.deliveryDate" placeholder="2026-11-30" />
       <view class="label">数量</view>
       <input class="input" type="number" v-model="form.quantity" />
       <view class="label">单位</view>
-      <input class="input" v-model="form.unit" placeholder="套 / 台 / 千克" />
-      <view class="label">合同总金额（USD）</view>
-      <input class="input" type="digit" v-model="form.amountYuan" placeholder="美元金额" />
-      <view class="label">币种</view>
-      <view class="readonly">USD</view>
-      <view class="muted">销售合同金额固定美元，不可更改</view>
-      <view class="label">交货方式<text class="req">必填</text></view>
-      <view class="muted">公司是出口方，不是过桥。不强制自有仓；港口直出须货物流+报关+发票+收汇能闭环。</view>
       <view class="choice-row">
-        <view class="choice-btn" :class="{ 'choice-btn-on': form.deliveryMode === 'OWN_WAREHOUSE' }" @click="form.deliveryMode = 'OWN_WAREHOUSE'">自有仓发运</view>
-        <view class="choice-btn" :class="{ 'choice-btn-on': form.deliveryMode === 'BONDED' }" @click="form.deliveryMode = 'BONDED'">保税仓储</view>
+        <view class="choice-btn" :class="{ 'choice-btn-on': form.unit === 'TON' }" @click="form.unit = 'TON'">吨</view>
+        <view class="choice-btn" :class="{ 'choice-btn-on': form.unit === 'KG' }" @click="form.unit = 'KG'">千克</view>
+      </view>
+      <view class="label">合同总金额（{{ form.currency }}）</view>
+      <input class="input" type="digit" v-model="form.amountYuan" :placeholder="`${form.currency} 金额`" />
+      <view class="label">币种</view>
+      <view class="choice-row">
+        <view class="choice-btn" :class="{ 'choice-btn-on': form.currency === 'USD' }" @click="form.currency = 'USD'">USD</view>
+        <view class="choice-btn" :class="{ 'choice-btn-on': form.currency === 'CNY' }" @click="form.currency = 'CNY'">CNY</view>
+      </view>
+      <view class="muted" v-if="form.currency === 'CNY'">人民币合同暂不计入美元占用</view>
+      <view class="label">交货方式<text class="req">必填</text></view>
+      <view class="choice-row">
+        <view class="choice-btn" :class="{ 'choice-btn-on': form.deliveryMode === 'OWN_WAREHOUSE' }" @click="form.deliveryMode = 'OWN_WAREHOUSE'">自有仓</view>
         <view class="choice-btn" :class="{ 'choice-btn-on': form.deliveryMode === 'DIRECT_PORT' }" @click="form.deliveryMode = 'DIRECT_PORT'">港口直出</view>
       </view>
       <template v-if="form.deliveryMode === 'DIRECT_PORT'">
-        <view class="h2" style="margin-top: 24rpx">港口直出四问</view>
-        <view class="muted">须货在证据、报关主体可解释、收汇与本案绑定，并判断是否像空转。缺任一证据不得推进。不强制改走自有仓。</view>
-        <view class="label">货在何处 / 货在证据</view>
-        <input class="input" v-model="directPort.goodsWhereAnswer" placeholder="如洋山港待装、仓单号" />
-        <view class="label">货在证据编号</view>
-        <input class="input" v-model="directPort.goodsWhereRef" placeholder="仓单/物流编号" />
-        <view class="btn btn-ghost" v-if="canWriteBusiness" @click="stubDirect('goodsWhere')">模拟上传货在证据</view>
-        <view class="label">报关主体为何可解释为本企业出口</view>
-        <input class="input" v-model="directPort.customsPartyAnswer" placeholder="本企业为报关主体，非过桥" />
-        <view class="label">报关主体证据编号</view>
-        <input class="input" v-model="directPort.customsPartyRef" placeholder="报关委托/资质编号" />
-        <view class="btn btn-ghost" v-if="canWriteBusiness" @click="stubDirect('customsParty')">模拟上传报关主体说明</view>
-        <view class="label">收汇如何与本案绑定</view>
-        <input class="input" v-model="directPort.remittanceBoundAnswer" placeholder="水单发票号=本合同" />
-        <view class="label">收汇绑定证据编号</view>
-        <input class="input" v-model="directPort.remittanceBoundRef" placeholder="水单/发票对照编号" />
-        <view class="btn btn-ghost" v-if="canWriteBusiness" @click="stubDirect('remittanceBound')">模拟上传收汇对照</view>
-        <view class="label">是否像空转 / 假出口</view>
-        <view class="choice-row">
-          <view class="choice-btn" :class="{ 'choice-btn-on': directPort.emptyTurnLikely === false }" @click="directPort.emptyTurnLikely = false">不像空转</view>
-          <view class="choice-btn" :class="{ 'choice-btn-on': directPort.emptyTurnLikely === true }" @click="directPort.emptyTurnLikely = true">像空转（红线）</view>
-        </view>
-        <view class="label">空转判断说明</view>
-        <input class="input" v-model="directPort.emptyTurnAnswer" placeholder="实物流与采购依据，或空转疑点" />
-        <view class="label">空转判断附件编号（可选）</view>
-        <input class="input" v-model="directPort.emptyTurnRef" placeholder="说明附件编号" />
+        <view class="label">货物仓储地点</view>
+        <input class="input" v-model="directPort.warehouseLocation" placeholder="如洋山港待装仓" />
+        <view class="label">批次号</view>
+        <input class="input" v-model="directPort.batchNo" placeholder="批次号" />
+        <view class="label">电子底账编号</view>
+        <input class="input" v-model="directPort.eLedgerNo" placeholder="电子底账编号" />
       </template>
-      <view class="label">所有权保留条款</view>
-      <switch :checked="form.hasRetentionOfTitle" @change="(e: any) => (form.hasRetentionOfTitle = e.detail.value)" />
-      <view class="label">争议解决条款</view>
-      <switch :checked="form.hasDisputeClause" @change="(e: any) => (form.hasDisputeClause = e.detail.value)" />
-    </view>
-
-    <view class="card" v-if="tradeTerm === 'CIF'">
-      <view class="h2">CIF 装运节点</view>
-      <view class="muted">装运后预计什么时候到达哪个港口。下列字段均可填写。</view>
-      <view class="label">装运港口</view>
-      <input class="input" v-model="form.shipmentPort" placeholder="如 Shanghai" />
-      <view class="label">装运日期</view>
-      <input class="input" v-model="form.shipmentDate" placeholder="年-月-日，如 2026-08-15" />
-      <view class="h2" style="margin-top: 24rpx">货物状态</view>
-      <view class="label">预计到达日期</view>
-      <input class="input" v-model="form.etaDate" placeholder="年-月-日，如 2026-09-20" />
-      <view class="label">到达港口</view>
-      <input class="input" v-model="form.arrivalPort" placeholder="预计到达的港口，如 Hamburg" />
     </view>
 
     <view class="card" v-if="tradeTerm === 'FOB'">
       <view class="h2">国内段：到达口岸 / 港口时间</view>
-      <view class="muted">货物到达指定口岸/港口即完成国内交付。下列字段可填写。</view>
       <view class="label">到达口岸/港口时间</view>
       <input class="input" v-model="form.domesticPortArrivalAt" placeholder="年-月-日 或 年-月-日 时:分，如 2026-12-08 10:00" />
     </view>
 
-    <view class="card" v-if="form.ttTiming">
-      <view class="h2">T/T 收汇节点</view>
-      <view class="muted">与上方运输术语独立。前 T/T / 后 T/T 字段均可填写。</view>
-      <view class="label">T/T 类型</view>
-      <view class="choice-row">
-        <view class="choice-btn" :class="{ 'choice-btn-on': form.ttTiming === 'ADVANCE' }" @click="selectTtTiming('ADVANCE')">前 T/T</view>
-        <view class="choice-btn" :class="{ 'choice-btn-on': form.ttTiming === 'AFTER' }" @click="selectTtTiming('AFTER')">后 T/T</view>
-      </view>
+    <view class="card" v-if="form.ttTiming === 'ADVANCE'">
+      <view class="h2">前 T/T 收汇</view>
+      <view class="label">收汇比例（%）</view>
+      <input class="input" type="digit" v-model="form.ttPercent" placeholder="如 30" @input="syncAdvanceFromPercent" />
+      <view class="label">收汇金额（{{ form.currency }}）</view>
+      <input class="input" type="digit" v-model="form.ttAdvanceYuan" :placeholder="form.currency" />
+      <view class="label">收汇凭证</view>
+      <view class="muted" v-for="(v, i) in form.ttVouchers" :key="v.ref || i">{{ v.fileName || v.ref }}</view>
+      <view class="btn btn-ghost" v-if="canWriteBusiness" @click="stubVoucher">模拟上传收汇凭证</view>
+    </view>
 
-      <template v-if="form.ttTiming === 'ADVANCE'">
-        <view class="muted" style="margin-top: 12rpx">前 T/T：约定先收款再发货。比例、金额与装运日期均可填。是否收汇以收汇对账为准。</view>
-        <view class="label">预付款比例（%）</view>
-        <input class="input" type="digit" v-model="form.ttPercent" placeholder="如 30" @input="syncAdvanceFromPercent" />
-        <view class="label">预付款金额</view>
-        <input class="input" type="digit" v-model="form.ttAdvanceYuan" :placeholder="`与合同币种一致（${SALES_CURRENCY}）`" />
-        <view class="label" v-if="tradeTerm !== 'CIF'">装运日期</view>
-        <input
-          v-if="tradeTerm !== 'CIF'"
-          class="input"
-          v-model="form.shipmentDate"
-          placeholder="年-月-日。填写后计入已出运"
-        />
-      </template>
-
-      <template v-if="form.ttTiming === 'AFTER'">
-        <view class="muted" style="margin-top: 12rpx">后 T/T：装运后再按约定账期收款。装运日期与天数均可填。是否收汇以收汇对账为准。</view>
-        <view class="label" v-if="tradeTerm !== 'CIF'">装运日期</view>
-        <input
-          v-if="tradeTerm !== 'CIF'"
-          class="input"
-          v-model="form.shipmentDate"
-          placeholder="年-月-日。填写后计入已出运"
-        />
-        <view class="label">装运后付款天数</view>
-        <input class="input" type="number" v-model="form.ttDays" placeholder="如 30" />
-      </template>
+    <view class="card" v-if="form.ttTiming === 'AFTER'">
+      <view class="h2">后 T/T</view>
+      <view class="label">装运后付款天数</view>
+      <input class="input" type="number" v-model="form.ttDays" placeholder="如 30" />
     </view>
 
     <view class="card">
-      <view class="h2">提货与收汇</view>
-      <view class="muted">客户是否提货可在此填写。是否收汇、收汇金额、未收汇以收汇对账（水单/到账）为准，此处只读，与占用「已回款」同一口径。请到收汇对账节点登记，勾选本页不能假装已完成。</view>
-      <view class="label">客户是否提货</view>
-      <view class="choice-row">
-        <view class="choice-btn" :class="{ 'choice-btn-on': form.customerPickedUp === true }" @click="form.customerPickedUp = true">已提货</view>
-        <view class="choice-btn" :class="{ 'choice-btn-on': form.customerPickedUp === false }" @click="form.customerPickedUp = false">未提货</view>
-      </view>
-      <view class="label">约定客户付款日期</view>
-      <input class="input" v-model="form.paymentDueAt" placeholder="年-月-日。后 T/T 未填时按装运日+天数推算" />
-      <view class="label">是否收汇</view>
-      <view class="choice-row">
-        <view class="choice-btn" :class="{ 'choice-btn-on': form.hasRemittance === true }">是</view>
-        <view class="choice-btn" :class="{ 'choice-btn-on': form.hasRemittance === false }">否</view>
-      </view>
-      <view class="label">收汇金额</view>
-      <input
-        class="input"
-        disabled
-        :value="form.remittedYuan"
-        :placeholder="`与合同币种一致（${SALES_CURRENCY}）`"
-      />
-      <view class="label">未收汇金额</view>
-      <view class="muted">按收汇对账到账金额与合同总额轧差（{{ SALES_CURRENCY }}）</view>
-      <input class="input" disabled :value="unpaidYuan" :placeholder="`与合同币种一致（${SALES_CURRENCY}）`" />
       <view class="btn" v-if="canWriteBusiness" @click="save">保存合同要素</view>
       <view class="muted" v-if="canWriteBusiness && !hasLimit" style="margin-top: 8rpx">须先保存中信保限额，否则保存销售合同将被拒绝。</view>
     </view>
 
     <view class="card">
       <view class="h2">中信保</view>
-      <view class="muted">须先登记投保限额，否则不得保存或推进合同。请上传出口信用保险保单或限额批注。保存或推进时自动测算占用；超高风险禁止推进，高风险须工作台领取并放行，中风险软提示。</view>
+      <view class="muted">须先登记投保限额（美元），否则不得保存或推进合同。占用不换汇，仅美元销售计入美元占用。</view>
       <SinosureExposure :exposure="exposureView" :show-new="true" />
       <view class="err" v-if="occupancyNeedsReview" style="margin-top: 12rpx">
         占用属高风险，须由风控岗在审核工作台领取并放行后再推进，无需修改合同金额。
@@ -195,16 +115,24 @@
       <input class="input" v-model="sino.fileName" placeholder="如 中信保限额批注.pdf" />
       <view class="btn btn-ghost" v-if="canWriteBusiness" @click="stubUpload">模拟上传保单</view>
       <view class="label">投保限额</view>
-      <input class="input" type="digit" v-model="sino.limitYuan" placeholder="须不低于合同总金额" />
+      <input class="input" type="digit" v-model="sino.limitYuan" placeholder="须不低于计入占用的美元合同金额" />
       <view class="label">限额币种</view>
       <view class="readonly">USD</view>
-      <view class="muted">中信保占用与限额固定美元，不可更改</view>
+      <view class="muted">中信保限额固定美元</view>
       <view class="btn" v-if="canWriteBusiness" @click="saveSino">保存中信保信息</view>
       <view class="btn btn-ghost" v-if="canWriteBusiness" @click="tryAdvance">尝试确认并推进</view>
     </view>
     <view class="err" v-if="err">{{ err }}</view>
     <view class="ok" v-if="ok">{{ ok }}</view>
-    <NextNodeCta v-if="nextReady" :target="nextTarget" :ready="nextReady" :hint="nextHint" @go="goNext" />
+    <NextNodeCta
+      v-if="nextReady"
+      :target="nextTarget"
+      :ready="nextReady"
+      :hint="nextHint"
+      heading=""
+      button-label="进入下一步"
+      @go="goNext"
+    />
     </template>
   </view>
 </template>
@@ -224,6 +152,7 @@ import {
   SALES_CURRENCY,
   yuanToFen,
 } from '../../api';
+import { parseContractUnit, resolveCarriedGoods } from '../../goods-fields';
 import NextNodeCta from '../../components/NextNodeCta.vue';
 import SinosureExposure from '../../components/SinosureExposure.vue';
 import { useDemoRole } from '../../role';
@@ -258,56 +187,38 @@ const nextReady = computed(() => {
   if (!nextTarget.value || !c.value) return false;
   if (advancedTo.value) return true;
   const cur = c.value.currentNode || '';
-  if (cur && cur !== FORM_NODE) return true;
-  return savedSession.value;
+  return !!cur && cur !== FORM_NODE;
 });
 const nextHint = computed(() => {
   const t = nextTarget.value;
   if (!t) return '';
-  const cur = c.value?.currentNode;
-  if (cur && cur !== FORM_NODE) {
-    return `本案已在 ${cur} ${pipelineNodeName(cur)}。可直接进入该节点，不必再从案件树查找。`;
-  }
   if (advancedTo.value) return `已过闸。下一步为 ${t.code} ${t.name}。`;
-  if (savedSession.value) return `销售合同已保存。可进入 ${t.code} ${t.name}，不必再从案件树查找。`;
-  return `保存或推进本合同后，可进入 ${t.code} ${t.name}，不必再从案件树查找。`;
+  const cur = c.value?.currentNode;
+  if (cur && cur !== FORM_NODE) return `本案已在 ${cur} ${pipelineNodeName(cur)}。`;
+  return '';
 });
 const form = reactive({
   counterparty: '',
+  goodsDesc: '',
+  goodsSpec: '',
   incoterms: 'CIF' as string,
   paymentTerms: 'L/C',
   ttTiming: '' as '' | TtTiming,
   ttPercent: '',
   ttAdvanceYuan: '',
   ttDays: '',
-  hasRetentionOfTitle: true,
-  hasDisputeClause: true,
-  deliveryDate: '2026-11-30',
+  ttVouchers: [] as Array<{ ref: string; fileName?: string | null }>,
   quantity: 10,
-  unit: '套',
+  unit: 'TON' as 'TON' | 'KG',
   amountYuan: '',
   currency: SALES_CURRENCY,
-  shipmentPort: '',
-  shipmentDate: '',
-  etaDate: '',
-  arrivalPort: '',
   domesticPortArrivalAt: '',
-  customerPickedUp: null as boolean | null,
-  paymentDueAt: '',
-  hasRemittance: false,
-  remittedYuan: '',
-  deliveryMode: '' as '' | 'OWN_WAREHOUSE' | 'BONDED' | 'DIRECT_PORT',
+  deliveryMode: '' as '' | 'OWN_WAREHOUSE' | 'DIRECT_PORT',
 });
 const directPort = reactive({
-  goodsWhereAnswer: '',
-  goodsWhereRef: '',
-  customsPartyAnswer: '',
-  customsPartyRef: '',
-  remittanceBoundAnswer: '',
-  remittanceBoundRef: '',
-  emptyTurnLikely: null as boolean | null,
-  emptyTurnAnswer: '',
-  emptyTurnRef: '',
+  warehouseLocation: '',
+  batchNo: '',
+  eLedgerNo: '',
 });
 const sino = reactive({
   evidenceRef: '',
@@ -332,7 +243,7 @@ const sinosureHint = computed(() => {
 
 const exposureView = computed(() => {
   const base = c.value?.sinosureExposure;
-  return previewExposure(base, yuanToFen(form.amountYuan)) || base;
+  return previewExposure(base, yuanToFen(form.amountYuan), form.currency) || base;
 });
 
 const occupancyReview = computed(() => {
@@ -362,60 +273,10 @@ function goWorkbench() {
   uni.navigateTo({ url: '/pages/workbench/index' });
 }
 
-const remittedFenEffective = computed(() => (form.hasRemittance ? yuanToFen(form.remittedYuan) : 0));
-
-const unpaidYuan = computed(() => fenToYuan(Math.max(0, yuanToFen(form.amountYuan) - remittedFenEffective.value)) || '0.00');
-
 onLoad(async (q) => {
   id.value = q?.id || '';
   c.value = await api.case(id.value);
-  const ct = c.value.contract;
-  if (ct) {
-    form.counterparty = ct.counterparty || '';
-    form.incoterms = isTtOnly(ct.incoterms) ? 'FOB' : ct.incoterms || form.incoterms;
-    form.paymentTerms = ct.paymentTerms || form.paymentTerms;
-    form.ttTiming = (ct.ttTiming === 'ADVANCE' || ct.ttTiming === 'AFTER' ? ct.ttTiming : resolveTtTiming(ct.paymentTerms || ct.incoterms)) || '';
-    form.ttPercent = ct.ttPercentBps != null ? String(Math.round(Number(ct.ttPercentBps) / 100)) : '';
-    form.ttAdvanceYuan = ct.ttAdvanceFen ? fenToYuan(ct.ttAdvanceFen) : '';
-    form.ttDays = ct.ttDaysAfterShipment != null ? String(ct.ttDaysAfterShipment) : '';
-    form.hasRetentionOfTitle = !!ct.hasRetentionOfTitle;
-    form.hasDisputeClause = !!ct.hasDisputeClause;
-    form.deliveryDate = ct.deliveryDate ? String(ct.deliveryDate).slice(0, 10) : form.deliveryDate;
-    form.quantity = ct.quantity ?? form.quantity;
-    form.unit = ct.unit || form.unit;
-    form.amountYuan = fenToYuan(ct.amountFen || c.value.amountFen);
-    form.currency = SALES_CURRENCY;
-    form.shipmentPort = ct.shipmentPort || '';
-    form.shipmentDate = ct.shipmentDate ? String(ct.shipmentDate).slice(0, 10) : '';
-    form.etaDate = ct.etaDate ? String(ct.etaDate).slice(0, 10) : '';
-    form.arrivalPort = ct.arrivalPort || '';
-    form.domesticPortArrivalAt = datetimeField(ct.domesticPortArrivalAt);
-    form.customerPickedUp = ct.customerPickedUp === true ? true : ct.customerPickedUp === false ? false : null;
-    form.paymentDueAt = ct.paymentDueAt ? String(ct.paymentDueAt).slice(0, 10) : '';
-    form.deliveryMode = (ct.deliveryMode === 'OWN_WAREHOUSE' || ct.deliveryMode === 'BONDED' || ct.deliveryMode === 'DIRECT_PORT'
-      ? ct.deliveryMode
-      : '') as typeof form.deliveryMode;
-    applyDirectPort(ct.directPort);
-    applyContractRemittance(ct);
-    if (isTtOnly(ct.incoterms) && !form.ttTiming) form.ttTiming = 'ADVANCE';
-    if (form.ttTiming === 'ADVANCE' && !form.ttAdvanceYuan) syncAdvanceFromPercent();
-  } else {
-    if (c.value.parties?.[0]) {
-      const buyer = (c.value.parties || []).find((p: any) => p.role === 'BUYER') || c.value.parties[0];
-      form.counterparty = buyer.name;
-    }
-    form.amountYuan = fenToYuan(c.value.amountFen);
-    form.currency = SALES_CURRENCY;
-  }
-  const p = latestSinosure(c.value.sinosurePolicies, 'N3');
-  if (p) {
-    sino.evidenceRef = p.evidenceRef || '';
-    sino.fileName = p.fileName || '';
-    sino.limitYuan = fenToYuan(p.insuredLimitFen);
-    sino.currency = SALES_CURRENCY;
-  } else {
-    sino.currency = SALES_CURRENCY;
-  }
+  hydrateFromCase(c.value);
 });
 
 onShow(async () => {
@@ -426,6 +287,55 @@ onShow(async () => {
     /* 首次 onLoad 可能尚未写入 id；忽略 */
   }
 });
+
+function hydrateFromCase(row: any) {
+  if (!row) return;
+  const buyer = (row.parties || []).find((p: any) => p.role === 'BUYER') || row.parties?.[0];
+  const activeQuote = (row.quotes || []).find((x: any) => x.status === 'ACTIVE') || row.quotes?.[0];
+  const goods = resolveCarriedGoods({
+    contract: row.contract,
+    quote: activeQuote,
+    caseGoodsDesc: row.goodsDesc,
+    caseGoodsSpec: row.goodsSpec,
+  });
+  form.goodsDesc = goods.goodsDesc;
+  form.goodsSpec = goods.goodsSpec;
+  const ct = row.contract;
+  if (ct) {
+    form.counterparty = buyer?.name || ct.counterparty || '';
+    form.incoterms = isTtOnly(ct.incoterms) ? 'FOB' : ct.incoterms || form.incoterms;
+    form.paymentTerms = ct.paymentTerms || form.paymentTerms;
+    form.ttTiming = (ct.ttTiming === 'ADVANCE' || ct.ttTiming === 'AFTER' ? ct.ttTiming : resolveTtTiming(ct.paymentTerms || ct.incoterms)) || '';
+    form.ttPercent = ct.ttPercentBps != null ? String(Math.round(Number(ct.ttPercentBps) / 100)) : '';
+    form.ttAdvanceYuan = ct.ttAdvanceFen ? fenToYuan(ct.ttAdvanceFen) : '';
+    form.ttDays = ct.ttDaysAfterShipment != null ? String(ct.ttDaysAfterShipment) : '';
+    form.ttVouchers = Array.isArray(ct.ttVouchers) ? ct.ttVouchers : [];
+    form.quantity = ct.quantity ?? form.quantity;
+    form.unit = parseContractUnit(ct.unit) || parseContractUnit(activeQuote?.unit) || 'TON';
+    form.amountYuan = fenToYuan(ct.amountFen || row.amountFen);
+    form.currency = ct.currency === 'CNY' || ct.currency === 'USD' ? ct.currency : SALES_CURRENCY;
+    form.domesticPortArrivalAt = datetimeField(ct.domesticPortArrivalAt);
+    form.deliveryMode = (ct.deliveryMode === 'OWN_WAREHOUSE' || ct.deliveryMode === 'DIRECT_PORT'
+      ? ct.deliveryMode
+      : '') as typeof form.deliveryMode;
+    applyDirectPort(ct.directPort);
+    if (isTtOnly(ct.incoterms) && !form.ttTiming) form.ttTiming = 'ADVANCE';
+    if (form.ttTiming === 'ADVANCE' && !form.ttAdvanceYuan) syncAdvanceFromPercent();
+  } else {
+    form.counterparty = buyer?.name || '';
+    form.amountYuan = fenToYuan(row.amountFen);
+    form.currency = row.currency === 'CNY' || row.currency === 'USD' ? row.currency : SALES_CURRENCY;
+    form.unit = parseContractUnit(activeQuote?.unit) || 'TON';
+    if (activeQuote?.quantity) form.quantity = activeQuote.quantity;
+  }
+  const p = latestSinosure(row.sinosurePolicies, 'N3');
+  if (p) {
+    sino.evidenceRef = p.evidenceRef || '';
+    sino.fileName = p.fileName || '';
+    sino.limitYuan = fenToYuan(p.insuredLimitFen);
+  }
+  sino.currency = SALES_CURRENCY;
+}
 
 function parseIncotermsCode(raw?: string | null): string {
   const s = String(raw || '')
@@ -466,20 +376,14 @@ function isTtPaymentTermsText(raw?: string | null) {
   return /前\s*T\s*\/\s*T|后\s*T\s*\/\s*T/i.test(String(raw || ''));
 }
 
-/** 按当前 FOB/CIF 与前/后 T/T 丢掉另一选项的专属字段，避免隐藏值随保存串台。 */
 function clearInapplicableModeFields() {
   const term = resolveTradeTerm(form.incoterms);
   const tt = form.ttTiming;
-  if (term !== 'CIF') {
-    form.shipmentPort = '';
-    form.etaDate = '';
-    form.arrivalPort = '';
-  }
-  if (term !== 'CIF' && !tt) form.shipmentDate = '';
   if (term !== 'FOB') form.domesticPortArrivalAt = '';
   if (tt !== 'ADVANCE') {
     form.ttPercent = '';
     form.ttAdvanceYuan = '';
+    form.ttVouchers = [];
   }
   if (tt !== 'AFTER') form.ttDays = '';
   if (!tt && isTtPaymentTermsText(form.paymentTerms)) form.paymentTerms = '';
@@ -512,11 +416,6 @@ function syncAdvanceFromPercent() {
   form.ttAdvanceYuan = fenToYuan(Math.round((amt * pct) / 100));
 }
 
-function applyContractRemittance(ct?: { hasRemittance?: boolean | null; remittedFen?: number | null } | null) {
-  form.hasRemittance = !!ct?.hasRemittance;
-  form.remittedYuan = ct?.hasRemittance && ct.remittedFen ? fenToYuan(ct.remittedFen) : '';
-}
-
 function datetimeField(v: unknown) {
   if (v == null || v === '') return '';
   const s = String(v).trim();
@@ -524,33 +423,17 @@ function datetimeField(v: unknown) {
   return s.slice(0, 10);
 }
 
-function stubDirect(kind: 'goodsWhere' | 'customsParty' | 'remittanceBound') {
-  const id = `DP-${kind.toUpperCase()}-${Date.now()}`;
-  if (kind === 'goodsWhere') {
-    directPort.goodsWhereRef = id;
-    if (!directPort.goodsWhereAnswer) directPort.goodsWhereAnswer = '货物在口岸待装（演示仓单）';
-  } else if (kind === 'customsParty') {
-    directPort.customsPartyRef = id;
-    if (!directPort.customsPartyAnswer) directPort.customsPartyAnswer = '本企业为出口报关主体，非过桥';
-  } else {
-    directPort.remittanceBoundRef = id;
-    if (!directPort.remittanceBoundAnswer) directPort.remittanceBoundAnswer = '收汇水单发票号与本案合同一致';
-  }
-  ok.value = '已生成模拟直出证据编号（演示环境，非真实上传）';
-}
-
 function applyDirectPort(dp?: any) {
   if (!dp) return;
-  directPort.goodsWhereAnswer = dp.goodsWhereAnswer || '';
-  directPort.goodsWhereRef = dp.goodsWhereRef || '';
-  directPort.customsPartyAnswer = dp.customsPartyAnswer || '';
-  directPort.customsPartyRef = dp.customsPartyRef || '';
-  directPort.remittanceBoundAnswer = dp.remittanceBoundAnswer || '';
-  directPort.remittanceBoundRef = dp.remittanceBoundRef || '';
-  directPort.emptyTurnLikely =
-    dp.emptyTurnLikely === true ? true : dp.emptyTurnLikely === false ? false : null;
-  directPort.emptyTurnAnswer = dp.emptyTurnAnswer || '';
-  directPort.emptyTurnRef = dp.emptyTurnRef || '';
+  directPort.warehouseLocation = dp.warehouseLocation || dp.goodsWhereAnswer || '';
+  directPort.batchNo = dp.batchNo || dp.goodsWhereRef || '';
+  directPort.eLedgerNo = dp.eLedgerNo || dp.customsPartyRef || '';
+}
+
+function stubVoucher() {
+  const ref = `TT-VOUCHER-${Date.now()}`;
+  form.ttVouchers.push({ ref, fileName: `前TT收汇凭证-${form.ttVouchers.length + 1}.png` });
+  ok.value = '已生成模拟收汇凭证（演示环境，非真实上传）';
 }
 
 function stubUpload() {
@@ -579,52 +462,38 @@ async function save() {
   ok.value = '';
   try {
     const term = tradeTerm.value || (isTtOnly(form.incoterms) ? 'FOB' : form.incoterms);
-    const cif = term === 'CIF';
     const fob = term === 'FOB';
     const ttTiming = form.ttTiming || null;
-    const shipmentDateApplies = cif || !!ttTiming;
     const paymentTerms =
       ttTiming || !isTtPaymentTermsText(form.paymentTerms) ? form.paymentTerms : null;
     await api.saveContract(id.value, {
       counterparty: form.counterparty,
+      goodsDesc: form.goodsDesc,
+      goodsSpec: form.goodsSpec,
       incoterms: term || 'FOB',
       paymentTerms,
       ttTiming,
       ttPercentBps: ttTiming === 'ADVANCE' && form.ttPercent ? Math.round(Number(form.ttPercent) * 100) : null,
       ttAdvanceFen: ttTiming === 'ADVANCE' && form.ttAdvanceYuan ? yuanToFen(form.ttAdvanceYuan) : null,
       ttDaysAfterShipment: ttTiming === 'AFTER' ? intOrNull(form.ttDays) : null,
-      hasRetentionOfTitle: form.hasRetentionOfTitle,
-      hasDisputeClause: form.hasDisputeClause,
-      deliveryDate: form.deliveryDate,
+      ttVouchers: ttTiming === 'ADVANCE' ? form.ttVouchers : [],
       quantity: Number(form.quantity),
       unit: form.unit,
       amountFen: yuanToFen(form.amountYuan),
-      currency: SALES_CURRENCY,
-      shipmentPort: cif ? form.shipmentPort || null : null,
-      shipmentDate: shipmentDateApplies ? ymdOrNull(form.shipmentDate) : null,
-      etaDate: cif ? ymdOrNull(form.etaDate) : null,
-      arrivalPort: cif ? form.arrivalPort || null : null,
+      currency: form.currency,
       domesticPortArrivalAt: fob ? ymdOrNull(form.domesticPortArrivalAt) : null,
-      customerPickedUp: form.customerPickedUp,
-      paymentDueAt: ymdOrNull(form.paymentDueAt),
       deliveryMode: form.deliveryMode || null,
       directPort:
         form.deliveryMode === 'DIRECT_PORT'
           ? {
-              goodsWhereAnswer: directPort.goodsWhereAnswer || null,
-              goodsWhereRef: directPort.goodsWhereRef || null,
-              customsPartyAnswer: directPort.customsPartyAnswer || null,
-              customsPartyRef: directPort.customsPartyRef || null,
-              remittanceBoundAnswer: directPort.remittanceBoundAnswer || null,
-              remittanceBoundRef: directPort.remittanceBoundRef || null,
-              emptyTurnLikely: directPort.emptyTurnLikely,
-              emptyTurnAnswer: directPort.emptyTurnAnswer || null,
-              emptyTurnRef: directPort.emptyTurnRef || null,
+              warehouseLocation: directPort.warehouseLocation || null,
+              batchNo: directPort.batchNo || null,
+              eLedgerNo: directPort.eLedgerNo || null,
             }
           : null,
     });
     c.value = await api.case(id.value);
-    applyContractRemittance(c.value?.contract);
+    hydrateFromCase(c.value);
     savedSession.value = true;
     ok.value = '销售合同要素已保存，已按当前金额测算占用；买方已录入或合并至客户管理';
     return true;
@@ -668,7 +537,7 @@ async function tryAdvance() {
       err.value = `${err.value}\n须由风控岗在审核工作台领取并放行，无需修改合同金额。`;
     }
     if (Array.isArray(e?.missing) && e.missing.some((m: string) => String(m).startsWith('FT'))) {
-      err.value = `${err.value}\n港口直出缺证据请补四问；黄灯请到工作台第三页领取并通过；红线硬拦截。`;
+      err.value = `${err.value}\n港口直出请补仓储地点、批次号与电子底账编号。`;
     }
   }
 }
