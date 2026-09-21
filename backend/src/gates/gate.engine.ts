@@ -1,5 +1,4 @@
 import {
-  Bearer,
   BlControl,
   BUYER_ARRANGED_FREIGHT_INCOTERMS,
   CHANGE_FIELDS,
@@ -17,7 +16,7 @@ import {
   HISTORY_DEV_MEDIUM_PCT,
   HISTORY_DEV_SOFT_PCT,
   NodeStatus,
-  CUSTOMER_PARTY_ROLES,
+  N1_REQUIRED_PARTY_ROLES,
   N3_SINOSURE_UNREGISTERED_REASON,
   N5_SALES_LINK_REQUIRED_REASON,
   N5_SALES_NOT_SIGNED_REASON,
@@ -26,7 +25,6 @@ import {
   SINOSURE_EXPOSURE_HIGH_REVIEW_REASON,
   PartyRole,
   PartyRoleLabel,
-  PriceBasis,
   QuoteStatus,
   SENSITIVE_CHANGE_FIELDS,
   VAGUE_PRICE_RE,
@@ -54,6 +52,7 @@ import {
   matchingOccupancyReview,
 } from '../workbench/occupancy-review';
 import { applyTaxFinanceGate } from '../tax-finance/tax-finance';
+import { isQuotePriceUnit } from '../cases/quote-fields';
 
 const HARD_GATES = new Set(['N6', 'N7', 'N9']);
 
@@ -118,7 +117,7 @@ export function supplierHitsOf(hits: HitSnap[]): HitSnap[] {
 
 export function evaluateN1(snap: CaseSnapshot): GateResult {
   const r = emptyResult('N1');
-  for (const role of CUSTOMER_PARTY_ROLES) {
+  for (const role of N1_REQUIRED_PARTY_ROLES) {
     if (!snap.parties.some((p) => p.role === role && p.name.trim())) {
       r.missing.push(`N1_PARTY_${role}`);
       r.reasons.push(`缺少当事方：${PartyRoleLabel[role]}`);
@@ -170,28 +169,10 @@ export function evaluateN2(snap: CaseSnapshot): GateResult {
     return blockMissing(r);
   }
 
-  const textBlob = [q.includedItems, q.excludedItems, q.notes, q.abnormalPriceNote]
-    .filter(Boolean)
-    .join(' ');
-  if (VAGUE_PRICE_RE.test(textBlob) || VAGUE_PRICE_RE.test(q.priceBasis || '')) {
+  const textBlob = [q.includedItems, q.notes].filter(Boolean).join(' ');
+  if (VAGUE_PRICE_RE.test(textBlob)) {
     r.missing.push('N2_VAGUE_PRICING');
     r.reasons.push('报价含「价格待定/费用另议」等模糊用语，禁止推进');
-  }
-
-  if (!Object.values(PriceBasis).includes(q.priceBasis as (typeof PriceBasis)[keyof typeof PriceBasis])) {
-    r.missing.push('N2_PRICE_BASIS');
-    r.reasons.push('未明确价格基础（含项目 / 不含项目 / 部分含）');
-  } else if (q.priceBasis === PriceBasis.INCLUSIVE || q.priceBasis === PriceBasis.MIXED) {
-    if (!q.includedItems?.trim()) {
-      r.missing.push('N2_INCLUDED_ITEMS');
-      r.reasons.push('价格基础为含项目，须列明所含费用项目');
-    }
-  }
-  if (q.priceBasis === PriceBasis.EXCLUSIVE || q.priceBasis === PriceBasis.MIXED) {
-    if (!q.excludedItems?.trim()) {
-      r.missing.push('N2_EXCLUDED_ITEMS');
-      r.reasons.push('价格基础为不含项目，须列明未含费用项目');
-    }
   }
 
   if (!q.validityUntil) {
@@ -202,33 +183,22 @@ export function evaluateN2(snap: CaseSnapshot): GateResult {
     r.reasons.push('报价有效期已过，须出具新版本报价');
   }
 
-  if (!q.freightBearer || !isBearer(q.freightBearer)) {
-    r.missing.push('N2_FREIGHT_BEARER');
-    r.reasons.push('未明确运费承担方');
-  }
-  if (!q.taxBearer || !isBearer(q.taxBearer)) {
-    r.missing.push('N2_TAX_BEARER');
-    r.reasons.push('未明确税费承担方');
+  if (!isQuotePriceUnit(q.unit)) {
+    r.missing.push('N2_PRICE_UNIT');
+    r.reasons.push('单价单位须为吨或千克');
   }
   if (!q.unitPriceFen || q.unitPriceFen <= 0) {
     r.missing.push('N2_UNIT_PRICE');
-    r.reasons.push('未填写有效单价');
+    r.reasons.push('未填写有效单价（USD）');
   }
 
   if (r.missing.length) return blockMissing(r);
 
   const price = q.unitPriceFen!;
   if (snap.costFloorFen && price < snap.costFloorFen) {
-    const msg = `报价单价低于成本底线（底线 ${(snap.costFloorFen / 100).toFixed(2)}，报价 ${(price / 100).toFixed(2)}）`;
-    if (q.abnormalPriceNote?.trim()) {
-      r.alerts.push(`${msg}；已注明原因，软提示关注`);
-    } else {
-      r.decision = Decision.REVIEW;
-      r.canProceed = false;
-      r.missing.push('N2_BELOW_COST_FLOOR');
-      r.reasons.push(`${msg}，中风险，须填写异常说明后复核`);
-      return r;
-    }
+    r.alerts.push(
+      `报价单价低于成本底线（底线 ${(snap.costFloorFen / 100).toFixed(2)}，报价 ${(price / 100).toFixed(2)}），软提示关注`,
+    );
   }
 
   if (snap.historyUnitPrices?.length) {
@@ -251,7 +221,7 @@ export function evaluateN2(snap: CaseSnapshot): GateResult {
     r.reasons.push(`报价版本 v${q.version} 要素齐全，存在价格偏离提示`);
     return r;
   }
-  r.reasons.push(`报价版本 v${q.version} 价格基础、有效期与承担方齐全`);
+  r.reasons.push(`报价版本 v${q.version} 单价与有效期齐全`);
   return r;
 }
 
@@ -904,10 +874,6 @@ function applyLowScreeningAlert(r: GateResult, buckets: HitBuckets, alert: strin
 
 function activeQuote(snap: CaseSnapshot): QuoteSnap | undefined {
   return (snap.quotes || []).find((q) => q.status === QuoteStatus.ACTIVE) || snap.quotes?.[0];
-}
-
-function isBearer(v: string) {
-  return v === Bearer.SELLER || v === Bearer.BUYER;
 }
 
 function toDate(v: string | Date): Date {

@@ -6,7 +6,7 @@ export const NODE_CATALOG = [
     mvp: true,
     isHardGate: false,
     isStub: false,
-    summary: '买方/付款人/收货人关系确认，制裁与不可靠实体筛查，生成KYC报告与风险评分。',
+    summary: '买方/收货人关系确认，制裁与不可靠实体筛查，生成KYC报告与风险评分。付款人不再作为询盘必填当事方。',
   },
   {
     code: 'N2',
@@ -14,7 +14,7 @@ export const NODE_CATALOG = [
     mvp: true,
     isHardGate: false,
     isStub: false,
-    summary: '价格基础（含/不含项目）、有效期、运费/税费承担方必填；模糊报价不得推进；异常偏离成本底线/历史价软提示或中风险。',
+    summary: '所含项目（海运费/陆运费/港杂）多选、有效期、美元单价（吨或千克）必填；模糊报价不得推进；低于成本底线/历史价偏离软提示。',
   },
   {
     code: 'N3',
@@ -93,6 +93,38 @@ export const PartyRoleLabel: Record<string, string> = {
 };
 
 export const CUSTOMER_PARTY_ROLES = [PartyRole.BUYER, PartyRole.PAYER, PartyRole.CONSIGNEE] as const;
+
+/** 询盘 KYC 过闸必填当事方：买方与收货人。付款人可缺省。 */
+export const N1_REQUIRED_PARTY_ROLES = [PartyRole.BUYER, PartyRole.CONSIGNEE] as const;
+
+/** 新建销售案预填当事方（不含付款人）。 */
+export const N1_CREATE_PARTY_ROLES = [PartyRole.BUYER, PartyRole.CONSIGNEE] as const;
+
+export const QuoteIncludedItem = {
+  OCEAN_FREIGHT: 'OCEAN_FREIGHT',
+  INLAND_FREIGHT: 'INLAND_FREIGHT',
+  PORT_CHARGES: 'PORT_CHARGES',
+} as const;
+
+export const QuoteIncludedItemLabel: Record<string, string> = {
+  OCEAN_FREIGHT: '海运费',
+  INLAND_FREIGHT: '陆运费',
+  PORT_CHARGES: '港杂',
+};
+
+export const QUOTE_INCLUDED_ITEM_CODES = Object.values(QuoteIncludedItem);
+
+export const QuotePriceUnit = {
+  TON: 'TON',
+  KG: 'KG',
+} as const;
+
+export const QuotePriceUnitLabel: Record<string, string> = {
+  TON: '吨',
+  KG: '千克',
+};
+
+export const QUOTE_PRICE_UNIT_CODES = Object.values(QuotePriceUnit);
 
 export const ListCode = {
   OFAC: 'OFAC',

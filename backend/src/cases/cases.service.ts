@@ -23,6 +23,7 @@ import {
   NodeStatus,
   PartyRole,
   PartyRoleLabel,
+  PriceBasis,
   QuoteStatus,
   RiskLevel,
   SINOSURE_EXPOSURE_HIGH_REVIEW_REASON,
@@ -90,6 +91,11 @@ import {
   UpsertPartyDto,
 } from './dto';
 import { GateResult } from '../common/types';
+import {
+  parseQuoteIncludedItems,
+  parseQuotePriceUnit,
+  serializeQuoteIncludedItems,
+} from './quote-fields';
 import { CustomersService } from '../customers/customers.service';
 import { derivePaymentDueAt } from '../customers/remittance';
 import { receivedFenOf } from '../customers/sinosure-exposure';
@@ -259,7 +265,11 @@ export class CasesService {
         missing: safeJson(g.missingJson),
         reasons: safeJson(g.reasonsJson),
       })),
-      quotes: c.quotes.map((q) => ({ ...q, snapshot: safeJson(q.snapshotJson) })),
+      quotes: c.quotes.map((q) => ({
+        ...q,
+        snapshot: safeJson(q.snapshotJson),
+        includedItemCodes: parseQuoteIncludedItems(q.includedItems),
+      })),
       contractVersions: c.contractVersions.map((v) => ({ ...v, snapshot: safeJson(v.snapshotJson) })),
       customs: c.customs
         ? { ...c.customs, declareElements: safeJson(c.customs.declareElementsJson) }
@@ -579,40 +589,43 @@ export class CasesService {
         data: { status: QuoteStatus.SUPERSEDED },
       });
     }
+    const includedCodes = parseQuoteIncludedItems(dto.includedItemCodes ?? dto.includedItems);
+    const includedItems = serializeQuoteIncludedItems(includedCodes);
+    const unit = parseQuotePriceUnit(dto.unit);
+    const priceBasis = dto.priceBasis?.trim() || PriceBasis.INCLUSIVE;
     const amountFen =
       dto.amountFen ??
       (dto.unitPriceFen && dto.quantity ? dto.unitPriceFen * dto.quantity : dto.unitPriceFen ?? null);
     const snapshot = {
       version,
-      priceBasis: dto.priceBasis,
-      includedItems: dto.includedItems ?? null,
-      excludedItems: dto.excludedItems ?? null,
+      priceBasis,
+      includedItems,
+      includedItemCodes: includedCodes,
       validityUntil: dto.validityUntil ?? null,
-      freightBearer: dto.freightBearer ?? null,
-      taxBearer: dto.taxBearer ?? null,
       unitPriceFen: dto.unitPriceFen ?? null,
+      unit,
       quantity: dto.quantity ?? null,
       amountFen,
       notes: dto.notes ?? null,
-      abnormalPriceNote: dto.abnormalPriceNote ?? null,
     };
     const row = await this.prisma.quote.create({
       data: {
         caseId,
         version,
         status: QuoteStatus.ACTIVE,
-        priceBasis: dto.priceBasis,
-        includedItems: dto.includedItems,
-        excludedItems: dto.excludedItems,
+        priceBasis,
+        includedItems,
+        excludedItems: null,
         validityUntil: parseDate(dto.validityUntil),
-        freightBearer: dto.freightBearer,
-        taxBearer: dto.taxBearer,
+        freightBearer: null,
+        taxBearer: null,
         unitPriceFen: dto.unitPriceFen,
+        unit,
         quantity: dto.quantity,
         amountFen,
         currency: requireSalesCurrency(dto.currency, '报价'),
         notes: dto.notes,
-        abnormalPriceNote: dto.abnormalPriceNote,
+        abnormalPriceNote: null,
         snapshotJson: JSON.stringify(snapshot),
       },
     });

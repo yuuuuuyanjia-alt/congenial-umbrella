@@ -436,6 +436,8 @@ model Quote {
   freightBearer     String?
   taxBearer         String?
   unitPriceFen      Int?
+  /** 单价计量单位：TON 吨 / KG 千克 */
+  unit              String?
   quantity          Int?
   amountFen         Int?
   currency          String    @default("USD")

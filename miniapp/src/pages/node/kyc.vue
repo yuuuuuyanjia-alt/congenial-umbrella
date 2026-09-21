@@ -2,7 +2,7 @@
   <view class="wrap" v-if="c">
     <view class="card">
       <view class="h2">询盘 / 客户 KYC</view>
-      <view class="muted">须确认买方、付款人、收货人关系，并对 OFAC / UN / EU / UK 与中国不可靠实体清单做模拟筛查。高置信命中硬拦截。</view>
+      <view class="muted">须确认买方、收货人，并对 OFAC / UN / EU / UK 与中国不可靠实体清单做模拟筛查。高置信命中硬拦截。</view>
       <view class="ok" v-if="fromCreate" style="margin-top: 12rpx">
         已创建销售合同案，当前从询盘/客户 KYC 开始。请先保存当事方并完成筛查，再报价，最后到销售合同页填写。不能跳过。
       </view>
@@ -19,8 +19,7 @@
 
     <view class="btn" v-if="canWriteBusiness" @click="runScreen">执行模拟筛查并生成 KYC 报告</view>
     <view class="btn" v-if="canWriteBusiness" @click="tryAdvance">尝试推进本节点</view>
-    <view class="btn" v-if="fromCreate && canWriteBusiness && atQuote" @click="goQuote">去办报价</view>
-    <view class="btn" v-if="fromCreate && canWriteBusiness && atContract" @click="goContract">去填销售合同</view>
+    <NextNodeCta v-if="nextReady" :target="nextTarget" :ready="nextReady" :hint="nextHint" @go="goNext" />
 
     <view class="card" v-if="kycReport">
       <view class="h2">KYC 报告</view>
@@ -41,38 +40,62 @@
 
     <view class="err" v-if="err">{{ err }}</view>
     <view class="ok" v-if="ok">{{ ok }}</view>
+    <NextNodeCta v-if="nextReady" :target="nextTarget" :ready="nextReady" :hint="nextHint" @go="goNext" />
   </view>
 </template>
 
 <script setup lang="ts">
 import { onLoad } from '@dcloudio/uni-app';
 import { computed, reactive, ref } from 'vue';
-import { api, decisionClass, decisionText, goToNode, hasReachedNode, toastErr } from '../../api';
+import { api, decisionClass, decisionText, goToNode, nextWorkNodeFromForm, pipelineNodeName, toastErr } from '../../api';
+import NextNodeCta from '../../components/NextNodeCta.vue';
 import { useDemoRole } from '../../role';
 
 const { canWriteBusiness, roleLabel } = useDemoRole();
 
+const FORM_NODE = 'N1';
 const id = ref('');
 const fromCreate = ref(false);
 const c = ref<any>(null);
 const err = ref('');
 const ok = ref('');
+const advancedTo = ref<string | null>(null);
 const roles = [
   { key: 'BUYER', label: '买方' },
-  { key: 'PAYER', label: '付款人' },
   { key: 'CONSIGNEE', label: '收货人' },
 ];
 const forms = reactive<any>({
   BUYER: { name: '', country: '' },
-  PAYER: { name: '', country: '' },
   CONSIGNEE: { name: '', country: '' },
 });
 const kycReport = computed(() => (c.value?.kycReports || []).find((r: any) => r.nodeCode === 'N1') || (c.value?.kycReports || []).find((r: any) => !r.nodeCode));
 const customerHits = computed(() =>
   (c.value?.hits || []).filter((h: any) => h.nodeCode !== 'N5' && h.party?.role !== 'SUPPLIER'),
 );
-const atQuote = computed(() => c.value?.currentNode === 'N2');
-const atContract = computed(() => hasReachedNode(c.value?.currentNode, 'N3'));
+const nextTarget = computed(() =>
+  c.value
+    ? nextWorkNodeFromForm(FORM_NODE, {
+        currentNode: c.value.currentNode,
+        overrideNext: advancedTo.value,
+      })
+    : null,
+);
+const nextReady = computed(() => {
+  if (!nextTarget.value || !c.value) return false;
+  if (advancedTo.value) return true;
+  const cur = c.value.currentNode || '';
+  return !!cur && cur !== FORM_NODE;
+});
+const nextHint = computed(() => {
+  const t = nextTarget.value;
+  if (!t) return '';
+  if (advancedTo.value) return `已过闸。下一步为 ${t.code} ${t.name}。`;
+  const cur = c.value?.currentNode;
+  if (cur && cur !== FORM_NODE) {
+    return `本案已在 ${cur} ${pipelineNodeName(cur)}。可直接进入该节点。`;
+  }
+  return `推进本节点后，可进入 ${t.code} ${t.name}。`;
+});
 
 onLoad(async (q) => {
   id.value = q?.id || '';
@@ -82,8 +105,9 @@ onLoad(async (q) => {
 
 async function reload() {
   c.value = await api.case(id.value);
-  for (const p of c.value.parties || []) {
-    forms[p.role] = { name: p.name, country: p.country || '' };
+  for (const role of roles) {
+    const p = (c.value.parties || []).find((x: any) => x.role === role.key);
+    forms[role.key] = { name: p?.name || '', country: p?.country || '' };
   }
 }
 
@@ -114,10 +138,8 @@ async function tryAdvance() {
   try {
     const r = await api.advance(id.value, 'N1');
     ok.value = r.stub ? r.message : `已推进，下一节点 ${r.nextNode || '结束'}`;
+    advancedTo.value = r.nextNode || null;
     await reload();
-    if (fromCreate.value && (r.nextNode === 'N2' || c.value?.currentNode === 'N2')) {
-      uni.showToast({ title: '请继续办理报价', icon: 'none' });
-    }
   } catch (e: any) {
     err.value = formatGate(e);
   }
@@ -129,11 +151,8 @@ function formatGate(e: any) {
   return [e?.message, Array.isArray(reasons) ? reasons.join('；') : '', missing].filter(Boolean).join('\n');
 }
 
-function goQuote() {
-  if (id.value) goToNode(id.value, 'N2');
-}
-
-function goContract() {
-  if (id.value) goToNode(id.value, 'N3');
+function goNext() {
+  const t = nextTarget.value;
+  if (t && id.value) goToNode(id.value, t.code);
 }
 </script>

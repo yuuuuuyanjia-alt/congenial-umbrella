@@ -52,13 +52,13 @@ describe('新建销售/采购合同（N1 起 / 采购点选已签销售合同）
     expect(custom.buyerName).toBe('Helios Demo');
   });
 
-  it('买方预填三当事方同名，付款人/收货人标记为与买方相同', () => {
+  it('买方预填买方与收货人同名，不预填付款人', () => {
     expect(demoPartiesFromBuyer('  ', 'DE')).toEqual([]);
     const rows = demoPartiesFromBuyer('Nordlicht Demo GmbH', 'DE');
-    expect(rows.map((r) => r.role)).toEqual(['BUYER', 'PAYER', 'CONSIGNEE']);
+    expect(rows.map((r) => r.role)).toEqual(['BUYER', 'CONSIGNEE']);
     expect(rows.every((r) => r.name === 'Nordlicht Demo GmbH' && r.country === 'DE')).toBe(true);
     expect(rows.find((r) => r.role === 'BUYER')?.isSameAsBuyer).toBe(false);
-    expect(rows.find((r) => r.role === 'PAYER')?.isSameAsBuyer).toBe(true);
+    expect(rows.find((r) => r.role === 'CONSIGNEE')?.isSameAsBuyer).toBe(true);
   });
 
   it('仅 SALES / RISK 可见新建按钮，MANAGER 不可见', () => {
