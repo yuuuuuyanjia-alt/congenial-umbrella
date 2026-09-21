@@ -18,7 +18,7 @@ export class CreateCaseDto {
   @ToCurrency()
   @IsIn([SALES_CURRENCY], { message: '出口案件币种须为 USD' })
   currency?: string;
-  /** 演示新建销售合同时预填买方；付款人/收货人同名。 */
+  /** 演示新建销售合同时预填买方；收货人同名。付款人不再预填。 */
   @IsOptional() @IsString() buyerName?: string;
   @IsOptional() @IsString() buyerCountry?: string;
 }
@@ -145,13 +145,24 @@ export class SaveTaxRebateDto {
 }
 
 export class SaveQuoteDto {
-  @IsString() priceBasis: string;
-  @IsOptional() @IsString() includedItems?: string;
+  @IsOptional() @IsString() priceBasis?: string;
+  @IsOptional()
+  @Transform(({ value }) => {
+    if (value == null) return undefined;
+    if (Array.isArray(value)) return value;
+    return value;
+  })
+  includedItems?: string | string[];
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  includedItemCodes?: string[];
   @IsOptional() @IsString() excludedItems?: string;
   @IsOptional() @IsString() validityUntil?: string;
   @IsOptional() @IsString() freightBearer?: string;
   @IsOptional() @IsString() taxBearer?: string;
   @IsOptional() @IsInt() unitPriceFen?: number;
+  @IsOptional() @IsIn(['TON', 'KG', '吨', '千克']) unit?: string;
   @IsOptional() @IsInt() quantity?: number;
   @IsOptional() @IsInt() amountFen?: number;
   @IsOptional()

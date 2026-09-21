@@ -1,4 +1,4 @@
-import { CUSTOMER_PARTY_ROLES, PartyRole } from '../common/constants';
+import { N1_CREATE_PARTY_ROLES, PartyRole } from '../common/constants';
 import { SALES_CURRENCY } from '../common/currencies';
 import { canWriteBusiness } from '../auth/roles';
 import { isEligibleSalesCase, isProcurementContractListItem, isSalesContractListItem } from './sales-link';
@@ -64,12 +64,12 @@ export function demoCreateCaseInput(title?: string | null, amountFen?: number | 
   };
 }
 
-/** 买方/付款人/收货人同名，便于在 N1 直接筛查（付款人/收货人=买方）。 */
+/** 买方/收货人同名预填，便于在 N1 直接筛查。付款人不再预填。 */
 export function demoPartiesFromBuyer(buyerName?: string | null, country?: string | null) {
   const name = String(buyerName || '').trim();
   if (!name) return [];
   const c = String(country || '').trim() || null;
-  return CUSTOMER_PARTY_ROLES.map((role) => ({
+  return N1_CREATE_PARTY_ROLES.map((role) => ({
     role,
     name,
     country: c,

@@ -124,6 +124,7 @@ export interface QuoteSnap {
   freightBearer?: string | null;
   taxBearer?: string | null;
   unitPriceFen?: number | null;
+  unit?: string | null;
   quantity?: number | null;
   amountFen?: number | null;
   notes?: string | null;

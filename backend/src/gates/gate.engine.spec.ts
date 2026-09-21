@@ -125,8 +125,8 @@ function baseSnap(over: Partial<CaseSnapshot> = {}): CaseSnapshot {
         version: 1,
         status: 'ACTIVE',
         priceBasis: 'MIXED',
-        includedItems: '海运费、出口报关费',
-        excludedItems: '目的港关税',
+        includedItems: JSON.stringify(['OCEAN_FREIGHT']),
+        unit: 'TON',
         validityUntil: '2026-12-31',
         freightBearer: 'SELLER',
         taxBearer: 'BUYER',
@@ -260,6 +260,36 @@ describe('闸门引擎 MVP 节点', () => {
     );
     expect(r.canProceed).toBe(true);
     expect(r.decision).toBe(Decision.PASS);
+  });
+
+  it('N1 无付款人仍可通过（买方与收货人齐全即可）', () => {
+    const r = evaluateN1(
+      baseSnap({
+        parties: [
+          { role: 'BUYER', name: 'Nordlicht GmbH' },
+          { role: 'CONSIGNEE', name: 'Nordlicht GmbH' },
+        ],
+      }),
+    );
+    expect(r.canProceed).toBe(true);
+    expect(r.missing).not.toContain('N1_PARTY_PAYER');
+  });
+
+  it('N1 缺少买方或收货人拒绝', () => {
+    const noBuyer = evaluateN1(
+      baseSnap({
+        parties: [{ role: 'CONSIGNEE', name: 'Nordlicht GmbH' }],
+      }),
+    );
+    expect(noBuyer.canProceed).toBe(false);
+    expect(noBuyer.missing).toContain('N1_PARTY_BUYER');
+    const noConsignee = evaluateN1(
+      baseSnap({
+        parties: [{ role: 'BUYER', name: 'Nordlicht GmbH' }],
+      }),
+    );
+    expect(noConsignee.canProceed).toBe(false);
+    expect(noConsignee.missing).toContain('N1_PARTY_CONSIGNEE');
   });
 
   it('N1 低置信软提示不阻断', () => {
@@ -1183,7 +1213,7 @@ describe('闸门引擎 N2 报价环节', () => {
     expect(r.missing).toContain('N2_VAGUE_PRICING');
   });
 
-  it('缺少价格基础/有效期/承担方拒绝', () => {
+  it('缺少有效期/所含项目/单价单位拒绝', () => {
     const r = evaluateN2(
       baseSnap({
         quotes: [
@@ -1191,27 +1221,45 @@ describe('闸门引擎 N2 报价环节', () => {
             version: 1,
             status: 'ACTIVE',
             priceBasis: '',
+            includedItems: '',
             validityUntil: null,
             freightBearer: null,
             taxBearer: null,
             unitPriceFen: 1280000,
+            unit: null,
           },
         ],
       }),
     );
     expect(r.canProceed).toBe(false);
-    expect(r.missing).toEqual(
-      expect.arrayContaining(['N2_PRICE_BASIS', 'N2_VALIDITY', 'N2_FREIGHT_BEARER', 'N2_TAX_BEARER']),
-    );
+    expect(r.missing).toEqual(expect.arrayContaining(['N2_INCLUDED_ITEMS', 'N2_VALIDITY', 'N2_PRICE_UNIT']));
+    expect(r.missing).not.toContain('N2_PRICE_BASIS');
+    expect(r.missing).not.toContain('N2_FREIGHT_BEARER');
+    expect(r.missing).not.toContain('N2_TAX_BEARER');
   });
 
-  it('含项目未列明所含费用拒绝', () => {
+  it('价格基础与承担方缺省不阻断', () => {
     const r = evaluateN2(
       baseSnap({
         quotes: [
           {
             ...baseSnap().quotes[0],
-            priceBasis: 'INCLUSIVE',
+            priceBasis: '',
+            freightBearer: null,
+            taxBearer: null,
+          },
+        ],
+      }),
+    );
+    expect(r.canProceed).toBe(true);
+  });
+
+  it('未勾选所含项目拒绝', () => {
+    const r = evaluateN2(
+      baseSnap({
+        quotes: [
+          {
+            ...baseSnap().quotes[0],
             includedItems: '',
           },
         ],
@@ -1221,27 +1269,30 @@ describe('闸门引擎 N2 报价环节', () => {
     expect(r.missing).toContain('N2_INCLUDED_ITEMS');
   });
 
-  it('低于成本底线且无说明 → 中风险不可推进', () => {
+  it('旧自由文本所含项目可迁移后通过', () => {
+    const r = evaluateN2(
+      baseSnap({
+        quotes: [
+          {
+            ...baseSnap().quotes[0],
+            includedItems: '海运费、出口报关费',
+          },
+        ],
+      }),
+    );
+    expect(r.canProceed).toBe(true);
+  });
+
+  it('低于成本底线 → 软提示可推进（不再要求异常说明）', () => {
     const r = evaluateN2(
       baseSnap({
         costFloorFen: 2000000,
         quotes: [{ ...baseSnap().quotes[0], unitPriceFen: 800000, abnormalPriceNote: '' }],
       }),
     );
-    expect(r.decision).toBe(Decision.REVIEW);
-    expect(r.canProceed).toBe(false);
-    expect(r.missing).toContain('N2_BELOW_COST_FLOOR');
-  });
-
-  it('低于成本底线但已注明 → 软提示可推进', () => {
-    const r = evaluateN2(
-      baseSnap({
-        costFloorFen: 2000000,
-        quotes: [{ ...baseSnap().quotes[0], unitPriceFen: 800000, abnormalPriceNote: '清仓样件' }],
-      }),
-    );
     expect(r.decision).toBe(Decision.SOFT_ALERT);
     expect(r.canProceed).toBe(true);
+    expect(r.missing).not.toContain('N2_BELOW_COST_FLOOR');
   });
 
   it('较历史均价偏离 → 软提示', () => {
