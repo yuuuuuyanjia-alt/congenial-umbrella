@@ -81,7 +81,10 @@ npm run backend
 npm run miniapp
 ```
 
-微信开发者工具：`npm --prefix miniapp run dev:mp-weixin`，导入 `miniapp/dist/dev/mp-weixin`。请把合法域名校验关闭（manifest 已设 `urlCheck: false`），并确保开发者工具能访问本机 `http://127.0.0.1:3000`。
+日常演示默认走 **H5**（`npm run miniapp` → http://127.0.0.1:5173）。
+微信开发者工具：先起同一后端 `npm run backend`（接口 `http://127.0.0.1:3000/api`，与 H5 相同），再 `npm --prefix miniapp run dev:mp-weixin`，导入 `miniapp/dist/dev/mp-weixin`（正式构建 `npm --prefix miniapp run build:mp-weixin` → `miniapp/dist/build/mp-weixin`）。
+非 H5 请求已指向该 API；开发者工具请关闭合法域名校验（`manifest.json` 已设 `urlCheck: false`）。
+真实 AppID / 合法域名是后续阶段，本仓库 `touristappid` 即可，不阻塞演示。
 
 本地 `npm run backend` / `npm run miniapp` 流程不变。分享给他人时请用下面的 Docker 演示环境。
 
