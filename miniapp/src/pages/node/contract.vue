@@ -44,6 +44,41 @@
       <input class="input" type="digit" v-model="form.amountYuan" placeholder="与投保限额同一币种" />
       <view class="label">币种</view>
       <input class="input" v-model="form.currency" placeholder="USD" />
+      <view class="label">交货方式<text class="req">必填</text></view>
+      <view class="muted">公司是出口方，不是过桥。不强制自有仓；港口直出须货物流+报关+发票+收汇能闭环。</view>
+      <view class="choice-row">
+        <view class="choice-btn" :class="{ 'choice-btn-on': form.deliveryMode === 'OWN_WAREHOUSE' }" @click="form.deliveryMode = 'OWN_WAREHOUSE'">自有仓发运</view>
+        <view class="choice-btn" :class="{ 'choice-btn-on': form.deliveryMode === 'BONDED' }" @click="form.deliveryMode = 'BONDED'">保税仓储</view>
+        <view class="choice-btn" :class="{ 'choice-btn-on': form.deliveryMode === 'DIRECT_PORT' }" @click="form.deliveryMode = 'DIRECT_PORT'">港口直出</view>
+      </view>
+      <template v-if="form.deliveryMode === 'DIRECT_PORT'">
+        <view class="h2" style="margin-top: 24rpx">港口直出四问</view>
+        <view class="muted">须货在证据、报关主体可解释、收汇与本案绑定，并判断是否像空转。缺任一证据不得推进。不强制改走自有仓。</view>
+        <view class="label">货在何处 / 货在证据</view>
+        <input class="input" v-model="directPort.goodsWhereAnswer" placeholder="如洋山港待装、仓单号" />
+        <view class="label">货在证据编号</view>
+        <input class="input" v-model="directPort.goodsWhereRef" placeholder="仓单/物流编号" />
+        <view class="btn btn-ghost" v-if="canWriteBusiness" @click="stubDirect('goodsWhere')">模拟上传货在证据</view>
+        <view class="label">报关主体为何可解释为本企业出口</view>
+        <input class="input" v-model="directPort.customsPartyAnswer" placeholder="本企业为报关主体，非过桥" />
+        <view class="label">报关主体证据编号</view>
+        <input class="input" v-model="directPort.customsPartyRef" placeholder="报关委托/资质编号" />
+        <view class="btn btn-ghost" v-if="canWriteBusiness" @click="stubDirect('customsParty')">模拟上传报关主体说明</view>
+        <view class="label">收汇如何与本案绑定</view>
+        <input class="input" v-model="directPort.remittanceBoundAnswer" placeholder="水单发票号=本合同" />
+        <view class="label">收汇绑定证据编号</view>
+        <input class="input" v-model="directPort.remittanceBoundRef" placeholder="水单/发票对照编号" />
+        <view class="btn btn-ghost" v-if="canWriteBusiness" @click="stubDirect('remittanceBound')">模拟上传收汇对照</view>
+        <view class="label">是否像空转 / 假出口</view>
+        <view class="choice-row">
+          <view class="choice-btn" :class="{ 'choice-btn-on': directPort.emptyTurnLikely === false }" @click="directPort.emptyTurnLikely = false">不像空转</view>
+          <view class="choice-btn" :class="{ 'choice-btn-on': directPort.emptyTurnLikely === true }" @click="directPort.emptyTurnLikely = true">像空转（红线）</view>
+        </view>
+        <view class="label">空转判断说明</view>
+        <input class="input" v-model="directPort.emptyTurnAnswer" placeholder="实物流与采购依据，或空转疑点" />
+        <view class="label">空转判断附件编号（可选）</view>
+        <input class="input" v-model="directPort.emptyTurnRef" placeholder="说明附件编号" />
+      </template>
       <view class="label">所有权保留条款</view>
       <switch :checked="form.hasRetentionOfTitle" @change="(e: any) => (form.hasRetentionOfTitle = e.detail.value)" />
       <view class="label">争议解决条款</view>
@@ -249,6 +284,18 @@ const form = reactive({
   paymentDueAt: '',
   hasRemittance: false,
   remittedYuan: '',
+  deliveryMode: '' as '' | 'OWN_WAREHOUSE' | 'BONDED' | 'DIRECT_PORT',
+});
+const directPort = reactive({
+  goodsWhereAnswer: '',
+  goodsWhereRef: '',
+  customsPartyAnswer: '',
+  customsPartyRef: '',
+  remittanceBoundAnswer: '',
+  remittanceBoundRef: '',
+  emptyTurnLikely: null as boolean | null,
+  emptyTurnAnswer: '',
+  emptyTurnRef: '',
 });
 const sino = reactive({
   evidenceRef: '',
@@ -333,6 +380,10 @@ onLoad(async (q) => {
     form.domesticPortArrivalAt = datetimeField(ct.domesticPortArrivalAt);
     form.customerPickedUp = ct.customerPickedUp === true ? true : ct.customerPickedUp === false ? false : null;
     form.paymentDueAt = ct.paymentDueAt ? String(ct.paymentDueAt).slice(0, 10) : '';
+    form.deliveryMode = (ct.deliveryMode === 'OWN_WAREHOUSE' || ct.deliveryMode === 'BONDED' || ct.deliveryMode === 'DIRECT_PORT'
+      ? ct.deliveryMode
+      : '') as typeof form.deliveryMode;
+    applyDirectPort(ct.directPort);
     applyContractRemittance(ct);
     if (isTtOnly(ct.incoterms) && !form.ttTiming) form.ttTiming = 'ADVANCE';
     if (form.ttTiming === 'ADVANCE' && !form.ttAdvanceYuan) syncAdvanceFromPercent();
@@ -458,6 +509,35 @@ function datetimeField(v: unknown) {
   return s.slice(0, 10);
 }
 
+function stubDirect(kind: 'goodsWhere' | 'customsParty' | 'remittanceBound') {
+  const id = `DP-${kind.toUpperCase()}-${Date.now()}`;
+  if (kind === 'goodsWhere') {
+    directPort.goodsWhereRef = id;
+    if (!directPort.goodsWhereAnswer) directPort.goodsWhereAnswer = '货物在口岸待装（演示仓单）';
+  } else if (kind === 'customsParty') {
+    directPort.customsPartyRef = id;
+    if (!directPort.customsPartyAnswer) directPort.customsPartyAnswer = '本企业为出口报关主体，非过桥';
+  } else {
+    directPort.remittanceBoundRef = id;
+    if (!directPort.remittanceBoundAnswer) directPort.remittanceBoundAnswer = '收汇水单发票号与本案合同一致';
+  }
+  ok.value = '已生成模拟直出证据编号（演示环境，非真实上传）';
+}
+
+function applyDirectPort(dp?: any) {
+  if (!dp) return;
+  directPort.goodsWhereAnswer = dp.goodsWhereAnswer || '';
+  directPort.goodsWhereRef = dp.goodsWhereRef || '';
+  directPort.customsPartyAnswer = dp.customsPartyAnswer || '';
+  directPort.customsPartyRef = dp.customsPartyRef || '';
+  directPort.remittanceBoundAnswer = dp.remittanceBoundAnswer || '';
+  directPort.remittanceBoundRef = dp.remittanceBoundRef || '';
+  directPort.emptyTurnLikely =
+    dp.emptyTurnLikely === true ? true : dp.emptyTurnLikely === false ? false : null;
+  directPort.emptyTurnAnswer = dp.emptyTurnAnswer || '';
+  directPort.emptyTurnRef = dp.emptyTurnRef || '';
+}
+
 function stubUpload() {
   sino.evidenceRef = `SINOSURE-${Date.now()}`;
   sino.fileName = '中信保限额批注-模拟.pdf';
@@ -512,6 +592,21 @@ async function save() {
       domesticPortArrivalAt: fob ? ymdOrNull(form.domesticPortArrivalAt) : null,
       customerPickedUp: form.customerPickedUp,
       paymentDueAt: ymdOrNull(form.paymentDueAt),
+      deliveryMode: form.deliveryMode || null,
+      directPort:
+        form.deliveryMode === 'DIRECT_PORT'
+          ? {
+              goodsWhereAnswer: directPort.goodsWhereAnswer || null,
+              goodsWhereRef: directPort.goodsWhereRef || null,
+              customsPartyAnswer: directPort.customsPartyAnswer || null,
+              customsPartyRef: directPort.customsPartyRef || null,
+              remittanceBoundAnswer: directPort.remittanceBoundAnswer || null,
+              remittanceBoundRef: directPort.remittanceBoundRef || null,
+              emptyTurnLikely: directPort.emptyTurnLikely,
+              emptyTurnAnswer: directPort.emptyTurnAnswer || null,
+              emptyTurnRef: directPort.emptyTurnRef || null,
+            }
+          : null,
     });
     c.value = await api.case(id.value);
     applyContractRemittance(c.value?.contract);
@@ -556,6 +651,9 @@ async function tryAdvance() {
     err.value = gateMessage(e);
     if (Array.isArray(e?.missing) && e.missing.some((m: string) => String(m).includes('SINOSURE_EXPOSURE_HIGH'))) {
       err.value = `${err.value}\n请到审核工作台领取并放行，无需修改合同金额。`;
+    }
+    if (Array.isArray(e?.missing) && e.missing.some((m: string) => String(m).startsWith('FT'))) {
+      err.value = `${err.value}\n港口直出缺证据请补四问；黄灯请到工作台第三页领取并通过；红线硬拦截。`;
     }
   }
 }

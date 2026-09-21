@@ -22,6 +22,8 @@ model User {
   approvals        Shipment[]        @relation("ShipmentApprover")
   occupancyClaims    OccupancyReview[] @relation("OccupancyClaimedBy")
   occupancyDecisions OccupancyReview[] @relation("OccupancyDecidedBy")
+  taxFinanceClaims    TaxFinanceReview[] @relation("TaxFinanceClaimedBy")
+  taxFinanceDecisions TaxFinanceReview[] @relation("TaxFinanceDecidedBy")
 }
 
 /// 客户主数据：案件到达 N3 后由买方录入；按规范化名称+国家或税号合并，跨案件查看限额与收汇
@@ -98,6 +100,8 @@ model TradeCase {
   evidences               Evidence[]
   sinosurePolicies        SinosurePolicy[]
   occupancyReviews        OccupancyReview[]
+  taxFinanceReviews       TaxFinanceReview[]
+  taxRebateChecklist      TaxRebateChecklist?
 }
 
 model Party {
@@ -231,6 +235,10 @@ model Contract {
   hasRemittance       Boolean   @default(false)
   /// 已收汇金额（分）展示缓存，由 N9 到账回写；未收汇 = 合同总额 − N9 到账
   remittedFen         Int       @default(0)
+  /// 交货方式：OWN_WAREHOUSE 自有仓 | BONDED 保税 | DIRECT_PORT 港口直出。不强制自有仓。
+  deliveryMode        String?
+  /// 港口直出四问 + 证据编号（JSON）。自有仓/保税可空。
+  directPortJson      String?
   updatedAt           DateTime  @updatedAt
   case                TradeCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
 }
@@ -326,22 +334,66 @@ model OccupancyReview {
   @@index([fingerprint])
 }
 
-/// 案例工作台处置（筛查命中 + 占用高风险领取/放行/驳回）
+/// 出口退税 / 融资性贸易审核（领取 / 通过 / 驳回）。黄灯入列；红线硬拦截（可只读展示）。
+model TaxFinanceReview {
+  id          String   @id @default(cuid())
+  caseId      String
+  nodeCode    String
+  status      String
+  band        String
+  reasonCode  String
+  summary     String
+  fingerprint String
+  claimedById String?
+  claimedAt   DateTime?
+  decidedById String?
+  decidedAt   DateTime?
+  comment     String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  case        TradeCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  claimedBy   User?     @relation("TaxFinanceClaimedBy", fields: [claimedById], references: [id], onDelete: SetNull)
+  decidedBy   User?     @relation("TaxFinanceDecidedBy", fields: [decidedById], references: [id], onDelete: SetNull)
+  actions     WorkbenchAction[]
+
+  @@index([caseId, nodeCode])
+  @@index([status])
+  @@index([fingerprint])
+}
+
+/// 退税就绪清单（FT4）：报关放行与 N9 收汇由系统推导；进项发票号可手填；四流闭环须勾选。
+model TaxRebateChecklist {
+  id             String    @id @default(cuid())
+  caseId         String    @unique
+  inputInvoiceNo String?
+  flowGoods      Boolean   @default(false)
+  flowCustoms    Boolean   @default(false)
+  flowInvoice    Boolean   @default(false)
+  flowRemittance Boolean   @default(false)
+  declaredAt     DateTime?
+  updatedAt      DateTime  @updatedAt
+  case           TradeCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+}
+
+/// 案例工作台处置（筛查命中 + 占用高风险领取/放行/驳回 + 退税·融资性审核）
 model WorkbenchAction {
-  id                String           @id @default(cuid())
-  caseId            String
-  hitId             String?
-  occupancyReviewId String?
-  actorId           String?
-  action            String
-  comment           String?
-  createdAt         DateTime         @default(now())
-  case              TradeCase        @relation(fields: [caseId], references: [id], onDelete: Cascade)
-  hit               ScreeningHit?    @relation(fields: [hitId], references: [id], onDelete: SetNull)
-  occupancyReview   OccupancyReview? @relation(fields: [occupancyReviewId], references: [id], onDelete: SetNull)
-  actor             User?            @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  id                 String            @id @default(cuid())
+  caseId             String
+  hitId              String?
+  occupancyReviewId  String?
+  taxFinanceReviewId String?
+  actorId            String?
+  action             String
+  comment            String?
+  createdAt          DateTime          @default(now())
+  case               TradeCase         @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  hit                ScreeningHit?     @relation(fields: [hitId], references: [id], onDelete: SetNull)
+  occupancyReview    OccupancyReview?  @relation(fields: [occupancyReviewId], references: [id], onDelete: SetNull)
+  taxFinanceReview   TaxFinanceReview? @relation(fields: [taxFinanceReviewId], references: [id], onDelete: SetNull)
+  actor              User?             @relation(fields: [actorId], references: [id], onDelete: SetNull)
 
   @@index([occupancyReviewId])
+  @@index([taxFinanceReviewId])
 }
 
 /// 仅追加审计日志：禁止更新/删除接口

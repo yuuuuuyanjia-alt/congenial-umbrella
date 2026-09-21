@@ -111,6 +111,20 @@ const paths = [
     cls: 'badge-block',
     desc: '国外买方筛查通过，国内供应商命中不可靠实体清单；采购合同已关联销售合同 DEMO-SUPPLIER，采购节点硬拦截。',
   },
+  {
+    caseNo: 'DEMO-PORT-YELLOW',
+    title: '港口直出黄灯',
+    tag: 'TAX REVIEW',
+    cls: 'badge-review',
+    desc: '港口直出四问齐全、不强制自有仓；购销薄利进入工作台第三页领取/通过/驳回。',
+  },
+  {
+    caseNo: 'DEMO-PORT-RED',
+    title: '港口直出红线',
+    tag: 'HARD BLOCK',
+    cls: 'badge-block',
+    desc: '港口直出自答像空转/假出口，红线硬拦截；工作台第三页只读。',
+  },
 ];
 
 onMounted(async () => {

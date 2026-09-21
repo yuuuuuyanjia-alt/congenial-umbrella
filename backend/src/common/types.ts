@@ -49,6 +49,20 @@ export interface ContractSnap {
   ttPercentBps?: number | null;
   ttAdvanceFen?: number | null;
   ttDaysAfterShipment?: number | null;
+  deliveryMode?: string | null;
+  directPort?: DirectPortSnap | null;
+}
+
+export interface DirectPortSnap {
+  goodsWhereAnswer?: string | null;
+  goodsWhereRef?: string | null;
+  customsPartyAnswer?: string | null;
+  customsPartyRef?: string | null;
+  remittanceBoundAnswer?: string | null;
+  remittanceBoundRef?: string | null;
+  emptyTurnLikely?: boolean | null;
+  emptyTurnAnswer?: string | null;
+  emptyTurnRef?: string | null;
 }
 
 export interface ShipmentSnap {
@@ -254,6 +268,54 @@ export interface CaseSnapshot {
   sinosureOccupancy?: SinosureOccupancySnap | null;
   /** 中信保占用高风险工作台审核（领取 / 放行 / 驳回） */
   occupancyReviews?: OccupancyReviewSnap[] | null;
+  /** 关联销售合同（N5）或本案销售合同，供 FT1 购销匹配 / 交货方式只读同步 */
+  salesContract?: SalesContractSideSnap | null;
+  /** 本案货物描述，供购销货描比对 */
+  caseGoodsDesc?: string | null;
+  taxFinanceReviews?: TaxFinanceReviewSnap[] | null;
+  taxRebate?: TaxRebateSnap | null;
+}
+
+export interface SalesContractSideSnap {
+  deliveryMode?: string | null;
+  goodsDesc?: string | null;
+  amountFen?: number | null;
+  quantity?: number | null;
+  currency?: string | null;
+  directPort?: DirectPortSnap | null;
+  consigneeName?: string | null;
+  buyerName?: string | null;
+}
+
+export interface TaxFinanceReviewSnap {
+  id?: string;
+  nodeCode: string;
+  status: string;
+  band?: string | null;
+  reasonCode?: string | null;
+  summary?: string | null;
+  fingerprint?: string | null;
+  claimedById?: string | null;
+  comment?: string | null;
+}
+
+export interface TaxRebateSnap {
+  inputInvoiceNo?: string | null;
+  flowGoods?: boolean | null;
+  flowCustoms?: boolean | null;
+  flowInvoice?: boolean | null;
+  flowRemittance?: boolean | null;
+  declaredAt?: string | Date | null;
+}
+
+export interface TaxFinanceView {
+  band: 'YELLOW' | 'RED' | null;
+  reasonCode: string;
+  fingerprint: string;
+  summary: string;
+  marginBps: number | null;
+  deliveryMode: string | null;
+  directPortComplete: boolean;
 }
 
 export interface OccupancyReviewSnap {
@@ -277,4 +339,5 @@ export interface GateResult {
   reasons: string[];
   alerts: string[];
   exposure?: SinosureExposureSnap;
+  taxFinance?: TaxFinanceView;
 }

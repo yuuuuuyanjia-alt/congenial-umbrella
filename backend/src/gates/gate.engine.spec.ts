@@ -46,6 +46,7 @@ function baseSnap(over: Partial<CaseSnapshot> = {}): CaseSnapshot {
       goodsDesc: 'CNC parts',
       amountFen: 1000000,
       currency: 'USD',
+      deliveryMode: 'OWN_WAREHOUSE',
     },
     shipment: {
       hasCustomerWrittenInstruction: true,

@@ -18,6 +18,13 @@
         >
           制裁命中 {{ hitQueue.length }}
         </view>
+        <view
+          class="choice-btn"
+          :class="{ 'choice-btn-on': tab === 'tax' }"
+          @click="tab = 'tax'"
+        >
+          退税·融资性审核 {{ taxQueue.length }}
+        </view>
       </view>
       <view class="muted" style="margin-top: 16rpx">{{ tabHint }}</view>
       <view class="err" v-if="!canWriteWorkbench" style="margin-top: 12rpx">
@@ -48,7 +55,7 @@
       </view>
     </template>
 
-    <template v-else>
+    <template v-else-if="tab === 'sanctions'">
       <view class="card" v-for="h in hitQueue" :key="'hit-' + h.id">
         <view class="line-reason">{{ hitReason(h) }}</view>
         <view class="line-status">
@@ -70,6 +77,46 @@
         </view>
       </view>
     </template>
+
+    <template v-else>
+      <view class="card" v-for="h in taxQueue" :key="'tax-' + h.id">
+        <view class="line-reason">{{ taxReason(h) }}</view>
+        <view class="line-status">
+          <text>当前状态：{{ taxStatus(h) }}</text>
+          <view class="badge" :class="taxBadge(h)">{{ taxStatusBadge(h) }}</view>
+        </view>
+        <view class="line-actions">
+          <view class="muted">{{ taxActionsHint(h) }}</view>
+          <input
+            class="input"
+            v-if="canWriteWorkbench && !h.readOnly"
+            v-model="comments[h.id]"
+            placeholder="审核备注（可选）"
+          />
+          <view
+            class="btn"
+            v-if="canWriteWorkbench && !h.readOnly && (h.status === 'OPEN' || h.status === 'REJECTED')"
+            @click="actTax(h, 'CLAIM')"
+          >领取</view>
+          <view
+            class="btn"
+            v-if="canWriteWorkbench && !h.readOnly && h.status !== 'APPROVED'"
+            @click="actTax(h, 'APPROVE')"
+          >通过</view>
+          <view
+            class="btn btn-danger"
+            v-if="canWriteWorkbench && !h.readOnly && (h.status === 'OPEN' || h.status === 'CLAIMED')"
+            @click="actTax(h, 'REJECT')"
+          >驳回</view>
+        </view>
+      </view>
+      <view class="card" v-if="loaded && !taxQueue.length">
+        <view class="h2" style="margin: 0">暂无退税·融资性待审</view>
+        <view class="muted" style="margin-top: 8rpx">
+          黄灯（薄利+港口直出）在此领取、通过或驳回。红线假出口/空转硬拦截，只读展示。不与额度、制裁队列混列。
+        </view>
+      </view>
+    </template>
   </view>
 </template>
 
@@ -82,7 +129,7 @@ import { useDemoRole } from '../../role';
 
 const { canWriteWorkbench, roleLabel, refresh: refreshRole } = useDemoRole();
 
-const tab = ref<'occupancy' | 'sanctions'>('occupancy');
+const tab = ref<'occupancy' | 'sanctions' | 'tax'>('occupancy');
 const queue = ref<any[]>([]);
 const loaded = ref(false);
 const comments = reactive<Record<string, string>>({});
@@ -112,26 +159,34 @@ async function load() {
   }
 }
 
-/** 额度审核 ← queue.kind === OCCUPANCY_HIGH；制裁命中 ← SCREENING_HIT。同一 GET /workbench/queue。 */
+/** 额度审核 ← OCCUPANCY_HIGH；制裁命中 ← SCREENING_HIT；退税·融资性 ← TAX_FINANCE。三页不混列。 */
 function isOccupancyItem(h: any) {
   if (h?.kind === 'OCCUPANCY_HIGH') return true;
-  if (h?.kind === 'SCREENING_HIT') return false;
-  return !!(h?.band === 'HIGH' && h?.nodeCode && !h?.matchedName);
+  if (h?.kind === 'SCREENING_HIT' || h?.kind === 'TAX_FINANCE') return false;
+  return !!(h?.band === 'HIGH' && h?.nodeCode && !h?.matchedName && h?.excessFen != null);
 }
 function isHitItem(h: any) {
   if (h?.kind === 'SCREENING_HIT') return true;
-  if (h?.kind === 'OCCUPANCY_HIGH') return false;
+  if (h?.kind === 'OCCUPANCY_HIGH' || h?.kind === 'TAX_FINANCE') return false;
   return !!h?.matchedName;
+}
+function isTaxItem(h: any) {
+  return h?.kind === 'TAX_FINANCE';
 }
 
 const occupancyQueue = computed(() => queue.value.filter(isOccupancyItem));
 const hitQueue = computed(() => queue.value.filter(isHitItem));
+const taxQueue = computed(() => queue.value.filter(isTaxItem));
 
-const tabHint = computed(() =>
-  tab.value === 'occupancy'
-    ? '占用属高风险时须领取、放行或驳回。放行后业务可推进，驳回后仍阻断。超高风险不进队，中风险不用审。'
-    : '筛查命中可做误报排除、确认真实、补充信息或持续监控。处置写入审计日志。',
-);
+const tabHint = computed(() => {
+  if (tab.value === 'occupancy') {
+    return '占用属高风险时须领取、放行或驳回。放行后业务可推进，驳回后仍阻断。超高风险不进队，中风险不用审。';
+  }
+  if (tab.value === 'sanctions') {
+    return '筛查命中可做误报排除、确认真实、补充信息或持续监控。处置写入审计日志。';
+  }
+  return '黄灯：港口直出叠加薄利，须领取并通过。红线硬拦截只读。通过后可不经自有仓推进。';
+});
 
 function occupancyBadge(status?: string) {
   if (status === 'APPROVED') return 'badge-pass';
@@ -193,6 +248,51 @@ async function actOccupancy(h: any, action: string) {
     reviewId: h.reviewId || h.id,
     action,
     comment: comments[h.id] || `工作台${label}`,
+  });
+  uni.showToast({ title: label, icon: 'none' });
+  await load();
+}
+
+function taxBadge(h: any) {
+  if (h.status === 'HARD_BLOCKED' || h.band === 'RED') return 'badge-block';
+  if (h.status === 'APPROVED') return 'badge-pass';
+  if (h.status === 'REJECTED') return 'badge-block';
+  return 'badge-review';
+}
+
+function taxReason(h: any) {
+  const caseNo = h.case?.caseNo || '未知案件';
+  const node = `${h.nodeCode || ''} ${pipelineNodeName(h.nodeCode)}`.trim();
+  const summary = h.summary || h.reasonCode || '退税·融资性审核';
+  return `${caseNo} · ${node}：${summary}`;
+}
+
+function taxStatusBadge(h: any) {
+  return h.statusLabel || decisionText(h.status);
+}
+
+function taxStatus(h: any) {
+  const label = taxStatusBadge(h);
+  if (h.claimedBy?.name) return `${label}（领取人 ${h.claimedBy.name}）`;
+  return label;
+}
+
+function taxActionsHint(h: any) {
+  if (h.readOnly || h.status === 'HARD_BLOCKED') return '红线硬拦截，只读';
+  if (!canWriteWorkbench.value) return '只读';
+  const parts: string[] = [];
+  if (h.status === 'OPEN' || h.status === 'REJECTED') parts.push('领取');
+  if (h.status !== 'APPROVED') parts.push('通过');
+  if (h.status === 'OPEN' || h.status === 'CLAIMED') parts.push('驳回');
+  return `可操作：${parts.join(' / ') || '无'}`;
+}
+
+async function actTax(h: any, action: string) {
+  const label = action === 'CLAIM' ? '已领取' : action === 'APPROVE' ? '已通过' : '已驳回';
+  await api.workbench(h.caseId, {
+    reviewId: h.reviewId || h.id,
+    action,
+    comment: comments[h.id] || `退税·融资性${label}`,
   });
   uni.showToast({ title: label, icon: 'none' });
   await load();

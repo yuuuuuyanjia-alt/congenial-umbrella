@@ -27,6 +27,11 @@ import {
   WorkbenchActionLabel,
 } from '../common/constants';
 import { OccupancyWorkbenchActionLabel } from '../workbench/occupancy-review';
+import {
+  DeliveryMode,
+  DeliveryModeLabel,
+  TaxFinanceWorkbenchActionLabel,
+} from '../tax-finance/tax-finance';
 import { normalizeDemoRole, roleLabel } from '../auth/roles';
 
 @Controller()
@@ -63,6 +68,9 @@ export class CatalogController {
       n6MissingTransportFallback: N6_MISSING_TRANSPORT_FALLBACK,
       workbench: WorkbenchActionLabel,
       occupancyWorkbench: OccupancyWorkbenchActionLabel,
+      taxFinanceWorkbench: TaxFinanceWorkbenchActionLabel,
+      deliveryMode: DeliveryModeLabel,
+      deliveryModes: [DeliveryMode.OWN_WAREHOUSE, DeliveryMode.BONDED, DeliveryMode.DIRECT_PORT],
       priceBasis: PriceBasisLabel,
       bearers: BearerLabel,
       changeFields: ChangeFieldLabel,
@@ -105,11 +113,19 @@ export class CatalogController {
         bucketOrder: SALES_SHIPMENT_BUCKET_ORDER,
         grouping:
           '列表按未出运 / 已出运 / 已完成分组。已出运：CIF 装运日期已填，或 FOB 国内段到达口岸/港口时间已填，或电汇结算下装运日期已填，或 N6 已通过/已过装运节点，或已有提单号，或 FOB 等无提单路径已登记。已完成：已出运且客户已提货且 N9 已回款（水单/到账且未收汇为 0）。已出运列不含已完成。',
-        n3: '运输术语（FOB / CIF 及 CIP 等）与结算方式（前 T/T / 后 T/T）独立，可组合例如 FOB + 前 T/T。CIF/CIP 填写装运港口、装运日期、预计到港；FOB 填写国内段到达口岸/港口时间；电汇填写对应收汇节点。客户是否提货可填；收汇金额以 N9 水单/到账为唯一事实源，本节点只读。T/T 不得写入 incoterms。',
+        n3: '运输术语（FOB / CIF 及 CIP 等）与结算方式（前 T/T / 后 T/T）独立，可组合例如 FOB + 前 T/T。须选择交货方式（自有仓 / 保税 / 港口直出），不强制自有仓。港口直出须四问+证据：货在证据、报关主体可解释、收汇与本案绑定、是否像空转。CIF/CIP 填写装运港口、装运日期、预计到港；FOB 填写国内段到达口岸/港口时间；电汇填写对应收汇节点。客户是否提货可填；收汇金额以 N9 水单/到账为唯一事实源，本节点只读。T/T 不得写入 incoterms。',
         tradeTerms: TRADE_TERM_OPTIONS,
         ttTiming: TtTimingLabel,
         n6n7:
           '装运/单证规则跟随所选运输术语：FOB/EXW/FAS/FCA 买方安排运输（可无提单）；CIF/CFR 等卖方出单（须正本或电放）。N7 跟随 N6：无提单路径核验装船通知/订舱号，不硬要提单；卖方提单路径仍须提单一致。T/T 不是 Incoterm。无有效运输术语时明确回退为 FOB，避免把 T/T 切成 T 后误走卖方提单路径。存在未生效变更单时 N6/N7/N8/N9 硬拦截，须先生效变更。',
+      },
+      taxFinance: {
+        label: '出口退税与融资性贸易审查',
+        note: '公司是出口方不是过桥。不强制自有仓。港口直出须货物流+报关+发票+收汇闭环。红线硬拦截；黄灯（薄利+直出）进工作台第三页领取/通过/驳回。FT4 退税就绪清单在收汇后、申报前勾选。',
+        ft1: 'N3/N5 签订前须交货方式；购销货描匹配；薄利+直出黄灯',
+        ft2: '选择港口直出则四问+证据必须齐全，否则 409',
+        ft3: 'N6–N8 装运/报关与直出单证严重不符红线',
+        ft4: 'N9 之后申报退税前：报关放行、N9 收汇、进项发票号、四流勾选',
       },
       hsTemplates: hsTemplates.map((h) => ({
         ...h,

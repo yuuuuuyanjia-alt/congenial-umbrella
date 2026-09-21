@@ -44,6 +44,7 @@ export const OccupancyWorkbenchActionLabel: Record<string, string> = {
 export const WorkbenchItemKind = {
   SCREENING_HIT: 'SCREENING_HIT',
   OCCUPANCY_HIGH: 'OCCUPANCY_HIGH',
+  TAX_FINANCE: 'TAX_FINANCE',
 } as const;
 
 export const OCCUPANCY_QUEUE_STATUSES = [

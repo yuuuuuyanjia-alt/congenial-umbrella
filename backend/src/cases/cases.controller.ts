@@ -14,6 +14,7 @@ import {
   SaveSettlementDto,
   SaveShipmentDto,
   SaveSinosureDto,
+  SaveTaxRebateDto,
   UpsertPartyDto,
 } from './dto';
 
@@ -216,5 +217,19 @@ export class CasesController {
     @Headers('x-actor-id') actorId?: string,
   ) {
     return this.cases.advance(id, code, actorId);
+  }
+
+  @Post(':id/tax-rebate')
+  saveTaxRebate(
+    @Param('id') id: string,
+    @Body() dto: SaveTaxRebateDto,
+    @Headers('x-actor-id') actorId?: string,
+  ) {
+    return this.cases.saveTaxRebate(id, dto, actorId);
+  }
+
+  @Post(':id/tax-rebate/declare')
+  declareTaxRebate(@Param('id') id: string, @Headers('x-actor-id') actorId?: string) {
+    return this.cases.declareTaxRebate(id, actorId);
   }
 }

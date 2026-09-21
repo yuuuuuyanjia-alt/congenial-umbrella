@@ -4,6 +4,17 @@ import { enrollBuyerForCase } from '../src/customers/customer-enroll';
 import { derivePaymentDueAt } from '../src/customers/remittance';
 import { PaymentMode, resolveSchedule, rollupPaymentFields } from '../src/suppliers/payment-schedule';
 import { OccupancyReviewStatus, occupancyFingerprint } from '../src/workbench/occupancy-review';
+import {
+  DeliveryMode,
+  TaxFinanceReviewStatus,
+  completeDirectPortFixture,
+  stringifyDirectPort,
+  taxFinanceFingerprint,
+} from '../src/tax-finance/tax-finance';
+
+if (!process.env.DATABASE_URL) {
+  process.env.DATABASE_URL = 'file:./dev.db';
+}
 
 const prisma = new PrismaClient();
 
@@ -134,6 +145,8 @@ async function main() {
   await prisma.auditLog.deleteMany();
   await prisma.workbenchAction.deleteMany();
   await prisma.occupancyReview.deleteMany();
+  await prisma.taxFinanceReview.deleteMany();
+  await prisma.taxRebateChecklist.deleteMany();
   await prisma.docMismatchFix.deleteMany();
   await prisma.tradeDocument.deleteMany();
   await prisma.settlement.deleteMany();
@@ -191,6 +204,8 @@ async function main() {
   const helios = await seedHeliosMediumBundle(sales.id, approver.id);
   const high = await seedSinosureHighCase(sales.id);
   const supplierBlock = await seedSupplierBlockCase(sales.id);
+  const portYellow = await seedDirectPortYellowCase(sales.id);
+  const portRed = await seedDirectPortRedCase(sales.id);
 
   await attachBuyersToCustomers();
   await attachSuppliers();
@@ -214,6 +229,8 @@ async function main() {
   console.log('  LIMIT_MED ', helios.n3.caseNo, helios.n3.id, '（Helios 占用超额 13,000，中风险软提示）');
   console.log('  LIMIT_HIGH', high.caseNo, high.id, '（超额 25,000 USD 高风险，工作台领取/放行/驳回）');
   console.log('  SUPPLIER  ', supplierBlock.caseNo, supplierBlock.id, '（国内供应商命中不可靠实体，N5 硬拦截）');
+  console.log('  PORT_YELLOW', portYellow.caseNo, portYellow.id, '（港口直出薄利黄灯，工作台第三页领取/通过/驳回）');
+  console.log('  PORT_RED  ', portRed.caseNo, portRed.id, '（港口直出像空转，红线硬拦截）');
   console.log(`客户管理：${customerCount} 个客户，${enrolledBuyers} 个已达 N3 的买方已挂档（询盘未达 N3 的如 DEMO-BLOCK 不录入）`);
   console.log('采购合同 ↔ 销售合同（先销售后采购）：');
   for (const p of linkedPairs) {
@@ -307,6 +324,7 @@ async function seedPassCase(salesId: string, approverId: string, complianceId: s
           paymentTerms: 'T/T 30 days',
           hasRetentionOfTitle: true,
           hasDisputeClause: true,
+          deliveryMode: 'OWN_WAREHOUSE',
           isFinal: true,
           deliveryDate: new Date('2026-11-30'),
           quantity: 10,
@@ -795,6 +813,7 @@ async function seedGateDemoCase(salesId: string) {
           paymentTerms: 'OA 15 days',
           hasRetentionOfTitle: true,
           hasDisputeClause: true,
+          deliveryMode: 'OWN_WAREHOUSE',
           isFinal: false,
           deliveryDate: new Date('2026-12-15'),
           quantity: 6,
@@ -939,6 +958,7 @@ async function seedFobNoBlCase(salesId: string, approverId: string) {
           paymentTerms: 'OA 15 days',
           hasRetentionOfTitle: true,
           hasDisputeClause: true,
+          deliveryMode: 'OWN_WAREHOUSE',
           isFinal: true,
           deliveryDate: new Date('2026-12-20'),
           quantity: 10,
@@ -1097,6 +1117,7 @@ async function seedSinosureOverLimitCase(salesId: string) {
           paymentTerms: 'T/T 30 days',
           hasRetentionOfTitle: true,
           hasDisputeClause: true,
+          deliveryMode: 'OWN_WAREHOUSE',
           isFinal: false,
           deliveryDate: new Date('2026-12-20'),
           quantity: 10,
@@ -1312,6 +1333,7 @@ async function seedSupplierBlockCase(salesId: string) {
           paymentTerms: 'T/T 30 days',
           hasRetentionOfTitle: true,
           hasDisputeClause: true,
+          deliveryMode: 'OWN_WAREHOUSE',
           isFinal: true,
           deliveryDate: new Date('2026-12-10'),
           quantity: 8,
@@ -1471,6 +1493,7 @@ async function seedNordlichtLateCase(salesId: string, approverId: string) {
           paymentTerms: 'T/T 30 days',
           hasRetentionOfTitle: true,
           hasDisputeClause: true,
+          deliveryMode: 'OWN_WAREHOUSE',
           isFinal: true,
           deliveryDate: new Date('2026-03-15T00:00:00.000Z'),
           paymentDueAt: new Date('2026-04-14T00:00:00.000Z'),
@@ -1639,6 +1662,7 @@ async function seedNordlichtOpenCase(salesId: string, approverId: string) {
           paymentTerms: 'T/T 30 days',
           hasRetentionOfTitle: true,
           hasDisputeClause: true,
+          deliveryMode: 'OWN_WAREHOUSE',
           isFinal: true,
           deliveryDate: new Date('2026-12-01T00:00:00.000Z'),
           paymentDueAt: new Date('2026-12-31T00:00:00.000Z'),
@@ -1765,6 +1789,8 @@ async function seedBareExport(opts: {
   deliveryDate?: Date;
   quantity?: number;
   unit?: string;
+  deliveryMode?: string;
+  directPortJson?: string | null;
 }) {
   const currency = opts.currency || 'USD';
   const incoterms = opts.incoterms || 'CIF';
@@ -1800,6 +1826,8 @@ async function seedBareExport(opts: {
           paymentTerms: opts.paymentTerms || 'T/T 30 days',
           hasRetentionOfTitle: true,
           hasDisputeClause: true,
+          deliveryMode: opts.deliveryMode || 'OWN_WAREHOUSE',
+          directPortJson: opts.directPortJson ?? null,
           isFinal: opts.currentNode !== 'N3',
           deliveryDate: opts.deliveryDate || new Date('2026-12-15T00:00:00.000Z'),
           quantity: opts.quantity ?? 2,
@@ -2069,6 +2097,165 @@ async function seedSinosureHighCase(salesId: string) {
         insuredLimitFen,
         note: '种子：占用高风险进入工作台，放行后可推进，无需改金额',
       }),
+    },
+  });
+  return c;
+}
+
+async function seedDirectPortYellowCase(salesId: string) {
+  const dp = completeDirectPortFixture();
+  const salesFen = 5_000_000;
+  const purchaseFen = 4_920_000;
+  const c = await seedBareExport({
+    caseNo: 'DEMO-PORT-YELLOW',
+    title: '联运出口 Ostsee（港口直出薄利黄灯）',
+    scenario: 'TAX_FINANCE_YELLOW',
+    status: 'IN_PROGRESS',
+    currentNode: 'N5',
+    overallRisk: 'MEDIUM',
+    buyer: 'Ostsee Tools GmbH',
+    country: 'DE',
+    goodsDesc: '工业泵',
+    destination: 'Hamburg, DE',
+    amountFen: salesFen,
+    incoterms: 'FOB',
+    paymentTerms: 'T/T 30 days',
+    limitFen: 15_000_000,
+    limitRef: 'SIN-OSTSEE-2026',
+    fileName: '中信保限额批注-Ostsee.pdf',
+    salesId,
+    quantity: 4,
+    unit: '台',
+    deliveryMode: DeliveryMode.DIRECT_PORT,
+    directPortJson: stringifyDirectPort(dp),
+    nodeOverrides: {
+      N1: { status: 'PASSED', decision: 'PASS', summary: '筛查通过' },
+      N2: { status: 'PASSED', decision: 'PASS', summary: '报价要素齐全' },
+      N3: {
+        status: 'PASSED',
+        decision: 'PASS',
+        summary: '港口直出四问齐全，未强制自有仓；交货方式已选',
+      },
+      N4: { status: 'PASSED', decision: 'PASS', summary: '无待确认变更' },
+      N5: {
+        status: 'REVIEW',
+        decision: 'REVIEW',
+        summary: '港口直出叠加购销薄利，须工作台退税·融资性审核',
+      },
+    },
+  });
+  await prisma.party.create({
+    data: {
+      caseId: c.id,
+      role: 'SUPPLIER',
+      name: '杭州联运贸易有限公司',
+      country: 'CN',
+      registrationNo: '91330100MA2PORT01',
+      address: '浙江省杭州市',
+      isSameAsBuyer: false,
+    },
+  });
+  await prisma.procurementPlan.create({
+    data: {
+      caseId: c.id,
+      salesCaseId: c.id,
+      poNo: 'PO-PORT-YELLOW-001',
+      plannedArrival: new Date('2026-11-20'),
+      contractDelivery: new Date('2026-12-15'),
+      poEvidenceStub: 'PO-PORT-YELLOW-001.pdf',
+      delayRegistered: false,
+      amountFen: purchaseFen,
+      currency: 'USD',
+      ...paymentSchedule(purchaseFen, [
+        {
+          percent: 100,
+          label: '一次性付清',
+          conditionText: '一次性付清',
+          dueAt: new Date('2026-11-25T00:00:00.000Z'),
+        },
+      ]),
+    },
+  });
+  await attachClearSupplierScreen(c.id, '杭州联运贸易有限公司');
+  const fingerprint = taxFinanceFingerprint({
+    band: 'YELLOW',
+    reasonCode: 'FT1_THIN_MARGIN',
+    deliveryMode: DeliveryMode.DIRECT_PORT,
+    marginBps: Math.round(((salesFen - purchaseFen) / salesFen) * 10000),
+    emptyTurn: false,
+    docsComplete: true,
+    goodsMatch: true,
+  });
+  await prisma.taxFinanceReview.create({
+    data: {
+      caseId: c.id,
+      nodeCode: 'N5',
+      status: TaxFinanceReviewStatus.OPEN,
+      band: 'YELLOW',
+      reasonCode: 'FT1_THIN_MARGIN',
+      summary: '港口直出叠加采购-销售薄利，须在审核工作台领取并通过后方可推进（不强制自有仓）',
+      fingerprint,
+    },
+  });
+  return c;
+}
+
+async function seedDirectPortRedCase(salesId: string) {
+  const dp = completeDirectPortFixture({
+    emptyTurnLikely: true,
+    emptyTurnAnswer: '无实货周转，仅合同与发票对倒',
+    emptyTurnRef: 'NOTE-LOOP-RED',
+  });
+  const c = await seedBareExport({
+    caseNo: 'DEMO-PORT-RED',
+    title: '空转迹象 Loopturn（港口直出红线）',
+    scenario: 'TAX_FINANCE_RED',
+    status: 'BLOCKED',
+    currentNode: 'N3',
+    overallRisk: 'HIGH',
+    buyer: 'Loopturn Trading Ltd',
+    country: 'VG',
+    goodsDesc: '工业泵',
+    destination: 'Road Town, VG',
+    amountFen: 4_000_000,
+    incoterms: 'CIF',
+    paymentTerms: 'T/T 30 days',
+    limitFen: 15_000_000,
+    limitRef: 'SIN-LOOP-2026',
+    fileName: '中信保限额批注-Loopturn.pdf',
+    salesId,
+    quantity: 3,
+    unit: '台',
+    deliveryMode: DeliveryMode.DIRECT_PORT,
+    directPortJson: stringifyDirectPort(dp),
+    nodeOverrides: {
+      N1: { status: 'PASSED', decision: 'PASS', summary: '筛查通过' },
+      N2: { status: 'PASSED', decision: 'PASS', summary: '报价要素齐全' },
+      N3: {
+        status: 'BLOCKED',
+        decision: 'HARD_BLOCK',
+        summary: '红线：港口直出迹象像空转/假出口，硬拦截',
+      },
+    },
+  });
+  const fingerprint = taxFinanceFingerprint({
+    band: 'RED',
+    reasonCode: 'FT2_EMPTY_TURN',
+    deliveryMode: DeliveryMode.DIRECT_PORT,
+    marginBps: null,
+    emptyTurn: true,
+    docsComplete: true,
+    goodsMatch: true,
+  });
+  await prisma.taxFinanceReview.create({
+    data: {
+      caseId: c.id,
+      nodeCode: 'N3',
+      status: TaxFinanceReviewStatus.HARD_BLOCKED,
+      band: 'RED',
+      reasonCode: 'FT2_EMPTY_TURN',
+      summary: '红线：港口直出迹象像空转/假出口，硬拦截，不得推进',
+      fingerprint,
     },
   });
   return c;

@@ -20,6 +20,18 @@ export class UpsertPartyDto {
   @IsOptional() @IsString() relationNote?: string;
 }
 
+export class DirectPortDto {
+  @IsOptional() @IsString() goodsWhereAnswer?: string | null;
+  @IsOptional() @IsString() goodsWhereRef?: string | null;
+  @IsOptional() @IsString() customsPartyAnswer?: string | null;
+  @IsOptional() @IsString() customsPartyRef?: string | null;
+  @IsOptional() @IsString() remittanceBoundAnswer?: string | null;
+  @IsOptional() @IsString() remittanceBoundRef?: string | null;
+  @IsOptional() @IsBoolean() emptyTurnLikely?: boolean | null;
+  @IsOptional() @IsString() emptyTurnAnswer?: string | null;
+  @IsOptional() @IsString() emptyTurnRef?: string | null;
+}
+
 export class SaveContractDto {
   @IsString() counterparty: string;
   @IsOptional() @IsString() incoterms?: string;
@@ -49,6 +61,11 @@ export class SaveContractDto {
   @IsOptional() @IsInt() ttPercentBps?: number | null;
   @IsOptional() @IsInt() ttAdvanceFen?: number | null;
   @IsOptional() @IsInt() ttDaysAfterShipment?: number | null;
+  @IsOptional() @IsIn(['OWN_WAREHOUSE', 'BONDED', 'DIRECT_PORT']) deliveryMode?: string | null;
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => DirectPortDto)
+  directPort?: DirectPortDto;
 }
 
 export class SaveShipmentDto {
@@ -100,6 +117,14 @@ export class WorkbenchDto {
   @IsOptional() @IsString() reviewId?: string;
   @IsString() action: string;
   @IsOptional() @IsString() comment?: string;
+}
+
+export class SaveTaxRebateDto {
+  @IsOptional() @IsString() inputInvoiceNo?: string | null;
+  @IsOptional() @IsBoolean() flowGoods?: boolean;
+  @IsOptional() @IsBoolean() flowCustoms?: boolean;
+  @IsOptional() @IsBoolean() flowInvoice?: boolean;
+  @IsOptional() @IsBoolean() flowRemittance?: boolean;
 }
 
 export class SaveQuoteDto {
