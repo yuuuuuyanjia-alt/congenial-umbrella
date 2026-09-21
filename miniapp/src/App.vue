@@ -9,19 +9,27 @@ onLaunch(() => {
 
 <style>
 page {
-  /* Modest type scale (+4rpx vs original). Body/labels ~14px on 375-wide H5. */
-  --font-xs: 26rpx;
-  --font-sm: 28rpx;
-  --font-md: 30rpx;
-  --font-lg: 32rpx;
-  --font-h2: 34rpx;
-  --font-stat: 36rpx;
-  --font-title: 40rpx;
-  --font-h1: 44rpx;
+  /* Type scale +4rpx vs previous (~+2px / two steps on 375-wide H5). Body/labels ~16px. */
+  --font-xs: 30rpx;
+  --font-sm: 32rpx;
+  --font-md: 34rpx;
+  --font-lg: 36rpx;
+  --font-h2: 38rpx;
+  --font-stat: 40rpx;
+  --font-title: 44rpx;
+  --font-h1: 48rpx;
   background: #f4f1ea;
   color: #1f2933;
   font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Noto Sans SC', sans-serif;
   font-size: var(--font-sm);
+}
+/* H5 native controls ignore inherited font-size; keep them on the same scale. */
+input,
+textarea,
+button,
+select {
+  font-size: inherit;
+  font-family: inherit;
 }
 .wrap {
   padding: 24rpx;
@@ -58,7 +66,7 @@ page {
 .badge {
   display: inline-block;
   font-size: var(--font-xs);
-  padding: 6rpx 14rpx;
+  padding: 8rpx 16rpx;
   border-radius: 999rpx;
   font-weight: 600;
 }
@@ -72,7 +80,7 @@ page {
   background: #0f3d2e;
   color: #fff;
   text-align: center;
-  padding: 20rpx;
+  padding: 22rpx;
   border-radius: 12rpx;
   font-size: var(--font-lg);
   margin-top: 16rpx;
@@ -87,7 +95,7 @@ page {
 .input {
   background: #f7f5f0;
   border-radius: 10rpx;
-  padding: 16rpx 18rpx;
+  padding: 18rpx 20rpx;
   margin-top: 10rpx;
   font-size: var(--font-md);
 }
@@ -106,7 +114,7 @@ page {
 }
 .chip {
   font-size: var(--font-xs);
-  padding: 8rpx 16rpx;
+  padding: 10rpx 18rpx;
   background: #e6efe9;
   color: #0f3d2e;
   border-radius: 8rpx;
@@ -121,7 +129,7 @@ page {
 .choice-btn {
   flex: 1;
   text-align: center;
-  padding: 22rpx 12rpx;
+  padding: 24rpx 12rpx;
   border-radius: 12rpx;
   background: #e6efe9;
   color: #0f3d2e;
