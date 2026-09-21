@@ -28,7 +28,7 @@
       </view>
       <view class="muted" style="margin-top: 16rpx">{{ tabHint }}</view>
       <view class="err" v-if="!canWriteWorkbench" style="margin-top: 12rpx">
-        当前为{{ roleLabel }}，工作台只读。领取 / 放行 / 驳回与筛查处置请切换风控岗。
+        当前为{{ roleLabel }}，工作台只读。领取 / 放行 / 驳回与筛查处置仅风控岗可操作。
       </view>
     </view>
 

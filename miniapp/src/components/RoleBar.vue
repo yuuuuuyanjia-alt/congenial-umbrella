@@ -1,11 +1,10 @@
 <template>
   <view class="card">
     <view class="row">
-      <view class="h2" style="margin: 0">{{ compact ? '当前角色' : '演示角色' }}</view>
-      <view class="badge badge-pass" v-if="current">{{ labelOf(current.role) }}</view>
+      <view class="h2" style="margin: 0" @click="onCaptionTap">{{ caption }}</view>
     </view>
-    <view class="muted" style="margin-top: 8rpx">{{ hint }}</view>
-    <view class="choice-row" style="margin-top: 16rpx">
+    <view class="muted" style="margin-top: 8rpx" v-if="hint">{{ hint }}</view>
+    <view class="choice-row" style="margin-top: 16rpx" v-if="pickerOpen">
       <view
         class="choice-btn"
         :class="{ 'choice-btn-on': current && current.id === u.id }"
@@ -24,8 +23,12 @@ import { computed, ref } from 'vue';
 import { onShow } from '@dcloudio/uni-app';
 import { api } from '../api';
 import {
+  closeDebugRolePicker,
+  currentRoleCaption,
+  debugRolePickerOpen,
   demoSession,
   ensureDemoUser,
+  noteDebugUnlockTap,
   persistDemoUser,
   roleLabelOf,
   type DemoUser,
@@ -42,10 +45,16 @@ const emit = defineEmits<{ change: [user: DemoUser] }>();
 
 const users = ref<DemoUser[]>([]);
 const current = computed(() => demoSession.value);
+const pickerOpen = computed(() => debugRolePickerOpen.value);
+const caption = computed(() => currentRoleCaption(current.value?.role));
 
 const hint = computed(() => {
-  if (props.compact) return '同一套页面。切换后按钮与写权限立即按角色生效。';
-  return '三个演示账号共用同一首页与路由，仅菜单顺序和写按钮不同。业务岗可录入并推进；风控可审核工作台；主管只读。';
+  if (pickerOpen.value) return '仅供演示/QA 切换岗位。正式使用按登录账号一人一岗，日常不展示三选一。';
+  if (props.compact) return '';
+  const role = current.value?.role;
+  if (role === 'RISK') return '本岗处理审核工作台领取、放行与筛查处置。';
+  if (role === 'MANAGER') return '本岗只读：客户评估、合同与占用。';
+  return '本岗可录入客户、销售、采购并推进业务节点。';
 });
 
 onShow(async () => {
@@ -61,8 +70,13 @@ function labelOf(role?: string) {
   return roleLabelOf(role);
 }
 
+function onCaptionTap() {
+  noteDebugUnlockTap();
+}
+
 function pick(u: DemoUser) {
   persistDemoUser(u);
+  closeDebugRolePicker();
   emit('change', u);
   uni.showToast({ title: `已切换为${labelOf(u.role)}`, icon: 'none' });
 }

@@ -178,11 +178,11 @@
       <view class="muted">须先登记投保限额，否则不得保存或推进合同。请上传出口信用保险保单或限额批注。保存或推进时自动测算占用；超高风险禁止推进，高风险须工作台领取并放行，中风险软提示。</view>
       <SinosureExposure :exposure="exposureView" :show-new="true" />
       <view class="err" v-if="occupancyNeedsReview" style="margin-top: 12rpx">
-        占用属高风险，请到审核工作台领取并放行后再推进，无需修改合同金额。
+        占用属高风险，须由风控岗在审核工作台领取并放行后再推进，无需修改合同金额。
       </view>
       <view class="ok" v-if="occupancyApproved" style="margin-top: 12rpx">工作台已放行该高风险占用，可以推进。</view>
       <view class="err" v-if="occupancyRejected" style="margin-top: 12rpx">工作台已驳回该高风险占用，暂不可推进。</view>
-      <view class="btn btn-ghost" v-if="occupancyNeedsReview || occupancyRejected" @click="goWorkbench">去审核工作台</view>
+      <view class="btn btn-ghost" v-if="canWriteWorkbench && (occupancyNeedsReview || occupancyRejected)" @click="goWorkbench">去审核工作台</view>
       <view class="muted" v-if="sinosureHint" style="margin-top: 8rpx">{{ sinosureHint }}</view>
       <view class="label">保单编号 / 附件编号</view>
       <input class="input" v-model="sino.evidenceRef" placeholder="可手填编号，或点下方模拟上传" />
@@ -225,7 +225,7 @@ type TtTiming = 'ADVANCE' | 'AFTER';
 
 const FORM_NODE = 'N3';
 const id = ref('');
-const { canWriteBusiness, roleLabel } = useDemoRole();
+const { canWriteBusiness, canWriteWorkbench, roleLabel } = useDemoRole();
 const c = ref<any>(null);
 const err = ref('');
 const ok = ref('');
@@ -650,7 +650,7 @@ async function tryAdvance() {
   } catch (e: any) {
     err.value = gateMessage(e);
     if (Array.isArray(e?.missing) && e.missing.some((m: string) => String(m).includes('SINOSURE_EXPOSURE_HIGH'))) {
-      err.value = `${err.value}\n请到审核工作台领取并放行，无需修改合同金额。`;
+      err.value = `${err.value}\n须由风控岗在审核工作台领取并放行，无需修改合同金额。`;
     }
     if (Array.isArray(e?.missing) && e.missing.some((m: string) => String(m).startsWith('FT'))) {
       err.value = `${err.value}\n港口直出缺证据请补四问；黄灯请到工作台第三页领取并通过；红线硬拦截。`;

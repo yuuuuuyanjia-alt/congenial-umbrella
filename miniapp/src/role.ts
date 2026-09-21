@@ -1,5 +1,5 @@
 import { onShow } from '@dcloudio/uni-app';
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { api } from './api';
 
 export const UserRole = {
@@ -45,10 +45,52 @@ export function roleLabelOf(role?: string | null) {
   return (role && UserRoleLabel[role]) || role || '';
 }
 
+export function currentRoleCaption(role?: string | null) {
+  return `当前：${roleLabelOf(role) || UserRoleLabel.SALES}`;
+}
+
 /** 演示界面只展示岗位，不展示种子用户姓名。 */
 export function demoActorLabel(u?: { role?: string | null; roleLabel?: string | null; name?: string | null } | null) {
   if (!u) return '';
   return roleLabelOf(u.role) || u.roleLabel || '';
+}
+
+export const APP_VERSION = '0.1.0';
+
+/** QA 调试：默认收起三选一，由首页底部链接或连点三次打开。 */
+export const debugRolePickerOpen = ref(false);
+
+let debugUnlockTaps = 0;
+let debugUnlockTimer: ReturnType<typeof setTimeout> | null = null;
+
+export function openDebugRolePicker() {
+  debugRolePickerOpen.value = true;
+  try {
+    uni.pageScrollTo({ scrollTop: 0, duration: 200 });
+  } catch {
+    /* page scroll is optional */
+  }
+}
+
+export function closeDebugRolePicker() {
+  debugRolePickerOpen.value = false;
+}
+
+export function toggleDebugRolePicker() {
+  if (debugRolePickerOpen.value) closeDebugRolePicker();
+  else openDebugRolePicker();
+}
+
+export function noteDebugUnlockTap() {
+  debugUnlockTaps += 1;
+  if (debugUnlockTimer) clearTimeout(debugUnlockTimer);
+  debugUnlockTimer = setTimeout(() => {
+    debugUnlockTaps = 0;
+  }, 900);
+  if (debugUnlockTaps >= 3) {
+    debugUnlockTaps = 0;
+    openDebugRolePicker();
+  }
 }
 
 export function canWriteBusiness(role?: string | null) {
@@ -65,7 +107,6 @@ export const HOME_ENTRIES: Record<string, { url: string; label: string }[]> = {
     { url: '/pages/case/hub', label: '合同管理' },
     { url: '/pages/supplier/list', label: '供应商管理' },
     { url: '/pages/customer/list', label: '客户管理' },
-    { url: '/pages/workbench/index', label: '审核工作台' },
   ],
   RISK: [
     { url: '/pages/workbench/index', label: '审核工作台' },
@@ -77,7 +118,6 @@ export const HOME_ENTRIES: Record<string, { url: string; label: string }[]> = {
     { url: '/pages/customer/list', label: '客户管理' },
     { url: '/pages/case/hub', label: '合同管理' },
     { url: '/pages/supplier/list', label: '供应商管理' },
-    { url: '/pages/workbench/index', label: '审核工作台' },
   ],
 };
 
@@ -109,6 +149,7 @@ export function useDemoRole() {
     }
   }
   onShow(refresh);
+  watch(demoSession, refresh, { deep: true });
   refresh();
   return {
     role,

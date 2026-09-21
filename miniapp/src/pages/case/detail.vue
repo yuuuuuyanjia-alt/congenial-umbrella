@@ -76,7 +76,7 @@
     </view>
 
     <view class="btn btn-ghost" @click="go(`/pages/audit/index?id=${c.id}`)">查看审计日志</view>
-    <view class="btn btn-ghost" @click="go('/pages/workbench/index')">审核工作台</view>
+    <view class="btn btn-ghost" v-if="isRisk" @click="go('/pages/workbench/index')">审核工作台</view>
     </template>
   </view>
 </template>
@@ -88,7 +88,7 @@ import { api, decisionClass, decisionText, money, nodePage } from '../../api';
 import RoleBar from '../../components/RoleBar.vue';
 import { useDemoRole } from '../../role';
 
-const { canWriteBusiness } = useDemoRole();
+const { canWriteBusiness, isRisk } = useDemoRole();
 const id = ref('');
 const c = ref<any>(null);
 const rebateMsg = ref('');
