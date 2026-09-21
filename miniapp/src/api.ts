@@ -184,11 +184,49 @@ export function nextWorkNodeFromForm(
   return { code: next, name: pipelineNodeName(next) };
 }
 
-/** 列表卡片：本案已离开本表单节点时才给出「进入下一节点」。 */
+/** 列表卡片：本案已离开本表单节点时才给出跳转按钮。 */
 export function listShowsNextNodeButton(formNode: string, currentNode?: string | null) {
   const fi = NODE_FLOW.indexOf(formNode);
   const ci = NODE_FLOW.indexOf(currentNode || '');
   return fi >= 0 && ci > fi;
+}
+
+/** 装运及后续（N6–N9）属于出口案，不在采购合同入口办理。 */
+export function isN6PlusNode(code?: string | null) {
+  const i = NODE_FLOW.indexOf(code || '');
+  return i >= 0 && i >= NODE_FLOW.indexOf('N6');
+}
+
+const N6_PLUS_SHORT: Record<string, string> = {
+  N6: '装运',
+  N7: '单证',
+  N8: '报关',
+  N9: '收汇',
+};
+
+export function exportCaseShortAction(code?: string | null) {
+  if (!code) return '装运';
+  return N6_PLUS_SHORT[code] || pipelineNodeName(code) || '装运';
+}
+
+/**
+ * 合同管理跳转按钮文案。
+ * 销售入口保持「进入下一节点」；采购入口若下一跳是 N6+，改为出口案办理，避免把装运后续当成采购合同步骤。
+ */
+export function formNextNodeButtonLabel(
+  formNode: string,
+  target?: { code: string; name: string } | null,
+) {
+  if (!target) return '';
+  if (formNode === 'N5' && isN6PlusNode(target.code)) {
+    return `去办${exportCaseShortAction(target.code)}（出口案）`;
+  }
+  return `进入下一节点 · ${target.code} ${target.name}`;
+}
+
+export function formNextNodeHeading(formNode: string) {
+  if (formNode === 'N5') return '出口案后续（不属于本采购合同）';
+  return '九节点下一步';
 }
 
 export function goToNode(caseId: string, code: string) {

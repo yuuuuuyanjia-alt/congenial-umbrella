@@ -4,11 +4,21 @@
       <view class="h1" style="line-height: 1.35">{{ contractTitle }}</view>
       <view class="muted" style="margin-top: 8rpx">采购合同 / 国内备货</view>
       <view class="muted">
-        销售合同与采购合同分开签订。公司惯例先销售后采购：本页是采购合同，须先从已签订的销售/出口合同中任选一笔关联（不限于本案），否则不得保存或推进。公司无自有产线，向国内供应商采购。须登记供应商、采购合同/PO、计划交付日期与货款支付方式（一次性付清或分期支付），并对供应商做制裁/不可靠实体筛查。计划交付日期或实际交付日期任一晚于关联销售合同交货期，须登记结构化延期并保留客户同意证据。本页展示对照用的关联销售合同交货期。
+        本页只办理采购合同（N5）。装运、单证、报关、收汇属于出口案，不在本采购合同办理。销售合同与采购合同分开签订。公司惯例先销售后采购：须先从已签订的销售/出口合同中任选一笔关联（不限于本案），否则不得保存或推进。公司无自有产线，向国内供应商采购。须登记供应商、采购合同/PO、计划交付日期与货款支付方式（一次性付清或分期支付），并对供应商做制裁/不可靠实体筛查。计划交付日期或实际交付日期任一晚于关联销售合同交货期，须登记结构化延期并保留客户同意证据。本页展示对照用的关联销售合同交货期。
       </view>
-      <view class="muted" v-if="c.currentNode" style="margin-top: 8rpx">本案当前节点：{{ c.currentNode }} {{ currentNodeName }}</view>
+      <view class="muted" v-if="c.currentNode && isN6PlusNode(c.currentNode)" style="margin-top: 8rpx">
+        出口案当前进度：{{ c.currentNode }} {{ currentNodeName }}（不属于本采购合同）
+      </view>
+      <view class="muted" v-else-if="c.currentNode" style="margin-top: 8rpx">本案当前节点：{{ c.currentNode }} {{ currentNodeName }}</view>
     </view>
-    <NextNodeCta :target="nextTarget" :ready="nextReady" :hint="nextHint" @go="goNext" />
+    <NextNodeCta
+      :target="nextTarget"
+      :ready="nextReady"
+      :hint="nextHint"
+      :heading="nextHeading"
+      :button-label="nextButtonLabel"
+      @go="goNext"
+    />
 
     <view class="card">
       <view class="h2">关联销售合同</view>
@@ -185,7 +195,15 @@
     <view class="muted" v-if="c.procurementPlan?.poEvidenceId">PO 证据 ID：{{ c.procurementPlan.poEvidenceId }}</view>
     <view class="err" v-if="err">{{ err }}</view>
     <view class="ok" v-if="ok">{{ ok }}</view>
-    <NextNodeCta v-if="nextReady" :target="nextTarget" :ready="nextReady" :hint="nextHint" @go="goNext" />
+    <NextNodeCta
+      v-if="nextReady"
+      :target="nextTarget"
+      :ready="nextReady"
+      :hint="nextHint"
+      :heading="nextHeading"
+      :button-label="nextButtonLabel"
+      @go="goNext"
+    />
   </view>
 </template>
 
@@ -196,8 +214,12 @@ import {
   api,
   decisionClass,
   decisionText,
+  exportCaseShortAction,
   fenToYuan,
+  formNextNodeButtonLabel,
+  formNextNodeHeading,
   goToNode,
+  isN6PlusNode,
   money,
   nextWorkNodeFromForm,
   pipelineNodeName,
@@ -297,16 +319,18 @@ const nextReady = computed(() => {
   if (cur && cur !== FORM_NODE) return true;
   return savedSession.value;
 });
+const nextHeading = computed(() => formNextNodeHeading(FORM_NODE));
+const nextButtonLabel = computed(() => formNextNodeButtonLabel(FORM_NODE, nextTarget.value));
 const nextHint = computed(() => {
   const t = nextTarget.value;
   if (!t) return '';
   const cur = c.value?.currentNode;
-  if (cur && cur !== FORM_NODE) {
-    return `本案已在 ${cur} ${pipelineNodeName(cur)}。可直接进入该节点，不必再从案件树查找。`;
+  if (cur && isN6PlusNode(cur)) {
+    return `装运及后续属于出口案，不属于本采购合同。可去办${exportCaseShortAction(t.code)}。`;
   }
-  if (advancedTo.value) return `已过闸。下一步为 ${t.code} ${t.name}。`;
-  if (savedSession.value) return `采购合同已保存。可进入 ${t.code} ${t.name}，不必再从案件树查找。`;
-  return `保存或推进本合同后，可进入 ${t.code} ${t.name}，不必再从案件树查找。`;
+  if (advancedTo.value) return '采购合同已过闸。请到出口案办理装运（不属于本采购合同）。';
+  if (savedSession.value) return '采购合同已保存。下一步请到出口案办理装运，不属于本采购合同。';
+  return '保存或推进采购合同后，请到出口案办理装运。装运及后续不属于本采购合同。';
 });
 const contractTitle = computed(() =>
   procurementContractTitle(c.value || {}, {
