@@ -1213,7 +1213,7 @@ describe('闸门引擎 N2 报价环节', () => {
     expect(r.missing).toContain('N2_VAGUE_PRICING');
   });
 
-  it('缺少有效期/所含项目/单价单位拒绝', () => {
+  it('缺少有效期/单价单位拒绝，不要求所含项目', () => {
     const r = evaluateN2(
       baseSnap({
         quotes: [
@@ -1232,7 +1232,8 @@ describe('闸门引擎 N2 报价环节', () => {
       }),
     );
     expect(r.canProceed).toBe(false);
-    expect(r.missing).toEqual(expect.arrayContaining(['N2_INCLUDED_ITEMS', 'N2_VALIDITY', 'N2_PRICE_UNIT']));
+    expect(r.missing).toEqual(expect.arrayContaining(['N2_VALIDITY', 'N2_PRICE_UNIT']));
+    expect(r.missing).not.toContain('N2_INCLUDED_ITEMS');
     expect(r.missing).not.toContain('N2_PRICE_BASIS');
     expect(r.missing).not.toContain('N2_FREIGHT_BEARER');
     expect(r.missing).not.toContain('N2_TAX_BEARER');
@@ -1254,19 +1255,19 @@ describe('闸门引擎 N2 报价环节', () => {
     expect(r.canProceed).toBe(true);
   });
 
-  it('未勾选所含项目拒绝', () => {
+  it('所含项目可空选，空列表可通过', () => {
     const r = evaluateN2(
       baseSnap({
         quotes: [
           {
             ...baseSnap().quotes[0],
-            includedItems: '',
+            includedItems: '[]',
           },
         ],
       }),
     );
-    expect(r.canProceed).toBe(false);
-    expect(r.missing).toContain('N2_INCLUDED_ITEMS');
+    expect(r.canProceed).toBe(true);
+    expect(r.missing).not.toContain('N2_INCLUDED_ITEMS');
   });
 
   it('旧自由文本所含项目可迁移后通过', () => {

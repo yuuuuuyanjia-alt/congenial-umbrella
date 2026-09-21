@@ -42,7 +42,14 @@
     </view>
     <view class="err" v-if="err">{{ err }}</view>
     <view class="ok" v-if="ok">{{ ok }}</view>
-    <NextNodeCta v-if="nextReady" :target="nextTarget" :ready="nextReady" :hint="nextHint" @go="goNext" />
+    <NextNodeCta
+      v-if="nextReady"
+      :target="nextTarget"
+      :ready="nextReady"
+      :hint="nextHint"
+      button-label="进入下一步"
+      @go="goNext"
+    />
   </view>
 </template>
 
@@ -69,7 +76,7 @@ const err = ref('');
 const ok = ref('');
 const advancedTo = ref<string | null>(null);
 const form = reactive({
-  includedItemCodes: ['OCEAN_FREIGHT'] as string[],
+  includedItemCodes: [] as string[],
   validityUntil: '2026-12-31',
   unitPriceUsd: '12800.00',
   unit: 'TON',
@@ -112,10 +119,10 @@ async function reload() {
   c.value = await api.case(id.value);
   const active = (c.value.quotes || []).find((x: any) => x.status === 'ACTIVE') || c.value.quotes?.[0];
   if (active) {
-    const codes = Array.isArray(active.includedItemCodes) && active.includedItemCodes.length
+    const codes = Array.isArray(active.includedItemCodes)
       ? active.includedItemCodes
       : parseIncluded(active.includedItems);
-    form.includedItemCodes = codes.length ? codes : ['OCEAN_FREIGHT'];
+    form.includedItemCodes = codes;
     form.validityUntil = dateOnly(active.validityUntil) || form.validityUntil;
     form.unitPriceUsd = fenToYuan(active.unitPriceFen) || form.unitPriceUsd;
     form.unit = active.unit || active.snapshot?.unit || 'TON';

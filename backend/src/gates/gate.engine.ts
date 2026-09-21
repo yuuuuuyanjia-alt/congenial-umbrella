@@ -52,7 +52,7 @@ import {
   matchingOccupancyReview,
 } from '../workbench/occupancy-review';
 import { applyTaxFinanceGate } from '../tax-finance/tax-finance';
-import { isQuotePriceUnit, parseQuoteIncludedItems } from '../cases/quote-fields';
+import { isQuotePriceUnit } from '../cases/quote-fields';
 
 const HARD_GATES = new Set(['N6', 'N7', 'N9']);
 
@@ -169,16 +169,10 @@ export function evaluateN2(snap: CaseSnapshot): GateResult {
     return blockMissing(r);
   }
 
-  const included = parseQuoteIncludedItems(q.includedItems);
   const textBlob = [q.includedItems, q.notes].filter(Boolean).join(' ');
   if (VAGUE_PRICE_RE.test(textBlob)) {
     r.missing.push('N2_VAGUE_PRICING');
     r.reasons.push('报价含「价格待定/费用另议」等模糊用语，禁止推进');
-  }
-
-  if (!included.length) {
-    r.missing.push('N2_INCLUDED_ITEMS');
-    r.reasons.push('须勾选所含项目（海运费 / 陆运费 / 港杂）');
   }
 
   if (!q.validityUntil) {
@@ -227,7 +221,7 @@ export function evaluateN2(snap: CaseSnapshot): GateResult {
     r.reasons.push(`报价版本 v${q.version} 要素齐全，存在价格偏离提示`);
     return r;
   }
-  r.reasons.push(`报价版本 v${q.version} 所含项目、单价与有效期齐全`);
+  r.reasons.push(`报价版本 v${q.version} 单价与有效期齐全`);
   return r;
 }
 
