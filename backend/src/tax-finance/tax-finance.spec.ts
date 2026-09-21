@@ -18,8 +18,10 @@ import {
   isDirectPortComplete,
   isTaxFinanceWorkbenchAction,
   isThinMargin,
+  parseDirectPort,
   planTaxFinanceReviewSync,
   purchaseSalesMarginBps,
+  stringifyDirectPort,
   taxFinanceActionNextStatus,
   taxFinanceFingerprint,
 } from './tax-finance';
@@ -247,6 +249,28 @@ describe('FT2 港口直出仓储/批次', () => {
         goodsWhereAnswer: '仓',
         goodsWhereRef: 'B1',
       }),
+    ).toBe(true);
+  });
+
+  it('stringifyDirectPort 不写入电子底账编号，旧 JSON 解析后也不再要求', () => {
+    const json = stringifyDirectPort({
+      warehouseLocation: '仓',
+      batchNo: 'B1',
+      eLedgerNo: 'E1',
+      customsPartyRef: 'E1',
+    } as any);
+    const parsed = JSON.parse(json!);
+    expect(parsed.eLedgerNo).toBeUndefined();
+    expect(parsed.customsPartyRef).toBeUndefined();
+    expect(parsed.warehouseLocation).toBe('仓');
+    expect(parsed.batchNo).toBe('B1');
+    expect(isDirectPortComplete(parseDirectPort(json))).toBe(true);
+    expect(
+      isDirectPortComplete(
+        parseDirectPort(
+          JSON.stringify({ warehouseLocation: '仓', batchNo: 'B1', eLedgerNo: 'OLD' }),
+        ),
+      ),
     ).toBe(true);
   });
 

@@ -89,11 +89,9 @@ export const WorkbenchItemKindTax = {
 export interface DirectPortSnap {
   warehouseLocation?: string | null;
   batchNo?: string | null;
-  eLedgerNo?: string | null;
   goodsWhereAnswer?: string | null;
   goodsWhereRef?: string | null;
   customsPartyAnswer?: string | null;
-  customsPartyRef?: string | null;
   remittanceBoundAnswer?: string | null;
   remittanceBoundRef?: string | null;
   emptyTurnLikely?: boolean | null;
@@ -171,15 +169,15 @@ export function parseDirectPort(raw?: string | null | DirectPortSnap): DirectPor
   if (!v) return null;
   const warehouseLocation = v.warehouseLocation || v.goodsWhereAnswer || null;
   const batchNo = v.batchNo || v.goodsWhereRef || null;
-  const eLedgerNo = v.eLedgerNo || v.customsPartyRef || null;
+  const rest = { ...v } as DirectPortSnap & { eLedgerNo?: string | null; customsPartyRef?: string | null };
+  delete rest.eLedgerNo;
+  delete rest.customsPartyRef;
   return {
-    ...v,
+    ...rest,
     warehouseLocation,
     batchNo,
-    eLedgerNo,
     goodsWhereAnswer: v.goodsWhereAnswer || warehouseLocation,
     goodsWhereRef: v.goodsWhereRef || batchNo,
-    customsPartyRef: v.customsPartyRef || eLedgerNo,
   };
 }
 
@@ -187,15 +185,12 @@ export function stringifyDirectPort(dp?: DirectPortSnap | null): string | null {
   if (!dp) return null;
   const warehouseLocation = dp.warehouseLocation || dp.goodsWhereAnswer || null;
   const batchNo = dp.batchNo || dp.goodsWhereRef || null;
-  const eLedgerNo = dp.eLedgerNo || dp.customsPartyRef || null;
   return JSON.stringify({
     warehouseLocation,
     batchNo,
-    eLedgerNo,
     goodsWhereAnswer: dp.goodsWhereAnswer || warehouseLocation,
     goodsWhereRef: dp.goodsWhereRef || batchNo,
     customsPartyAnswer: dp.customsPartyAnswer ?? null,
-    customsPartyRef: dp.customsPartyRef || eLedgerNo,
     remittanceBoundAnswer: dp.remittanceBoundAnswer ?? null,
     remittanceBoundRef: dp.remittanceBoundRef ?? null,
     emptyTurnLikely: dp.emptyTurnLikely ?? null,
