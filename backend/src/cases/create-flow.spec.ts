@@ -5,43 +5,39 @@ import {
   demoCreateCaseInput,
   demoPartiesFromBuyer,
   DEMO_CREATE_DEFAULTS,
+  isSignedSalesPick,
   newCaseAppearsOnList,
+  procurementOpenTarget,
 } from './create-flow';
 
-describe('新建销售/采购合同（演示最短路径）', () => {
-  it('POST /cases 从 N1 起：新案既不进销售列表也不进采购列表', () => {
+describe('新建销售/采购合同（N1 起 / 采购点选已签销售合同）', () => {
+  it('POST /cases 从 N1 起：新案不进销售列表', () => {
     const created = { currentNode: 'N1', contract: null, procurementPlan: null };
     expect(newCaseAppearsOnList('sales', created)).toBe(false);
-    expect(newCaseAppearsOnList('procurement', created)).toBe(false);
   });
 
-  it('销售列表：保存销售合同后即可出现，即使 currentNode 仍为 N1', () => {
-    expect(newCaseAppearsOnList('sales', { currentNode: 'N1', contract: { id: 'c1' } })).toBe(true);
-  });
-
-  it('采购列表：登记采购计划后即可出现；不因本案已签而自动关联销售合同', () => {
-    expect(newCaseAppearsOnList('procurement', { currentNode: 'N1', procurementPlan: { poNo: 'PO-1' } })).toBe(true);
-    expect(contractCreateLanding('procurement').requiresSalesLink).toBe(true);
-  });
-
-  it('销售落地打开 N3 表单，过闸最早可写节点仍是 N1 KYC', () => {
+  it('销售落地打开询盘 KYC，不跳到空白 N3', () => {
     const land = contractCreateLanding('sales');
-    expect(land.formNode).toBe('N3');
-    expect(land.formPath).toBe('/pages/node/contract');
+    expect(land.createsNewCase).toBe(true);
+    expect(land.formNode).toBe('N1');
+    expect(land.formPath).toBe('/pages/node/kyc');
     expect(land.earliestWritable).toBe('N1');
     expect(land.mustPassBeforeAdvance).toEqual(['N1', 'N2']);
   });
 
-  it('采购落地打开 N5 表单，保存须另选已签销售合同', () => {
+  it('采购不新建案件，须点选已签销售合同后打开该案 N5', () => {
     const land = contractCreateLanding('procurement');
-    expect(land.formNode).toBe('N5');
+    expect(land.createsNewCase).toBe(false);
+    expect(land.requiresSignedSalesPick).toBe(true);
     expect(land.formPath).toBe('/pages/node/procurement');
-    expect(land.earliestWritable).toBe('N1');
-    expect(land.requiresSalesLink).toBe(true);
+    expect(isSignedSalesPick({ signed: false })).toBe(false);
+    expect(isSignedSalesPick({ signed: true })).toBe(true);
+    expect(procurementOpenTarget({ id: 'c1', poNo: null }).isEdit).toBe(false);
+    expect(procurementOpenTarget({ id: 'c1', poNo: 'PO-1' }).isEdit).toBe(true);
   });
 
-  it('演示默认含标题、品名、目的地、金额；销售预填买方', () => {
-    const sales = demoCreateCaseInput('sales');
+  it('演示默认含标题、品名、目的地、金额，并预填买方', () => {
+    const sales = demoCreateCaseInput();
     expect(sales.title).toBe(DEMO_CREATE_DEFAULTS.salesTitle);
     expect(sales.goodsDesc).toBe(DEMO_CREATE_DEFAULTS.goodsDesc);
     expect(sales.destination).toBe(DEMO_CREATE_DEFAULTS.destination);
@@ -49,14 +45,10 @@ describe('新建销售/采购合同（演示最短路径）', () => {
     expect(sales.buyerName).toBe(sales.title);
     expect(sales.buyerCountry).toBe('DE');
 
-    const custom = demoCreateCaseInput('sales', '  Helios Demo  ', 1_800_000);
+    const custom = demoCreateCaseInput('  Helios Demo  ', 1_800_000);
     expect(custom.title).toBe('Helios Demo');
     expect(custom.amountFen).toBe(1_800_000);
     expect(custom.buyerName).toBe('Helios Demo');
-
-    const po = demoCreateCaseInput('procurement', '', 0);
-    expect(po.title).toBe(DEMO_CREATE_DEFAULTS.procurementTitle);
-    expect(po.buyerName).toBeUndefined();
   });
 
   it('买方预填三当事方同名，付款人/收货人标记为与买方相同', () => {

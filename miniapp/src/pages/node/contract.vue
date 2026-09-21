@@ -9,7 +9,7 @@
       <view class="muted">销售合同与采购合同分开签订。硬规则：中信保限额未登记，不得签订销售合同。请先登记投保限额，再保存合同要素。所有权保留、争议解决条款为必填。运输术语（FOB / CIF）与结算方式（前 T/T / 后 T/T）独立，可组合例如 FOB + 前 T/T。CIF 填装运节点，FOB 填国内段到达口岸/港口时间，电汇填对应收汇节点。所选路径下的字段均可填写。公司惯例先销售后采购：国内采购合同在 N5 另签，并须关联本销售合同。</view>
       <view class="muted" v-if="c.currentNode" style="margin-top: 8rpx">本案当前节点：{{ c.currentNode }} {{ currentNodeName }}</view>
       <view class="err" v-if="needsKycFirst" style="margin-top: 12rpx">
-        新销售合同须从询盘/客户 KYC 办理。本案当前在 {{ c.currentNode }} {{ currentNodeName }}：请先完成筛查，再报价，然后才能确认签订。保存本合同仍须先登记中信保限额。
+        本案尚未到达销售合同节点。请先完成询盘/客户 KYC 与报价，再确认签订。保存本合同仍须先登记中信保限额。
       </view>
       <view class="btn" v-if="needsKycFirst && canWriteBusiness" @click="goEarliest">去办询盘 / 客户 KYC</view>
       <view class="err" v-if="!hasLimit" style="margin-top: 12rpx">尚未登记中信保限额，不得签订销售合同。</view>

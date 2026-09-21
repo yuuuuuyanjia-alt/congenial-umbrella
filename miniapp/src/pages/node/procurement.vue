@@ -12,7 +12,7 @@
       </view>
       <view class="muted" v-else-if="c.currentNode" style="margin-top: 8rpx">本案当前节点：{{ c.currentNode }} {{ currentNodeName }}</view>
       <view class="err" v-if="needsKycFirst" style="margin-top: 12rpx">
-        新采购合同可在本页登记。保存或推进前须从已签订的销售合同中任选一笔关联，不会自动带入本案。新案从询盘 KYC 起，过闸仍须按九节点从当前节点推进。
+        本案尚未到达采购合同节点。保存或推进前须从已签订的销售合同中任选一笔关联，不会自动带入。过闸仍须按九节点从当前节点推进。
       </view>
       <view class="btn btn-ghost" v-if="needsKycFirst && canWriteBusiness" @click="goEarliest">去办询盘 / 客户 KYC</view>
     </view>

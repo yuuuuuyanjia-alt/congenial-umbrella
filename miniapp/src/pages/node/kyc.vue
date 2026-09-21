@@ -3,6 +3,9 @@
     <view class="card">
       <view class="h2">询盘 / 客户 KYC</view>
       <view class="muted">须确认买方、付款人、收货人关系，并对 OFAC / UN / EU / UK 与中国不可靠实体清单做模拟筛查。高置信命中硬拦截。</view>
+      <view class="ok" v-if="fromCreate" style="margin-top: 12rpx">
+        已创建销售合同案，当前从询盘/客户 KYC 开始。请先保存当事方并完成筛查，再报价，最后到销售合同页填写。不能跳过。
+      </view>
       <view class="err" v-if="!canWriteBusiness" style="margin-top: 8rpx">当前为{{ roleLabel }}，本页只读，不可保存或推进。</view>
       <view class="muted" style="margin-top: 8rpx">买方在本节点填写后，待案件到达合同/订单确认（N3）时自动录入客户管理；若已有同一客户（按名称+国家或税号匹配）则合并到已有档案，不重复建档。</view>
     </view>
@@ -16,6 +19,8 @@
 
     <view class="btn" v-if="canWriteBusiness" @click="runScreen">执行模拟筛查并生成 KYC 报告</view>
     <view class="btn" v-if="canWriteBusiness" @click="tryAdvance">尝试推进本节点</view>
+    <view class="btn" v-if="fromCreate && canWriteBusiness && atQuote" @click="goQuote">去办报价</view>
+    <view class="btn" v-if="fromCreate && canWriteBusiness && atContract" @click="goContract">去填销售合同</view>
 
     <view class="card" v-if="kycReport">
       <view class="h2">KYC 报告</view>
@@ -42,12 +47,13 @@
 <script setup lang="ts">
 import { onLoad } from '@dcloudio/uni-app';
 import { computed, reactive, ref } from 'vue';
-import { api, decisionClass, decisionText, toastErr } from '../../api';
+import { api, decisionClass, decisionText, goToNode, hasReachedNode, toastErr } from '../../api';
 import { useDemoRole } from '../../role';
 
 const { canWriteBusiness, roleLabel } = useDemoRole();
 
 const id = ref('');
+const fromCreate = ref(false);
 const c = ref<any>(null);
 const err = ref('');
 const ok = ref('');
@@ -65,9 +71,12 @@ const kycReport = computed(() => (c.value?.kycReports || []).find((r: any) => r.
 const customerHits = computed(() =>
   (c.value?.hits || []).filter((h: any) => h.nodeCode !== 'N5' && h.party?.role !== 'SUPPLIER'),
 );
+const atQuote = computed(() => c.value?.currentNode === 'N2');
+const atContract = computed(() => hasReachedNode(c.value?.currentNode, 'N3'));
 
 onLoad(async (q) => {
   id.value = q?.id || '';
+  fromCreate.value = q?.fromCreate === '1' || q?.fromCreate === 'true';
   await reload();
 });
 
@@ -106,6 +115,9 @@ async function tryAdvance() {
     const r = await api.advance(id.value, 'N1');
     ok.value = r.stub ? r.message : `已推进，下一节点 ${r.nextNode || '结束'}`;
     await reload();
+    if (fromCreate.value && (r.nextNode === 'N2' || c.value?.currentNode === 'N2')) {
+      uni.showToast({ title: '请继续办理报价', icon: 'none' });
+    }
   } catch (e: any) {
     err.value = formatGate(e);
   }
@@ -115,5 +127,13 @@ function formatGate(e: any) {
   const reasons = e?.reasons || e?.message;
   const missing = e?.missing ? `缺失：${e.missing.join(', ')}` : '';
   return [e?.message, Array.isArray(reasons) ? reasons.join('；') : '', missing].filter(Boolean).join('\n');
+}
+
+function goQuote() {
+  if (id.value) goToNode(id.value, 'N2');
+}
+
+function goContract() {
+  if (id.value) goToNode(id.value, 'N3');
 }
 </script>
