@@ -2137,7 +2137,7 @@ async function seedDirectPortYellowCase(salesId: string) {
       N3: {
         status: 'PASSED',
         decision: 'PASS',
-        summary: '港口直出已填仓储地点、批次号与电子底账编号',
+        summary: '港口直出已填仓储地点与批次号',
       },
       N4: { status: 'PASSED', decision: 'PASS', summary: '无待确认变更' },
       N5: {

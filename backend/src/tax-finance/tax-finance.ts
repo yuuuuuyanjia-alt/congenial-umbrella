@@ -79,7 +79,7 @@ export const TAX_FINANCE_EMPTY_TURN_REASON =
   '红线：港口直出迹象像空转/假出口，硬拦截，不得推进';
 export const TAX_FINANCE_DELIVERY_MODE_REASON = '须选择交货方式（自有仓 / 港口直出）';
 export const TAX_FINANCE_DIRECT_DOCS_REASON =
-  '港口直出须填写货物仓储地点、批次号与电子底账编号';
+  '港口直出须填写货物仓储地点与批次号';
 export const FT4_DECLARE_REASON = '退税申报前须完成就绪清单：报关放行、N9 收汇、进项发票号、四流闭环';
 
 export const WorkbenchItemKindTax = {
@@ -212,10 +212,8 @@ export function directPortGaps(dp?: DirectPortSnap | null): string[] {
   const missing: string[] = [];
   const warehouse = dp?.warehouseLocation || dp?.goodsWhereAnswer;
   const batch = dp?.batchNo || dp?.goodsWhereRef;
-  const ledger = dp?.eLedgerNo || dp?.customsPartyRef;
   if (!filled(warehouse)) missing.push('FT2_WAREHOUSE_LOCATION');
   if (!filled(batch)) missing.push('FT2_BATCH_NO');
-  if (!filled(ledger)) missing.push('FT2_E_LEDGER');
   return missing;
 }
 
@@ -571,7 +569,7 @@ export function evaluateTaxFinance(snap: CaseSnapshot, nodeCode: string): TaxFin
   }
 
   if (direct && r.view.directPortComplete) {
-    r.reasons.push('港口直出已填仓储地点、批次号与电子底账编号');
+    r.reasons.push('港口直出已填仓储地点与批次号');
     r.view.summary = r.reasons[r.reasons.length - 1];
   }
   r.view.fingerprint = fp;
@@ -673,10 +671,8 @@ export function completeDirectPortFixture(over: Partial<DirectPortSnap> = {}): D
   return {
     warehouseLocation: '上海洋山港待装仓',
     batchNo: 'BATCH-YG-2026-088',
-    eLedgerNo: 'ELEDGER-2026-088',
     goodsWhereAnswer: '上海洋山港待装仓',
     goodsWhereRef: 'BATCH-YG-2026-088',
-    customsPartyRef: 'ELEDGER-2026-088',
     emptyTurnLikely: false,
     ...over,
   };

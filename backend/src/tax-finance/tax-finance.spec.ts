@@ -212,8 +212,8 @@ describe('FT1 交货方式与购销匹配', () => {
   });
 });
 
-describe('FT2 港口直出仓储/批次/底账', () => {
-  it('直出缺仓储地点/批次号/电子底账不得推进', () => {
+describe('FT2 港口直出仓储/批次', () => {
+  it('直出缺仓储地点/批次号不得推进', () => {
     const r = evaluateNode(
       'N3',
       base({
@@ -232,20 +232,20 @@ describe('FT2 港口直出仓储/批次/底账', () => {
         'FT2_DIRECT_PORT_DOCS',
         'FT2_WAREHOUSE_LOCATION',
         'FT2_BATCH_NO',
-        'FT2_E_LEDGER',
       ]),
     );
+    expect(r.missing).not.toContain('FT2_E_LEDGER');
     expect(r.reasons.join('')).toContain('仓储地点');
   });
 
-  it('仓储地点、批次号、电子底账齐全则 isDirectPortComplete', () => {
+  it('仓储地点与批次号齐全则 isDirectPortComplete，不要求电子底账', () => {
     expect(isDirectPortComplete(completeDirectPortFixture())).toBe(true);
     expect(isDirectPortComplete({ warehouseLocation: 'x' })).toBe(false);
+    expect(isDirectPortComplete({ warehouseLocation: '仓', batchNo: 'B1' })).toBe(true);
     expect(
       isDirectPortComplete({
         goodsWhereAnswer: '仓',
         goodsWhereRef: 'B1',
-        customsPartyRef: 'E1',
       }),
     ).toBe(true);
   });

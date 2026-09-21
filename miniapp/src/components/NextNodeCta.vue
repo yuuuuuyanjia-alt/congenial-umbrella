@@ -18,8 +18,8 @@ const props = withDefaults(
     buttonLabel?: string;
   }>(),
   {
-    heading: '进入下一步',
-    buttonLabel: '',
+    heading: '',
+    buttonLabel: '进入下一步',
   },
 );
 defineEmits<{ go: [] }>();
