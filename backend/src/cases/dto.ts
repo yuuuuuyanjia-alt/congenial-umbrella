@@ -1,12 +1,23 @@
 import { Allow, IsArray, IsBoolean, IsIn, IsInt, IsNumber, IsObject, IsOptional, IsString, ValidateNested } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
+import { PROCUREMENT_CURRENCY, SALES_CURRENCY } from '../common/currencies';
+
+function ToCurrency() {
+  return Transform(({ value }) => {
+    if (value == null || value === '') return undefined;
+    return String(value).trim().toUpperCase();
+  });
+}
 
 export class CreateCaseDto {
   @IsString() title: string;
   @IsString() goodsDesc: string;
   @IsString() destination: string;
   @IsInt() amountFen: number;
-  @IsOptional() @IsString() currency?: string;
+  @IsOptional()
+  @ToCurrency()
+  @IsIn([SALES_CURRENCY], { message: '出口案件币种须为 USD' })
+  currency?: string;
   /** 演示新建销售合同时预填买方；付款人/收货人同名。 */
   @IsOptional() @IsString() buyerName?: string;
   @IsOptional() @IsString() buyerCountry?: string;
@@ -44,7 +55,10 @@ export class SaveContractDto {
   @IsOptional() @IsBoolean() isFinal?: boolean;
   @IsOptional() @IsString() goodsDesc?: string;
   @IsOptional() @IsInt() amountFen?: number;
-  @IsOptional() @IsString() currency?: string;
+  @IsOptional()
+  @ToCurrency()
+  @IsIn([SALES_CURRENCY], { message: '销售合同币种须为 USD' })
+  currency?: string;
   @IsOptional() @IsString() destination?: string;
   @IsOptional() @IsString() buyerName?: string;
   @IsOptional() @IsString() consigneeName?: string;
@@ -140,7 +154,10 @@ export class SaveQuoteDto {
   @IsOptional() @IsInt() unitPriceFen?: number;
   @IsOptional() @IsInt() quantity?: number;
   @IsOptional() @IsInt() amountFen?: number;
-  @IsOptional() @IsString() currency?: string;
+  @IsOptional()
+  @ToCurrency()
+  @IsIn([SALES_CURRENCY], { message: '报价币种须为 USD' })
+  currency?: string;
   @IsOptional() @IsString() notes?: string;
   @IsOptional() @IsString() abnormalPriceNote?: string;
 }
@@ -197,7 +214,10 @@ export class SavePlanDto {
   @IsOptional() @IsString() customerConsentRef?: string;
   @IsOptional() @IsString() actualArrival?: string;
   @IsOptional() @IsInt() amountFen?: number;
-  @IsOptional() @IsString() currency?: string;
+  @IsOptional()
+  @ToCurrency()
+  @IsIn([PROCUREMENT_CURRENCY], { message: '采购合同币种须为 CNY' })
+  currency?: string;
   @IsOptional() @IsInt() paidFen?: number;
   @IsOptional() @IsString() paymentDueAt?: string;
   @IsOptional() @IsString() paidAt?: string;
@@ -230,7 +250,10 @@ export class SaveSinosureDto {
   @IsOptional() @IsString() evidenceRef?: string;
   @IsOptional() @IsString() fileName?: string;
   @IsOptional() @IsInt() insuredLimitFen?: number;
-  @IsOptional() @IsString() currency?: string;
+  @IsOptional()
+  @ToCurrency()
+  @IsIn([SALES_CURRENCY], { message: '中信保限额币种须为 USD' })
+  currency?: string;
   @IsOptional() @IsString() changeOrderId?: string;
   @IsOptional() @IsBoolean() confirmedExisting?: boolean;
 }

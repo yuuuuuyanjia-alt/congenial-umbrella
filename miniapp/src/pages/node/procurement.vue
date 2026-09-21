@@ -118,10 +118,11 @@
       <input class="input" v-model="form.plannedArrival" placeholder="YYYY-MM-DD，计划交付日期" />
       <view class="label">实际交付日期</view>
       <input class="input" v-model="form.actualArrival" placeholder="YYYY-MM-DD，实际交付；可选" />
-      <view class="label">采购金额（元）</view>
+      <view class="label">采购金额（CNY）</view>
       <input class="input" type="digit" v-model="form.amountYuan" placeholder="采购合同/PO 金额" @blur="syncAmountsFromPercent" />
       <view class="label">币种</view>
-      <input class="input" v-model="form.currency" placeholder="CNY" />
+      <view class="readonly">CNY</view>
+      <view class="muted">采购合同 / PO 金额固定人民币，不可更改</view>
       <view class="h2" style="margin-top: 24rpx">付款方式</view>
       <view class="muted">请选择：一次性付清，或分期支付。分期支付时，每一期须填写约定付款时间、付款比例、金额。</view>
       <view class="choice-row">
@@ -135,7 +136,7 @@
         <input class="input" v-model="form.paymentDueAt" placeholder="YYYY-MM-DD 约定付款日期" />
         <view class="label">付款条件（可选）</view>
         <input class="input" v-model="form.paymentConditionText" placeholder="一次性付清" />
-        <view class="label">已付货款（元）</view>
+        <view class="label">已付货款（CNY）</view>
         <input class="input" type="digit" v-model="form.paidYuan" placeholder="已付给供应商的金额" />
         <view class="label">付款日期（付清日）</view>
         <input class="input" v-model="form.paidAt" placeholder="YYYY-MM-DD" />
@@ -152,13 +153,13 @@
           <input class="input" v-model="row.label" :placeholder="defaultInstLabel(idx)" />
           <view class="label">付款比例（%）<text class="req">必填</text></view>
           <input class="input" type="digit" v-model="row.percent" placeholder="如 90" @blur="onPercent(idx)" />
-          <view class="label">金额（元）<text class="req">必填</text></view>
+          <view class="label">金额（CNY）<text class="req">必填</text></view>
           <input class="input" type="digit" v-model="row.amountYuan" placeholder="可按比例自动带出" @blur="onAmount(idx)" />
           <view class="label">约定付款时间<text class="req">必填</text></view>
           <view class="muted">填写约定日期，或填写触发时间（如货物到达后支付）。至少填一项。</view>
           <input class="input" v-model="row.dueAt" placeholder="YYYY-MM-DD 约定付款日期" />
           <input class="input" v-model="row.conditionText" :placeholder="idx === 0 ? '触发时间，如 货物到达交付地点之后' : '触发时间，如 验收合格后支付'" />
-          <view class="label">本期已付（元）</view>
+          <view class="label">本期已付（CNY）</view>
           <input class="input" type="digit" v-model="row.paidYuan" placeholder="登记本期实付" />
           <view class="label">本期付款日</view>
           <input class="input" v-model="row.paidAt" placeholder="YYYY-MM-DD" />
@@ -239,6 +240,7 @@ import {
   money,
   nextWorkNodeFromForm,
   pipelineNodeName,
+  PROCUREMENT_CURRENCY,
   procurementContractTitle,
   toastErr,
   yuanToFen,
@@ -287,7 +289,7 @@ const form = reactive({
   plannedArrival: '2026-11-28',
   actualArrival: '',
   amountYuan: '',
-  currency: 'CNY',
+  currency: PROCUREMENT_CURRENCY,
   paidYuan: '',
   paymentDueAt: '',
   paidAt: '',
@@ -385,7 +387,7 @@ const scheduleWording = computed(() => {
   const pct = first.percent || ' ';
   const residualNum = Number(last.amountYuan);
   const residual = Number.isFinite(residualNum)
-    ? `${form.currency || 'CNY'} ${residualNum.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+    ? `${PROCUREMENT_CURRENCY} ${residualNum.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
     : last.amountYuan || '具体金额';
   const cond = last.conditionText || '填写条件';
   return `货物到达交付地点之后支付（${pct}）%货款，剩余尾款（${residual}）于（${cond}）支付`;
@@ -534,7 +536,7 @@ async function reload() {
     form.plannedArrival = String(p.plannedArrival || '').slice(0, 10) || form.plannedArrival;
     form.actualArrival = String(p.actualArrival || '').slice(0, 10);
     form.amountYuan = fenToYuan(p.amountFen);
-    form.currency = p.currency || 'CNY';
+    form.currency = PROCUREMENT_CURRENCY;
     form.paidYuan = fenToYuan(p.paidFen);
     form.paymentDueAt = String(p.paymentDueAt || '').slice(0, 10);
     form.paidAt = String(p.paidAt || '').slice(0, 10);
@@ -606,6 +608,7 @@ async function save(silent = false) {
     paymentMode: form.paymentMode,
     paymentConditionText: form.paymentConditionText || undefined,
     salesCaseId: form.salesCaseId,
+    currency: PROCUREMENT_CURRENCY,
   };
   if (form.paymentMode === 'STAGED') {
     payload.installments = form.installments.map((row, i) => ({

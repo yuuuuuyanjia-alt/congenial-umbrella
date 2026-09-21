@@ -392,7 +392,10 @@ export function remittanceText(code?: string | null) {
   return (code && map[code]) || '无记录';
 }
 
-export function money(fen?: number | null, currency = 'USD') {
+export const SALES_CURRENCY = 'USD';
+export const PROCUREMENT_CURRENCY = 'CNY';
+
+export function money(fen?: number | null, currency = SALES_CURRENCY) {
   if (fen == null || !Number.isFinite(Number(fen))) return '未登记';
   return `${currency} ${(Number(fen) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }

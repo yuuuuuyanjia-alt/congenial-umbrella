@@ -28,6 +28,7 @@ import {
   SINOSURE_EXPOSURE_HIGH_REVIEW_REASON,
   VersionStatus,
 } from '../common/constants';
+import { requireProcurementCurrency, requireSalesCurrency } from '../common/currencies';
 import { evaluateN3ContractSave, isChangeField, isSensitiveChange, nextNode } from '../gates/gate.engine';
 import {
   OCCUPANCY_QUEUE_STATUSES,
@@ -300,7 +301,7 @@ export class CasesService {
         goodsDesc: dto.goodsDesc,
         destination: dto.destination,
         amountFen: dto.amountFen,
-        currency: dto.currency ?? 'USD',
+        currency: requireSalesCurrency(dto.currency, '出口案件'),
         nodes: {
           create: NODE_CATALOG.map((n) => ({
             code: n.code,
@@ -398,6 +399,7 @@ export class CasesService {
       directPort,
       ...rest
     } = dto;
+    const currency = requireSalesCurrency(dto.currency, '销售合同');
     const parsedDelivery = parseDate(deliveryDate);
     const mode = sanitizeSalesContractModeFields({
       incoterms: rest.incoterms,
@@ -416,6 +418,7 @@ export class CasesService {
       mode.ttTiming === TT_TIMING.AFTER && mode.shipmentDate ? mode.shipmentDate : parsedDelivery;
     const data = {
       ...rest,
+      currency,
       incoterms: mode.incoterms,
       paymentTerms: mode.paymentTerms,
       ttTiming: mode.ttTiming,
@@ -438,15 +441,13 @@ export class CasesService {
       create: { caseId, ...data },
       update: data,
     });
-    if (dto.amountFen != null || dto.currency) {
-      await this.prisma.tradeCase.update({
-        where: { id: caseId },
-        data: {
-          ...(dto.amountFen != null ? { amountFen: dto.amountFen } : {}),
-          ...(dto.currency ? { currency: dto.currency } : {}),
-        },
-      });
-    }
+    await this.prisma.tradeCase.update({
+      where: { id: caseId },
+      data: {
+        ...(dto.amountFen != null ? { amountFen: dto.amountFen } : {}),
+        currency,
+      },
+    });
     await this.snapshotContract(caseId, null);
     await this.touchNode(caseId, 'N3', NodeStatus.IN_PROGRESS);
     await this.enrollBuyerIfReachedN3(caseId, actorId);
@@ -462,7 +463,7 @@ export class CasesService {
     await this.applyTaxFinanceNodeStatus(caseId, 'N3', occupancyGate);
     const sinosureExposure = await this.customers.occupancyForCase(caseId, {
       newAmountFen: dto.amountFen ?? undefined,
-      newCurrency: dto.currency,
+      newCurrency: currency,
     });
     const settlement = await this.prisma.settlement.findUnique({ where: { caseId } });
     return { ...presentSalesContract(row, settlement), sinosureExposure, occupancyGate };
@@ -487,7 +488,7 @@ export class CasesService {
     let evidenceRef = dto.evidenceRef?.trim() || '';
     let fileName = dto.fileName?.trim() || '';
     let insuredLimitFen = dto.insuredLimitFen;
-    let currency = dto.currency || 'USD';
+    const currency = requireSalesCurrency(dto.currency, '中信保限额');
     let confirmedExisting = !!dto.confirmedExisting;
     let sourceId: string | null = null;
 
@@ -501,7 +502,6 @@ export class CasesService {
       evidenceRef = evidenceRef || prior.evidenceRef || '';
       fileName = fileName || prior.fileName || '';
       insuredLimitFen = insuredLimitFen ?? prior.insuredLimitFen;
-      currency = dto.currency || prior.currency;
     }
 
     if (!insuredLimitFen || insuredLimitFen <= 0) {
@@ -610,7 +610,7 @@ export class CasesService {
         unitPriceFen: dto.unitPriceFen,
         quantity: dto.quantity,
         amountFen,
-        currency: dto.currency ?? 'USD',
+        currency: requireSalesCurrency(dto.currency, '报价'),
         notes: dto.notes,
         abnormalPriceNote: dto.abnormalPriceNote,
         snapshotJson: JSON.stringify(snapshot),
@@ -952,7 +952,7 @@ export class CasesService {
       customerConsentEvidenceId: consentId || existingPlan?.customerConsentEvidenceId || null,
       actualArrival: parseDate(dto.actualArrival) ?? existingPlan?.actualArrival ?? null,
       amountFen,
-      currency: dto.currency || existingPlan?.currency || 'CNY',
+      currency: requireProcurementCurrency(dto.currency, '采购合同'),
       paidFen: schedule.rollup.paidFen,
       paymentDueAt: schedule.rollup.paymentDueAt,
       paidAt: schedule.rollup.paidAt,
@@ -1291,7 +1291,11 @@ export class CasesService {
     override?: { newAmountFen?: number; newCurrency?: string },
   ) {
     await this.ensureCase(caseId);
-    return this.customers.occupancyForCase(caseId, override);
+    const newCurrency =
+      override?.newCurrency != null && override.newCurrency !== ''
+        ? requireSalesCurrency(override.newCurrency, '中信保占用')
+        : override?.newCurrency;
+    return this.customers.occupancyForCase(caseId, { ...override, newCurrency });
   }
 
   async advance(caseId: string, nodeCode: string, actorId?: string) {

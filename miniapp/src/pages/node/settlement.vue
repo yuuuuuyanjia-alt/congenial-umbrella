@@ -39,7 +39,7 @@
 <script setup lang="ts">
 import { onLoad } from '@dcloudio/uni-app';
 import { computed, reactive, ref } from 'vue';
-import { api, fenToYuan, yuanToFen } from '../../api';
+import { api, fenToYuan, SALES_CURRENCY, yuanToFen } from '../../api';
 import PendingChangeBlock from '../../components/PendingChangeBlock.vue';
 import { useDemoRole } from '../../role';
 
@@ -48,7 +48,7 @@ const { canWriteBusiness, roleLabel } = useDemoRole();
 const err = ref('');
 const ok = ref('');
 const c = ref<any>(null);
-const currency = ref('USD');
+const currency = ref(SALES_CURRENCY);
 const contractAmountFen = ref(0);
 const form = reactive({
   buyerName: '',
@@ -75,7 +75,7 @@ onLoad(async (q) => {
   id.value = q?.id || '';
   c.value = await api.case(id.value);
   const buyer = c.value.parties?.find((p: any) => p.role === 'BUYER')?.name || '';
-  currency.value = c.value.contract?.currency || c.value.currency || 'USD';
+  currency.value = SALES_CURRENCY;
   contractAmountFen.value = Number(c.value.contract?.amountFen ?? c.value.amountFen) || 0;
   form.buyerName = c.value.settlement?.buyerName || buyer;
   form.payerName = c.value.settlement?.payerName || buyer;

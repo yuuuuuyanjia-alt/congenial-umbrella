@@ -48,15 +48,15 @@
       </view>
       <view class="row line">
         <view class="muted">采购成本</view>
-        <view>{{ evalOf.profit?.costMissing ? (evalOf.profit?.label || '毛利估算/暂缺') : evalOf.profit?.costFen == null ? '—' : money(evalOf.profit?.costFen, 'USD') }}</view>
+        <view>{{ evalOf.profit?.costMissing ? (evalOf.profit?.label || '待合同毛利率表') : evalOf.profit?.costFen == null ? '—' : money(evalOf.profit?.costFen, 'USD') }}</view>
       </view>
       <view class="row line">
         <view class="muted">毛利</view>
-        <view>{{ evalOf.profit?.costMissing ? '毛利估算/暂缺' : evalOf.profit?.grossFen == null ? '—' : money(evalOf.profit?.grossFen, 'USD') }}</view>
+        <view>{{ evalOf.profit?.costMissing ? '待合同毛利率表' : evalOf.profit?.grossFen == null ? '—' : money(evalOf.profit?.grossFen, 'USD') }}</view>
       </view>
       <view class="row line">
         <view class="muted">毛利率</view>
-        <view>{{ evalOf.profit?.costMissing || evalOf.profit?.marginPct == null ? '暂缺' : evalOf.profit.marginPct + '%' }}</view>
+        <view>{{ evalOf.profit?.costMissing ? '待合同毛利率表' : evalOf.profit?.marginPct == null ? '暂缺' : evalOf.profit.marginPct + '%' }}</view>
       </view>
       <view class="h2" style="margin-top: 20rpx">回款</view>
       <view class="muted">以 N9 水单/到账为唯一事实源，与约定收款日统计一致。</view>

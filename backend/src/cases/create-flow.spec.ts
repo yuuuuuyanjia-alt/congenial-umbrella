@@ -42,6 +42,7 @@ describe('新建销售/采购合同（N1 起 / 采购点选已签销售合同）
     expect(sales.goodsDesc).toBe(DEMO_CREATE_DEFAULTS.goodsDesc);
     expect(sales.destination).toBe(DEMO_CREATE_DEFAULTS.destination);
     expect(sales.amountFen).toBe(DEMO_CREATE_DEFAULTS.amountFen);
+    expect(sales.currency).toBe('USD');
     expect(sales.buyerName).toBe(sales.title);
     expect(sales.buyerCountry).toBe('DE');
 

@@ -2165,7 +2165,7 @@ async function seedDirectPortYellowCase(salesId: string) {
       poEvidenceStub: 'PO-PORT-YELLOW-001.pdf',
       delayRegistered: false,
       amountFen: purchaseFen,
-      currency: 'USD',
+      currency: 'CNY',
       ...paymentSchedule(purchaseFen, [
         {
           percent: 100,
