@@ -13,10 +13,12 @@
     <view class="card">
       <view class="h2">工作入口</view>
       <view class="muted">{{ entryHint }}</view>
-      <view class="choice-row" v-if="contractEntries.length" style="margin-top: 16rpx">
-        <view class="choice-btn" v-for="e in contractEntries" :key="e.url" @click="go(e.url)">{{ e.label }}</view>
-      </view>
-      <view class="btn" v-for="e in otherEntries" :key="e.url" @click="go(e.url)">{{ e.label }}</view>
+      <template v-for="(block, i) in entryBlocks" :key="i + '-' + block.items[0].url">
+        <view class="choice-row" v-if="block.type === 'contracts'" style="margin-top: 16rpx">
+          <view class="choice-btn" v-for="e in block.items" :key="e.url" @click="go(e.url)">{{ e.label }}</view>
+        </view>
+        <view class="btn" v-else @click="go(block.items[0].url)">{{ block.items[0].label }}</view>
+      </template>
     </view>
 
     <view class="h2" style="margin: 8rpx 8rpx 16rpx">演示路径</view>
@@ -42,8 +44,7 @@ import RoleBar from '../../components/RoleBar.vue';
 import {
   APP_VERSION,
   demoSession,
-  homeEntriesFor,
-  isContractHomeEntry,
+  homeEntryBlocks,
   noteDebugUnlockTap,
   roleLabelOf,
   toggleDebugRolePicker,
@@ -53,9 +54,7 @@ import {
 const cases = ref<any[]>([]);
 const { role } = useDemoRole();
 const appVersion = APP_VERSION;
-const entries = computed(() => homeEntriesFor(role.value));
-const contractEntries = computed(() => entries.value.filter(isContractHomeEntry));
-const otherEntries = computed(() => entries.value.filter((e) => !isContractHomeEntry(e)));
+const entryBlocks = computed(() => homeEntryBlocks(role.value));
 const entryHint = computed(() => {
   if (role.value === 'RISK') return '本岗默认先进入审核工作台；销售/采购合同也可进入。';
   if (role.value === 'MANAGER') return '本岗只读：先看客户评估与合同列表，不可审批、推进或新建合同。';

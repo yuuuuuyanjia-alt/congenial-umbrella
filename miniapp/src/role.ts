@@ -128,6 +128,25 @@ export function isContractHomeEntry(e: { url: string }) {
   return /\/pages\/case\/list\?kind=(sales|procurement)/.test(e.url);
 }
 
+/** Keep role order; consecutive 销售/采购 entries render as a primary pair. */
+export function homeEntryBlocks(role?: string | null) {
+  const blocks: { type: 'contracts' | 'btn'; items: { url: string; label: string }[] }[] = [];
+  let pair: { url: string; label: string }[] = [];
+  for (const e of homeEntriesFor(role)) {
+    if (isContractHomeEntry(e)) {
+      pair.push(e);
+      continue;
+    }
+    if (pair.length) {
+      blocks.push({ type: 'contracts', items: pair });
+      pair = [];
+    }
+    blocks.push({ type: 'btn', items: [e] });
+  }
+  if (pair.length) blocks.push({ type: 'contracts', items: pair });
+  return blocks;
+}
+
 export function homeEntriesFor(role?: string | null) {
   return HOME_ENTRIES[role || UserRole.SALES] || HOME_ENTRIES.SALES;
 }
