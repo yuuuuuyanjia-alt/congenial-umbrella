@@ -18,7 +18,7 @@ const props = withDefaults(
     buttonLabel?: string;
   }>(),
   {
-    heading: '九节点下一步',
+    heading: '进入下一步',
     buttonLabel: '',
   },
 );

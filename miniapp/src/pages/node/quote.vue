@@ -51,6 +51,7 @@
       :target="nextTarget"
       :ready="nextReady"
       :hint="nextHint"
+      heading="进入下一步"
       button-label="进入下一步"
       @go="goNext"
     />
