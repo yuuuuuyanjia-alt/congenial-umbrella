@@ -24,6 +24,11 @@
       </view>
       <view class="muted">{{ item.desc }}</view>
     </view>
+
+    <view class="debug-footer">
+      <view class="debug-version" @click="onVersionTap">v{{ appVersion }}</view>
+      <view class="debug-link" @click="onDebugSwitch">切换演示角色</view>
+    </view>
   </view>
 </template>
 
@@ -31,21 +36,39 @@
 import { computed, onMounted, ref } from 'vue';
 import { api } from '../../api';
 import RoleBar from '../../components/RoleBar.vue';
-import { demoSession, homeEntriesFor, roleLabelOf, useDemoRole } from '../../role';
+import {
+  APP_VERSION,
+  demoSession,
+  homeEntriesFor,
+  noteDebugUnlockTap,
+  roleLabelOf,
+  toggleDebugRolePicker,
+  useDemoRole,
+} from '../../role';
 
 const cases = ref<any[]>([]);
 const { role } = useDemoRole();
+const appVersion = APP_VERSION;
 const entries = computed(() => homeEntriesFor(role.value));
 const entryHint = computed(() => {
-  if (role.value === 'RISK') return '风控岗默认先进入审核工作台；合同与客户为只读优先，现有写入接口未扩大。';
-  if (role.value === 'MANAGER') return '主管本轮只读：先看客户评估与案件列表，不可审批、推进或改合同。';
-  return '业务岗可录入客户/销售/采购并推进 N1–N9。工作台只读，领取/放行请切换风控岗。';
+  if (role.value === 'RISK') return '本岗默认先进入审核工作台；合同与客户为只读优先。';
+  if (role.value === 'MANAGER') return '本岗只读：先看客户评估与合同列表，不可审批、推进或改合同。';
+  return '本岗可录入客户/销售/采购并推进 N1–N9。';
 });
-function onRoleChange() {
-  role.value = demoSession.value?.role || role.value;
+function syncNavTitle() {
   uni.setNavigationBarTitle({
     title: demoSession.value ? `出口风控 · ${roleLabelOf(demoSession.value.role)}` : '出口风控',
   });
+}
+function onRoleChange() {
+  role.value = demoSession.value?.role || role.value;
+  syncNavTitle();
+}
+function onVersionTap() {
+  noteDebugUnlockTap();
+}
+function onDebugSwitch() {
+  toggleDebugRolePicker();
 }
 const paths = [
   {
@@ -128,6 +151,7 @@ const paths = [
 ];
 
 onMounted(async () => {
+  syncNavTitle();
   try {
     cases.value = await api.cases();
   } catch (e) {
@@ -163,5 +187,20 @@ function openByNo(caseNo: string) {
   font-size: var(--font-xs);
   opacity: 0.85;
   margin-bottom: 8rpx;
+}
+.debug-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12rpx 8rpx 8rpx;
+  margin-top: 8rpx;
+}
+.debug-version,
+.debug-link {
+  color: #9ca3af;
+  font-size: var(--font-xs);
+}
+.debug-link {
+  text-decoration: underline;
 }
 </style>
