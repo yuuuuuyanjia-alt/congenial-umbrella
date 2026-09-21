@@ -1,7 +1,18 @@
 <template>
   <view class="wrap">
+    <RoleBar compact />
     <view class="h1" style="margin-bottom: 8rpx">{{ title }}</view>
     <view class="muted" style="margin-bottom: 16rpx">{{ hint }}</view>
+
+    <view class="card" v-if="canCreate">
+      <view class="h2">{{ kind === 'procurement' ? '新建采购合同' : '新建销售合同' }}</view>
+      <view class="muted">{{ createHint }}</view>
+      <view class="label">标题</view>
+      <input class="input" v-model="draft.title" :placeholder="draftTitlePlaceholder" />
+      <view class="label">金额（元）</view>
+      <input class="input" type="digit" v-model="draft.amountYuan" placeholder="25000.00" />
+      <view class="btn" :class="{ 'btn-ghost': creating }" @click="create">{{ createBtn }}</view>
+    </view>
 
     <view class="choice-row" v-if="kind === 'sales'" style="margin-bottom: 20rpx">
       <view
@@ -61,7 +72,7 @@
 
 <script setup lang="ts">
 import { onLoad, onShow } from '@dcloudio/uni-app';
-import { computed, ref } from 'vue';
+import { computed, reactive, ref } from 'vue';
 import {
   api,
   decisionClass,
@@ -77,12 +88,29 @@ import {
   procurementContractTitle,
   salesShipmentBadgeClass,
   salesShipmentBucketLabel,
+  toastErr,
 } from '../../api';
+import {
+  buildCreateCaseBody,
+  canShowCreateContract,
+  createFormPage,
+  DEMO_CREATE,
+} from '../../create-flow';
+import RoleBar from '../../components/RoleBar.vue';
+import { useDemoRole } from '../../role';
 
 const kind = ref<'sales' | 'procurement' | ''>('');
 const raw = ref<any[]>([]);
 const loaded = ref(false);
+const creating = ref(false);
 const focusGroup = ref<'unshipped' | 'shipped' | 'completed'>('unshipped');
+const { role, canWriteBusiness } = useDemoRole();
+const draft = reactive({
+  title: '',
+  amountYuan: DEMO_CREATE.amountYuan,
+});
+
+const canCreate = computed(() => !!kind.value && canShowCreateContract(role.value) && canWriteBusiness.value);
 
 const title = computed(() => (kind.value === 'procurement' ? '采购合同管理' : '销售合同管理'));
 const hint = computed(() =>
@@ -90,10 +118,26 @@ const hint = computed(() =>
     ? '此处只列国内采购合同/备货（N5）。打开后填写采购合同；保存或推进前须从已签订的销售合同中任选一笔关联（不限于本案）。货款可选一次性付清或分期支付（分期须填约定付款时间、付款比例、金额）。装运、单证、报关、收汇属于出口案，不在本采购合同办理；采购完成后可点「去办装运（出口案）」跳转。'
     : '出口销售合同按未出运、已出运、已完成分组。已完成须已出运、客户已提货且收汇对账已回款。打开卡片仍填写销售合同（销售合同/订单确认）。国内采购订单不在本列表。本案已离开销售合同节点时，可点「进入下一节点」直达当前九节点步骤。',
 );
+const createHint = computed(() =>
+  kind.value === 'procurement'
+    ? '将创建采购案并打开采购合同页。保存前须从已签订的销售合同中任选一笔关联，系统不会自动带入。新案从询盘 KYC 起，过闸仍须按九节点推进。'
+    : '将创建出口案并打开销售合同页。确认签订前须先完成询盘/客户 KYC 与报价（N1→N2）；保存销售合同还须登记中信保限额。买方按标题预填，付款人/收货人与买方相同。',
+);
+const draftTitlePlaceholder = computed(() =>
+  kind.value === 'procurement' ? DEMO_CREATE.procurementTitle : DEMO_CREATE.salesTitle,
+);
+const createBtn = computed(() => {
+  if (creating.value) return '正在创建…';
+  return kind.value === 'procurement' ? '新建采购合同' : '新建销售合同';
+});
 const empty = computed(() =>
   kind.value === 'procurement'
-    ? '暂无采购合同。请先完成销售合同签订，待案件到达国内采购/备货后再登记采购合同。'
-    : '暂无销售合同。询盘未通过或尚未到达销售合同节点的案件不在此列。',
+    ? canCreate.value
+      ? '暂无采购合同。可点上方新建，并在表单中关联一笔已签订的销售合同。已有停在采购节点的出口案也可直接打开补登。'
+      : '暂无采购合同。请先完成销售合同签订，待案件到达国内采购/备货后再登记采购合同。'
+    : canCreate.value
+      ? '暂无销售合同。可点上方新建；询盘未通过的案件不会出现在本列表。'
+      : '暂无销售合同。询盘未通过或尚未到达销售合同节点的案件不在此列。',
 );
 
 const list = computed(() => {
@@ -115,6 +159,8 @@ onLoad((q) => {
   kind.value = q.kind;
   loaded.value = false;
   raw.value = [];
+  draft.title = q.kind === 'procurement' ? DEMO_CREATE.procurementTitle : DEMO_CREATE.salesTitle;
+  draft.amountYuan = DEMO_CREATE.amountYuan;
   if (q?.group === 'shipped' || q?.group === 'completed' || q?.group === 'unshipped') {
     focusGroup.value = q.group;
   }
@@ -131,6 +177,20 @@ onShow(async () => {
     loaded.value = true;
   }
 });
+
+async function create() {
+  if (!kind.value || !canCreate.value || creating.value) return;
+  creating.value = true;
+  try {
+    const created = await api.createCase(buildCreateCaseBody(kind.value, draft.title, draft.amountYuan));
+    if (!created?.id) throw { message: '创建成功但未返回案件' };
+    uni.navigateTo({ url: `${createFormPage(kind.value)}?id=${created.id}&fromCreate=1` });
+  } catch (e) {
+    toastErr(e);
+  } finally {
+    creating.value = false;
+  }
+}
 
 function primaryNo(c: any) {
   if (kind.value === 'procurement') return c.poNo ? `采购合同 ${c.poNo}` : '采购合同待登记';

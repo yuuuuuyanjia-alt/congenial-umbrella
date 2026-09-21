@@ -63,6 +63,7 @@ import {
   signedSalesOptions,
   supplierNameOf,
 } from './sales-link';
+import { demoPartiesFromBuyer } from './create-flow';
 import { advanceResponseNextNode, laterNode, resolveAdvance } from './advance-guard';
 import {
   normalizeTransportIncoterms,
@@ -312,12 +313,19 @@ export class CasesService {
         },
       },
     });
+    const parties = demoPartiesFromBuyer(dto.buyerName, dto.buyerCountry);
+    if (parties.length) {
+      await this.prisma.party.createMany({
+        data: parties.map((p) => ({ caseId: created.id, ...p })),
+      });
+      await this.touchNode(created.id, 'N1', NodeStatus.IN_PROGRESS);
+    }
     await this.audit.append({
       caseId: created.id,
       actorId,
       action: 'CASE_CREATED',
       nodeCode: 'N1',
-      detail: { caseNo, title: dto.title },
+      detail: { caseNo, title: dto.title, buyerSeeded: parties.length > 0 },
     });
     return this.get(created.id);
   }
