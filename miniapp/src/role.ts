@@ -45,7 +45,7 @@ export function roleLabelOf(role?: string | null) {
   return (role && UserRoleLabel[role]) || role || '';
 }
 
-/** Demo UI: role label only — never seed personal names. */
+/** 演示界面只展示岗位，不展示种子用户姓名。 */
 export function demoActorLabel(u?: { role?: string | null; roleLabel?: string | null; name?: string | null } | null) {
   if (!u) return '';
   return roleLabelOf(u.role) || u.roleLabel || '';
