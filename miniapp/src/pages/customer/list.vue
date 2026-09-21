@@ -2,7 +2,7 @@
   <view class="wrap">
     <view class="h1" style="margin-bottom: 8rpx">客户管理</view>
     <view class="muted" style="margin-bottom: 16rpx">
-      仅收录已到达合同确认（N3）的买方。同一客户的多笔订单会合并到同一档案。询盘/报价阶段不录入。可查看中信保限额与占用、合同、已收汇/未收汇，以及约定收款日是否按期。
+      仅收录已到达合同确认（N3）的买方。同一客户的多笔订单会合并到同一档案。询盘/报价阶段不录入。可查看建议级别、中信保限额与占用、合同、已收汇/未收汇，以及约定收款日是否按期。
     </view>
     <view class="card" v-for="c in list" :key="c.id" @click="open(c.id)">
       <view class="row">
@@ -12,9 +12,15 @@
             {{ c.country || '国家未填' }} · {{ c.contractCount || 0 }} 份合同 · {{ c.caseCount }} 笔交易
           </view>
         </view>
-        <view class="badge" :class="remittanceClass(c.collection?.code || c.remittance?.code)">
-          收款 {{ c.collection?.label || remittanceText(c.collection?.code || c.remittance?.code) }}
+        <view class="badges">
+          <view class="badge" :class="gradeClass(c.suggestedGrade)">建议级别 {{ c.suggestedGrade || '—' }}</view>
+          <view class="badge" :class="remittanceClass(c.collection?.code || c.remittance?.code)">
+            收款 {{ c.collection?.label || remittanceText(c.collection?.code || c.remittance?.code) }}
+          </view>
         </view>
+      </view>
+      <view class="chips" v-if="(c.tags || []).length">
+        <view class="chip" v-for="t in c.tags" :key="t">{{ t }}</view>
       </view>
       <view class="muted" style="margin-top: 12rpx">
         中信保限额 {{ c.sinosureLimit ? money(c.sinosureLimit.insuredLimitFen, c.sinosureLimit.currency) : '未登记' }}
@@ -35,7 +41,7 @@
 <script setup lang="ts">
 import { onShow } from '@dcloudio/uni-app';
 import { ref } from 'vue';
-import { api, money, remittanceClass, remittanceText } from '../../api';
+import { api, gradeClass, money, remittanceClass, remittanceText } from '../../api';
 
 const list = ref<any[]>([]);
 
@@ -51,3 +57,12 @@ function open(id: string) {
   uni.navigateTo({ url: `/pages/customer/detail?id=${id}` });
 }
 </script>
+
+<style scoped>
+.badges {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8rpx;
+}
+</style>

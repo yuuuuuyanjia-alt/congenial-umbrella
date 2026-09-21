@@ -415,6 +415,19 @@ export function latestSinosure(list: any[] | undefined, nodeCode: string) {
   return rows.length ? rows[rows.length - 1] : null;
 }
 
+export function gradeClass(g?: string | null) {
+  if (g === 'S' || g === 'A') return 'badge-pass';
+  if (g === 'B') return 'badge-soft';
+  if (g === 'C') return 'badge-review';
+  if (g === 'D') return 'badge-block';
+  return 'badge-stub';
+}
+
+export function pctText(v?: number | null) {
+  if (v == null || !Number.isFinite(Number(v))) return '暂缺';
+  return `${Math.round(Number(v) * 1000) / 10}%`;
+}
+
 export function exposureClass(band?: string | null) {
   if (band === 'ULTRA_HIGH') return 'badge-block';
   if (band === 'HIGH') return 'badge-review';
