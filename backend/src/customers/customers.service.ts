@@ -4,6 +4,12 @@ import { PrismaService } from '../prisma/prisma.service';
 import { enrollBuyerForCase, EnrollResult } from './customer-enroll';
 import { hasReachedN3 } from './customer-match';
 import {
+  BuyerEvalFacts,
+  BuyerEvaluation,
+  evaluateBuyer as scoreBuyer,
+  factsFromCases,
+} from './buyer-eval';
+import {
   derivePaymentDueAt,
   evaluateRemittance,
   moneyBuckets,
@@ -23,14 +29,23 @@ export class CustomersService {
 
   async list() {
     const customers = await this.loadCustomers();
-    return customers.map((c) => this.toListItem(c)).filter((c) => c.caseCount > 0);
+    const evals = this.evaluationsMap(customers);
+    return customers.map((c) => this.toListItem(c, evals.get(c.id)!)).filter((c) => c.caseCount > 0);
   }
 
   async get(id: string) {
-    const customers = await this.loadCustomers(id);
-    const row = customers[0];
+    const customers = await this.loadCustomers();
+    const row = customers.find((c) => c.id === id);
     if (!row) throw new NotFoundException('客户不存在');
-    return this.toDetail(row);
+    return this.toDetail(row, this.evaluationsMap(customers).get(id)!);
+  }
+
+  /** 建议级别（内部口径）。百分位对照已达 N3 的全部买方。 */
+  async evaluateBuyer(customerId: string): Promise<BuyerEvaluation> {
+    const customers = await this.loadCustomers();
+    const row = customers.find((c) => c.id === customerId);
+    if (!row) throw new NotFoundException('客户不存在');
+    return this.evaluationsMap(customers).get(customerId)!;
   }
 
   /** 案件已到达 N3 时录入/合并买方；未到达则返回 null。 */
@@ -52,6 +67,8 @@ export class CustomersService {
                 settlement: true,
                 sinosurePolicies: { orderBy: { createdAt: 'desc' } },
                 nodes: true,
+                procurementPlan: true,
+                salesLinkedProcurements: true,
               },
             },
           },
@@ -213,7 +230,71 @@ export class CustomersService {
     };
   }
 
-  private toListItem(customer: Awaited<ReturnType<CustomersService['loadCustomers']>>[number]) {
+  private procurementsOf(c: ReturnType<CustomersService['casesOf']>[number]) {
+    type Plan = {
+      id: string;
+      amountFen: number | null;
+      currency: string | null;
+      salesCaseId?: string | null;
+    };
+    const seen = new Set<string>();
+    const plans: Plan[] = [];
+    const linked = ((c as { salesLinkedProcurements?: Plan[] }).salesLinkedProcurements || []) as Plan[];
+    for (const p of linked) {
+      if (!p?.id || seen.has(p.id)) continue;
+      seen.add(p.id);
+      plans.push(p);
+    }
+    const own = (c as { procurementPlan?: Plan | null }).procurementPlan;
+    if (own?.id && !seen.has(own.id) && (!own.salesCaseId || own.salesCaseId === c.id)) {
+      plans.push(own);
+    }
+    return plans.map((p) => ({ amountFen: p.amountFen, currency: p.currency }));
+  }
+
+  private factsOf(customer: Awaited<ReturnType<CustomersService['loadCustomers']>>[number]): BuyerEvalFacts {
+    const cases = this.casesOf(customer);
+    const remits = cases.map((c) => this.caseRemittance(c));
+    const exposure = this.occupancyFromCases(cases);
+    return factsFromCases(
+      cases.map((c, i) => ({
+        amountFen: remits[i].amountFen,
+        currency: remits[i].currency,
+        receivedFen: remits[i].receivedFen,
+        unpaidFen: remits[i].unpaidFen,
+        remittanceCode: remits[i].code,
+        paymentDueAt: remits[i].paymentDueAt,
+        procurement: this.procurementsOf(c),
+      })),
+      {
+        insuredLimitFen: exposure.insuredLimitFen,
+        occupancyFen: exposure.occupancyFen,
+        remainingFen: exposure.remainingFen,
+        excessFen: exposure.excessFen,
+        band: exposure.band,
+        bandLabel: exposure.bandLabel,
+        gateDecision: exposure.gateDecision,
+        gateLabel: exposure.gateLabel,
+        currency: exposure.currency,
+        limitCurrency: exposure.limitCurrency,
+        summary: exposure.summary,
+      },
+    );
+  }
+
+  private evaluationsMap(customers: Awaited<ReturnType<CustomersService['loadCustomers']>>) {
+    const peerFacts = customers.filter((c) => this.casesOf(c).length > 0).map((c) => this.factsOf(c));
+    const map = new Map<string, BuyerEvaluation>();
+    for (const c of customers) {
+      map.set(c.id, scoreBuyer(this.factsOf(c), peerFacts));
+    }
+    return map;
+  }
+
+  private toListItem(
+    customer: Awaited<ReturnType<CustomersService['loadCustomers']>>[number],
+    evaluation: BuyerEvaluation,
+  ) {
     const cases = this.casesOf(customer);
     const remits = cases.map((c) => this.caseRemittance(c));
     const summary = summarizeRemittance(remits, '无收款约定');
@@ -255,10 +336,16 @@ export class CustomersService {
       latestCase: latestCase
         ? { id: latestCase.id, caseNo: latestCase.caseNo, title: latestCase.title, status: latestCase.status }
         : null,
+      suggestedGrade: evaluation.suggestedGrade,
+      tags: evaluation.tags.slice(0, 2),
+      totalScore: evaluation.scores.total,
     };
   }
 
-  private toDetail(customer: Awaited<ReturnType<CustomersService['loadCustomers']>>[number]) {
+  private toDetail(
+    customer: Awaited<ReturnType<CustomersService['loadCustomers']>>[number],
+    evaluation: BuyerEvaluation,
+  ) {
     const cases = this.casesOf(customer);
     const transactions = cases.map((c) => {
       const remittance = this.caseRemittance(c);
@@ -336,6 +423,10 @@ export class CustomersService {
       collection: remittance,
       contracts,
       transactions,
+      suggestedGrade: evaluation.suggestedGrade,
+      tags: evaluation.tags,
+      totalScore: evaluation.scores.total,
+      evaluation,
     };
   }
 }

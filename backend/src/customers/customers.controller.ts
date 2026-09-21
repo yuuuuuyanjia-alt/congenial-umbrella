@@ -10,6 +10,11 @@ export class CustomersController {
     return this.customers.list();
   }
 
+  @Get(':id/evaluation')
+  evaluate(@Param('id') id: string) {
+    return this.customers.evaluateBuyer(id);
+  }
+
   @Get(':id')
   get(@Param('id') id: string) {
     return this.customers.get(id);
