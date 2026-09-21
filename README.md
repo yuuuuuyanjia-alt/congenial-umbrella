@@ -81,9 +81,45 @@ npm run backend
 npm run miniapp
 ```
 
-微信开发者工具：`npm --prefix miniapp run dev:mp-weixin`，导入 `miniapp/dist/dev/mp-weixin`。请把合法域名校验关闭（manifest 已设 `urlCheck: false`），并确保开发者工具能访问本机 `http://127.0.0.1:3000`。
+日常演示默认走 **H5**（`npm run miniapp` → http://127.0.0.1:5173）。
+微信开发者工具：先起同一后端 `npm run backend`（接口 `http://127.0.0.1:3000/api`，与 H5 相同），再 `npm --prefix miniapp run dev:mp-weixin`，导入 `miniapp/dist/dev/mp-weixin`（正式构建 `npm --prefix miniapp run build:mp-weixin` → `miniapp/dist/build/mp-weixin`）。
+非 H5 请求已指向该 API；开发者工具请关闭合法域名校验（`manifest.json` 已设 `urlCheck: false`）。
+真实 AppID / 合法域名是后续阶段，本仓库 `touristappid` 即可，不阻塞演示。
 
 本地 `npm run backend` / `npm run miniapp` 流程不变。分享给他人时请用下面的 Docker 演示环境。
+
+## 演示角色
+
+同一套首页与路由，按角色显示入口顺序和写按钮。**没有单独录入员，也没有分角色的独立首页。** 后端按请求头强制校验，前端隐藏只是演示便利。
+
+首页顶部选择账号后写入本地存储，之后请求带 `x-actor-id` 与 `X-Demo-Role`。亦可只传其一：有用户 id 时以该用户角色为准；否则按 `X-Demo-Role` 取该角色的种子用户。
+
+| 账号 | `User.role` | 岗位 | 可写 | 首页入口顺序 |
+| --- | --- | --- | --- | --- |
+| 王磊 | `SALES` | 业务岗 | 客户 / 销售 / 采购录入，N1–N9 过闸。工作台领取/放行/驳回隐藏且接口拒绝 | 合同、供应商、客户、工作台 |
+| 陈可 | `RISK` | 风控 | 工作台领取/放行/驳回与筛查处置。可查看合同；未扩大金额改写 | 工作台优先，其后合同/客户/供应商 |
+| 赵衡 | `MANAGER` | 主管 | 本轮只读（评估、占用、列表）。不可审批、推进、改合同 | 客户、合同优先 |
+
+```bash
+# 列出种子用户
+curl -s http://127.0.0.1:3000/api/users
+
+# 业务岗推进（无角色头的写请求会 403）
+curl -s -X POST http://127.0.0.1:3000/api/cases/<id>/nodes/N2/advance \
+  -H 'X-Demo-Role: SALES'
+
+# 风控岗工作台放行
+curl -s -X POST http://127.0.0.1:3000/api/workbench/<id>/action \
+  -H 'Content-Type: application/json' \
+  -H 'X-Demo-Role: RISK' \
+  -d '{"reviewId":"<queue中OCCUPANCY_HIGH的id>","action":"APPROVE"}'
+
+# 主管写操作 → 403
+curl -s -X POST http://127.0.0.1:3000/api/cases/<id>/nodes/N3/advance \
+  -H 'X-Demo-Role: MANAGER'
+```
+
+重新 seed 后才会写入上述三个账号（旧库若仍是 COMPLIANCE/APPROVER，接口会归一成 RISK/MANAGER）。
 
 ## 演示环境部署
 
@@ -251,7 +287,8 @@ curl -s http://127.0.0.1:3000/api/cases | python -c "import json,sys; d=json.loa
 对 `DEMO-GATE`（缺装运证据）推进 N6，应返回 **409** 且 `canProceed: false`：
 
 ```bash
-curl -s -X POST http://127.0.0.1:3000/api/cases/<DEMO-GATE的id>/nodes/N6/advance
+curl -s -X POST http://127.0.0.1:3000/api/cases/<DEMO-GATE的id>/nodes/N6/advance \
+  -H 'X-Demo-Role: SALES'
 ```
 
 对 `DEMO-NOLIMIT`（中信保限额未登记）保存合同或推进 N3，返回 **409**，`message` / `reasons` 为「尚未登记中信保限额，不得签订合同」，`missing` 含 `N3_SINOSURE_LIMIT`：
@@ -259,14 +296,17 @@ curl -s -X POST http://127.0.0.1:3000/api/cases/<DEMO-GATE的id>/nodes/N6/advanc
 ```bash
 curl -s -X POST http://127.0.0.1:3000/api/cases/<DEMO-NOLIMIT的id>/nodes/N3/contract \
   -H 'Content-Type: application/json' \
+  -H 'X-Demo-Role: SALES' \
   -d '{"counterparty":"Cedar Trade Ltd","incoterms":"CIF","paymentTerms":"T/T 30 days","hasRetentionOfTitle":true,"hasDisputeClause":true,"amountFen":4200000,"currency":"USD"}'
-curl -s -X POST http://127.0.0.1:3000/api/cases/<DEMO-NOLIMIT的id>/nodes/N3/advance
+curl -s -X POST http://127.0.0.1:3000/api/cases/<DEMO-NOLIMIT的id>/nodes/N3/advance \
+  -H 'X-Demo-Role: SALES'
 ```
 
 对 `DEMO-LIMIT`（占用超额满 5 万美元，超高风险）推进 N3，同样返回 **409**，`missing` 含 `N3_SINOSURE_OVER_LIMIT`：
 
 ```bash
-curl -s -X POST http://127.0.0.1:3000/api/cases/<DEMO-LIMIT的id>/nodes/N3/advance
+curl -s -X POST http://127.0.0.1:3000/api/cases/<DEMO-LIMIT的id>/nodes/N3/advance \
+  -H 'X-Demo-Role: SALES'
 ```
 
 对 `DEMO-LIMIT-HIGH`（超额 25,000 USD，高风险）直接推进 N3 返回 **409** 且 `missing` 含 `N3_SINOSURE_EXPOSURE_HIGH`。工作台领取并放行后即可推进，**不必改合同金额**：
@@ -275,11 +315,14 @@ curl -s -X POST http://127.0.0.1:3000/api/cases/<DEMO-LIMIT的id>/nodes/N3/advan
 curl -s http://127.0.0.1:3000/api/workbench/queue
 curl -s -X POST http://127.0.0.1:3000/api/workbench/<DEMO-LIMIT-HIGH的id>/action \
   -H 'Content-Type: application/json' \
+  -H 'X-Demo-Role: RISK' \
   -d '{"reviewId":"<queue中OCCUPANCY_HIGH的id>","action":"CLAIM","comment":"领取占用高风险"}'
 curl -s -X POST http://127.0.0.1:3000/api/workbench/<DEMO-LIMIT-HIGH的id>/action \
   -H 'Content-Type: application/json' \
+  -H 'X-Demo-Role: RISK' \
   -d '{"reviewId":"<同上>","action":"APPROVE","comment":"合规放行"}'
-curl -s -X POST http://127.0.0.1:3000/api/cases/<DEMO-LIMIT-HIGH的id>/nodes/N3/advance
+curl -s -X POST http://127.0.0.1:3000/api/cases/<DEMO-LIMIT-HIGH的id>/nodes/N3/advance \
+  -H 'X-Demo-Role: SALES'
 ```
 
 `REJECT` 后再次 `advance` 仍为 **409**。超高风险 `DEMO-LIMIT` 不会出现在该占用审核队列。
@@ -288,6 +331,7 @@ curl -s -X POST http://127.0.0.1:3000/api/cases/<DEMO-LIMIT-HIGH的id>/nodes/N3/
 
 常用接口：
 
+- `GET /api/users` 演示用户（含 `role` / `roleLabel`：SALES 业务岗、RISK 风控、MANAGER 主管）
 - `GET /api/cases` 案件列表；`?kind=sales` 销售合同列表（已达 N3 或已有销售合同；条目含 `shipmentBucket`：`unshipped` 未出运 / `shipped` 已出运 / `completed` 已完成；`completed` 的已回款口径与占用释放相同，取 N9 settlement）；`?kind=procurement` 采购合同列表（已达 N5 或已有采购 PO，条目含 `procurementTitle`：供应商采购产品出口客户）
 - `GET /api/catalog` 节点、HS 模板、延期原因、价格基础等
 - `POST /api/cases/:id/nodes/N1/screen` 模拟筛查
@@ -314,7 +358,7 @@ curl -s -X POST http://127.0.0.1:3000/api/cases/<DEMO-LIMIT-HIGH的id>/nodes/N3/
 - `GET /api/suppliers` 供应商列表（采购单数、已付/未付、交货与付款是否按期）
 - `GET /api/suppliers/:id` 供应商详情（每笔采购合同/PO、**关联销售合同**、交货、货款分期与汇总）
 
-请求头 `x-actor-id` 可传入种子用户 id，写入审计。
+请求头 `x-actor-id` 传入种子用户 id（写入审计并决定角色）；也可只传 `X-Demo-Role: SALES|RISK|MANAGER`。写接口无角色时 **403**。工作台写操作仅 `RISK`；过闸与合同/客户录入为 `SALES` + `RISK`；`MANAGER` 全部只读。
 
 ## 领域用语（与产品口径一致）
 
@@ -336,4 +380,4 @@ curl -s -X POST http://127.0.0.1:3000/api/cases/<DEMO-LIMIT-HIGH的id>/nodes/N3/
 
 ## 明确不做
 
-真实制裁数据源、真实电子口岸/单一窗口对接、生产级身份认证与权限矩阵、MySQL 生产部署与高可用。
+真实制裁数据源、真实电子口岸/单一窗口对接、生产级身份认证（本仓库仅为演示角色切换）、MySQL 生产部署与高可用。

@@ -14,6 +14,7 @@ function request<T = any>(method: string, url: string, data?: unknown): Promise<
       header: {
         'Content-Type': 'application/json',
         ...(uni.getStorageSync('actorId') ? { 'x-actor-id': uni.getStorageSync('actorId') } : {}),
+        ...(uni.getStorageSync('demoRole') ? { 'x-demo-role': uni.getStorageSync('demoRole') } : {}),
       },
       success: (res) => {
         if (res.statusCode >= 200 && res.statusCode < 300) resolve(res.data as T);

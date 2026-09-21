@@ -9,6 +9,7 @@
       <view class="muted">销售合同与采购合同分开签订。硬规则：中信保限额未登记，不得签订销售合同。请先登记投保限额，再保存合同要素。所有权保留、争议解决条款为必填。运输术语（FOB / CIF）与结算方式（前 T/T / 后 T/T）独立，可组合例如 FOB + 前 T/T。CIF 填装运节点，FOB 填国内段到达口岸/港口时间，电汇填对应收汇节点。所选路径下的字段均可填写。公司惯例先销售后采购：国内采购合同在 N5 另签，并须关联本销售合同。</view>
       <view class="muted" v-if="c.currentNode" style="margin-top: 8rpx">本案当前节点：{{ c.currentNode }} {{ currentNodeName }}</view>
       <view class="err" v-if="!hasLimit" style="margin-top: 12rpx">尚未登记中信保限额，不得签订销售合同。</view>
+      <view class="err" v-if="!canWriteBusiness" style="margin-top: 12rpx">当前为{{ roleLabel }}，合同只读，不可保存或推进。</view>
     </view>
     <NextNodeCta :target="nextTarget" :ready="nextReady" :hint="nextHint" @go="goNext" />
     <view class="card">
@@ -133,8 +134,8 @@
       <view class="label">未收汇金额</view>
       <view class="muted">按收汇对账到账金额与合同总额轧差（{{ form.currency || 'USD' }}）</view>
       <input class="input" disabled :value="unpaidYuan" :placeholder="`与合同币种一致（${form.currency || 'USD'}）`" />
-      <view class="btn" @click="save">保存合同要素</view>
-      <view class="muted" v-if="!hasLimit" style="margin-top: 8rpx">须先保存中信保限额，否则保存销售合同将被拒绝。</view>
+      <view class="btn" v-if="canWriteBusiness" @click="save">保存合同要素</view>
+      <view class="muted" v-if="canWriteBusiness && !hasLimit" style="margin-top: 8rpx">须先保存中信保限额，否则保存销售合同将被拒绝。</view>
     </view>
 
     <view class="card">
@@ -152,13 +153,13 @@
       <input class="input" v-model="sino.evidenceRef" placeholder="可手填编号，或点下方模拟上传" />
       <view class="label">附件名称</view>
       <input class="input" v-model="sino.fileName" placeholder="如 中信保限额批注.pdf" />
-      <view class="btn btn-ghost" @click="stubUpload">模拟上传保单</view>
+      <view class="btn btn-ghost" v-if="canWriteBusiness" @click="stubUpload">模拟上传保单</view>
       <view class="label">投保限额</view>
       <input class="input" type="digit" v-model="sino.limitYuan" placeholder="须不低于合同总金额" />
       <view class="label">限额币种</view>
       <input class="input" v-model="sino.currency" placeholder="须与合同一致" />
-      <view class="btn" @click="saveSino">保存中信保信息</view>
-      <view class="btn btn-ghost" @click="tryAdvance">尝试确认并推进</view>
+      <view class="btn" v-if="canWriteBusiness" @click="saveSino">保存中信保信息</view>
+      <view class="btn btn-ghost" v-if="canWriteBusiness" @click="tryAdvance">尝试确认并推进</view>
     </view>
     <view class="err" v-if="err">{{ err }}</view>
     <view class="ok" v-if="ok">{{ ok }}</view>
@@ -182,12 +183,14 @@ import {
 } from '../../api';
 import NextNodeCta from '../../components/NextNodeCta.vue';
 import SinosureExposure from '../../components/SinosureExposure.vue';
+import { useDemoRole } from '../../role';
 
 type TradeTerm = 'FOB' | 'CIF';
 type TtTiming = 'ADVANCE' | 'AFTER';
 
 const FORM_NODE = 'N3';
 const id = ref('');
+const { canWriteBusiness, roleLabel } = useDemoRole();
 const c = ref<any>(null);
 const err = ref('');
 const ok = ref('');

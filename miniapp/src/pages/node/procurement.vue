@@ -6,6 +6,7 @@
       <view class="muted">
         本页只办理采购合同（N5）。装运、单证、报关、收汇属于出口案，不在本采购合同办理。销售合同与采购合同分开签订。公司惯例先销售后采购：须先从已签订的销售/出口合同中任选一笔关联（不限于本案），否则不得保存或推进。公司无自有产线，向国内供应商采购。须登记供应商、采购合同/PO、计划交付日期与货款支付方式（一次性付清或分期支付），并对供应商做制裁/不可靠实体筛查。计划交付日期或实际交付日期任一晚于关联销售合同交货期，须登记结构化延期并保留客户同意证据。本页展示对照用的关联销售合同交货期。
       </view>
+      <view class="err" v-if="!canWriteBusiness" style="margin-top: 8rpx">当前为{{ roleLabel }}，采购合同只读，不可保存或推进。</view>
       <view class="muted" v-if="c.currentNode && isN6PlusNode(c.currentNode)" style="margin-top: 8rpx">
         出口案当前进度：{{ c.currentNode }} {{ currentNodeName }}（不属于本采购合同）
       </view>
@@ -127,11 +128,11 @@
       </view>
 
       <view v-else>
-        <view class="btn btn-ghost" @click="apply90_10">填入 90% 到货 + 10% 尾款</view>
+        <view class="btn btn-ghost" v-if="canWriteBusiness" @click="apply90_10">填入 90% 到货 + 10% 尾款</view>
         <view class="inst" v-for="(row, idx) in form.installments" :key="idx">
           <view class="row">
             <view class="h2" style="margin: 0">第 {{ idx + 1 }} 期 · {{ row.label || defaultInstLabel(idx) }}</view>
-            <view class="chip" @click="removeInst(idx)" v-if="form.installments.length > 1">删除本期</view>
+            <view class="chip" @click="removeInst(idx)" v-if="canWriteBusiness && form.installments.length > 1">删除本期</view>
           </view>
           <view class="label">期次名称</view>
           <input class="input" v-model="row.label" :placeholder="defaultInstLabel(idx)" />
@@ -147,13 +148,13 @@
           <input class="input" type="digit" v-model="row.paidYuan" placeholder="登记本期实付" />
           <view class="label">本期付款日</view>
           <input class="input" v-model="row.paidAt" placeholder="YYYY-MM-DD" />
-          <view class="btn btn-ghost" @click="markInstPaid(idx)">本期记为付清（今天）</view>
+          <view class="btn btn-ghost" v-if="canWriteBusiness" @click="markInstPaid(idx)">本期记为付清（今天）</view>
         </view>
-        <view class="btn btn-ghost" @click="addInst">再加一期</view>
+        <view class="btn btn-ghost" v-if="canWriteBusiness" @click="addInst">再加一期</view>
       </view>
       <view class="label">采购合同/PO 附件（可选，模拟上传）</view>
       <input class="input" v-model="form.poEvidenceStub" placeholder="如 PO-2026-011.pdf" />
-      <view class="btn btn-ghost" @click="stubUpload">模拟上传采购合同</view>
+      <view class="btn btn-ghost" v-if="canWriteBusiness" @click="stubUpload">模拟上传采购合同</view>
       <view class="label">登记采购交付延期</view>
       <switch :checked="form.delayRegistered" @change="(e: any) => (form.delayRegistered = e.detail.value)" />
       <view class="label">延期触发条件</view>
@@ -168,11 +169,11 @@
       <switch :checked="form.customerConsent" @change="(e: any) => (form.customerConsent = e.detail.value)" />
       <view class="label">客户同意证据编号</view>
       <input class="input" v-model="form.customerConsentRef" placeholder="邮件/函件编号，将写入证据链" />
-      <view class="btn" @click="save">保存采购/备货</view>
+      <view class="btn" v-if="canWriteBusiness" @click="save">保存采购/备货</view>
     </view>
 
-    <view class="btn" @click="runScreen">执行国内供应商模拟筛查</view>
-    <view class="btn btn-ghost" @click="tryAdvance">校验并推进</view>
+    <view class="btn" v-if="canWriteBusiness" @click="runScreen">执行国内供应商模拟筛查</view>
+    <view class="btn btn-ghost" v-if="canWriteBusiness" @click="tryAdvance">校验并推进</view>
 
     <view class="card" v-if="supplierReport">
       <view class="h2">供应商筛查报告</view>
@@ -228,9 +229,11 @@ import {
   yuanToFen,
 } from '../../api';
 import NextNodeCta from '../../components/NextNodeCta.vue';
+import { useDemoRole } from '../../role';
 
 const FORM_NODE = 'N5';
 const id = ref('');
+const { canWriteBusiness, roleLabel } = useDemoRole();
 const c = ref<any>(null);
 const err = ref('');
 const ok = ref('');

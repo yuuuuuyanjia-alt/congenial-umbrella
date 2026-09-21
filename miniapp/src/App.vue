@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { onLaunch } from '@dcloudio/uni-app';
+import { ensureDemoUser } from './role';
 onLaunch(() => {
   console.log('出口风控小程序启动');
+  ensureDemoUser().catch(() => {});
 });
 </script>
 

@@ -152,13 +152,11 @@ async function main() {
   await prisma.hsTemplate.deleteMany();
   await prisma.user.deleteMany();
 
-  const [sales, compliance, approver, finance] = await Promise.all([
+  const [sales, compliance, approver] = await Promise.all([
     prisma.user.create({ data: { name: '王磊', role: 'SALES' } }),
-    prisma.user.create({ data: { name: '陈可', role: 'COMPLIANCE' } }),
-    prisma.user.create({ data: { name: '赵衡', role: 'APPROVER' } }),
-    prisma.user.create({ data: { name: '孙琪', role: 'FINANCE' } }),
+    prisma.user.create({ data: { name: '陈可', role: 'RISK' } }),
+    prisma.user.create({ data: { name: '赵衡', role: 'MANAGER' } }),
   ]);
-  void finance;
 
   await prisma.blacklistEntry.createMany({ data: LISTS });
   await prisma.hsTemplate.createMany({ data: HS });

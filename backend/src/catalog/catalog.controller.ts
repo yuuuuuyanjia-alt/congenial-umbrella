@@ -22,9 +22,12 @@ import {
   PaymentModeLabel,
   PriceBasisLabel,
   RiskLevelLabel,
+  UserRole,
+  UserRoleLabel,
   WorkbenchActionLabel,
 } from '../common/constants';
 import { OccupancyWorkbenchActionLabel } from '../workbench/occupancy-review';
+import { normalizeDemoRole, roleLabel } from '../auth/roles';
 
 @Controller()
 export class CatalogController {
@@ -43,6 +46,12 @@ export class CatalogController {
     ]);
     return {
       nodes: NODE_CATALOG,
+      userRoles: UserRoleLabel,
+      demoRoles: [
+        { role: UserRole.SALES, label: UserRoleLabel.SALES, hint: '录入客户/销售/采购并推进 N1–N9；工作台只读' },
+        { role: UserRole.RISK, label: UserRoleLabel.RISK, hint: '工作台领取/放行/驳回与筛查处置；可查看合同' },
+        { role: UserRole.MANAGER, label: UserRoleLabel.MANAGER, hint: '只读：评估、占用、列表；不可审批或推进' },
+      ],
       partyRoles: PartyRoleLabel,
       lists: ListCodeLabel,
       decisions: DecisionLabel,
@@ -112,7 +121,14 @@ export class CatalogController {
   }
 
   @Get('users')
-  users() {
-    return this.prisma.user.findMany();
+  async users() {
+    const rows = await this.prisma.user.findMany({ orderBy: { createdAt: 'asc' } });
+    const rank: Record<string, number> = { SALES: 0, RISK: 1, MANAGER: 2 };
+    return rows
+      .map((u) => {
+        const role = normalizeDemoRole(u.role) || u.role;
+        return { ...u, role, roleLabel: roleLabel(u.role) || u.role };
+      })
+      .sort((a, b) => (rank[a.role] ?? 9) - (rank[b.role] ?? 9) || a.name.localeCompare(b.name, 'zh'));
   }
 }

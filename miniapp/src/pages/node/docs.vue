@@ -8,6 +8,7 @@
       <view class="muted" v-else>
         须有终稿合同，且合同 / 发票 / 装箱单 / 提单关键字段一致；不一致必须留下修改记录。存在未生效变更单时禁止推进。
       </view>
+      <view class="err" v-if="!canWriteBusiness" style="margin-top: 8rpx">当前为{{ roleLabel }}，本页只读，不可保存或推进。</view>
     </view>
     <PendingChangeBlock :case-id="id" :case-data="c" />
     <view class="card" v-if="noBlPath">
@@ -32,7 +33,7 @@
       <input class="input" type="number" v-model="doc.fields.amountFen" />
       <view class="label">终稿</view>
       <switch :checked="doc.isFinal" @change="(e: any) => (doc.isFinal = e.detail.value)" />
-      <view class="btn btn-ghost" @click="saveDoc(doc)">保存{{ doc.label }}</view>
+      <view class="btn btn-ghost" v-if="canWriteBusiness" @click="saveDoc(doc)">保存{{ doc.label }}</view>
     </view>
     <view class="card">
       <view class="h2">不符点修改记录</view>
@@ -40,9 +41,9 @@
       <input class="input" v-model="fix.fromValue" placeholder="原值" />
       <input class="input" v-model="fix.toValue" placeholder="更正值" />
       <input class="input" v-model="fix.reason" placeholder="原因" />
-      <view class="btn btn-ghost" @click="saveFix">登记修改</view>
+      <view class="btn btn-ghost" v-if="canWriteBusiness" @click="saveFix">登记修改</view>
     </view>
-    <view class="btn btn-danger" @click="tryAdvance">校验硬闸门并推进</view>
+    <view class="btn btn-danger" v-if="canWriteBusiness" @click="tryAdvance">校验硬闸门并推进</view>
     <view class="err" v-if="err">{{ err }}</view>
     <view class="ok" v-if="ok">{{ ok }}</view>
   </view>
@@ -53,10 +54,12 @@ import { onLoad } from '@dcloudio/uni-app';
 import { computed, reactive, ref } from 'vue';
 import { api } from '../../api';
 import PendingChangeBlock from '../../components/PendingChangeBlock.vue';
+import { useDemoRole } from '../../role';
 
 const BUYER_FREIGHT = ['FOB', 'EXW', 'FAS', 'FCA'];
 
 const id = ref('');
+const { canWriteBusiness, roleLabel } = useDemoRole();
 const err = ref('');
 const ok = ref('');
 const c = ref<any>(null);

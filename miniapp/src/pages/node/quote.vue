@@ -3,6 +3,7 @@
     <view class="card">
       <view class="h2">报价环节</view>
       <view class="muted">须明确价格基础（含/不含项目）、有效期、运费与税费承担方。含「价格待定 / 费用另议」不得推进。保存即生成新版本，旧版 SUPERSEDED。</view>
+      <view class="err" v-if="!canWriteBusiness" style="margin-top: 8rpx">当前为{{ roleLabel }}，本页只读，不可保存或推进。</view>
     </view>
     <view class="card">
       <view class="label">价格基础</view>
@@ -35,8 +36,8 @@
       <input class="input" v-model="form.notes" placeholder="禁止填写价格待定/费用另议" />
       <view class="label">异常价格说明（低于成本底线时必填）</view>
       <input class="input" v-model="form.abnormalPriceNote" />
-      <view class="btn" @click="save">保存为新版本</view>
-      <view class="btn btn-ghost" @click="tryAdvance">校验并推进</view>
+      <view class="btn" v-if="canWriteBusiness" @click="save">保存为新版本</view>
+      <view class="btn btn-ghost" v-if="canWriteBusiness" @click="tryAdvance">校验并推进</view>
     </view>
     <view class="card" v-for="q in c.quotes || []" :key="q.id">
       <view class="row">
@@ -55,6 +56,9 @@
 import { onLoad } from '@dcloudio/uni-app';
 import { reactive, ref } from 'vue';
 import { api } from '../../api';
+import { useDemoRole } from '../../role';
+
+const { canWriteBusiness, roleLabel } = useDemoRole();
 
 const id = ref('');
 const c = ref<any>(null);
