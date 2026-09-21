@@ -1,4 +1,5 @@
 import { CUSTOMER_PARTY_ROLES, PartyRole } from '../common/constants';
+import { SALES_CURRENCY } from '../common/currencies';
 import { canWriteBusiness } from '../auth/roles';
 import { isEligibleSalesCase, isProcurementContractListItem, isSalesContractListItem } from './sales-link';
 
@@ -7,7 +8,7 @@ export const DEMO_CREATE_DEFAULTS = {
   goodsDesc: '数控机床配件（演示）',
   destination: 'Hamburg, DE',
   amountFen: 2_500_000,
-  currency: 'USD',
+  currency: SALES_CURRENCY,
   buyerCountry: 'DE',
   salesTitle: '演示销售合同',
 } as const;

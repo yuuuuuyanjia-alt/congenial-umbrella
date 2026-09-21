@@ -164,4 +164,13 @@ select {
   color: #6b7280;
   opacity: 1;
 }
+.readonly {
+  margin-top: 8rpx;
+  border: 2rpx solid #e8eef3;
+  border-radius: 12rpx;
+  padding: 18rpx;
+  background: #f7f5f0;
+  font-weight: 650;
+  color: #0f3d2e;
+}
 </style>

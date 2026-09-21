@@ -44,10 +44,11 @@
       <input class="input" type="number" v-model="form.quantity" />
       <view class="label">单位</view>
       <input class="input" v-model="form.unit" placeholder="套 / 台 / 千克" />
-      <view class="label">合同总金额</view>
-      <input class="input" type="digit" v-model="form.amountYuan" placeholder="与投保限额同一币种" />
+      <view class="label">合同总金额（USD）</view>
+      <input class="input" type="digit" v-model="form.amountYuan" placeholder="美元金额" />
       <view class="label">币种</view>
-      <input class="input" v-model="form.currency" placeholder="USD" />
+      <view class="readonly">USD</view>
+      <view class="muted">销售合同金额固定美元，不可更改</view>
       <view class="label">交货方式<text class="req">必填</text></view>
       <view class="muted">公司是出口方，不是过桥。不强制自有仓；港口直出须货物流+报关+发票+收汇能闭环。</view>
       <view class="choice-row">
@@ -124,7 +125,7 @@
         <view class="label">预付款比例（%）</view>
         <input class="input" type="digit" v-model="form.ttPercent" placeholder="如 30" @input="syncAdvanceFromPercent" />
         <view class="label">预付款金额</view>
-        <input class="input" type="digit" v-model="form.ttAdvanceYuan" :placeholder="`与合同币种一致（${form.currency || 'USD'}）`" />
+        <input class="input" type="digit" v-model="form.ttAdvanceYuan" :placeholder="`与合同币种一致（${SALES_CURRENCY}）`" />
         <view class="label" v-if="tradeTerm !== 'CIF'">装运日期</view>
         <input
           v-if="tradeTerm !== 'CIF'"
@@ -168,11 +169,11 @@
         class="input"
         disabled
         :value="form.remittedYuan"
-        :placeholder="`与合同币种一致（${form.currency || 'USD'}）`"
+        :placeholder="`与合同币种一致（${SALES_CURRENCY}）`"
       />
       <view class="label">未收汇金额</view>
-      <view class="muted">按收汇对账到账金额与合同总额轧差（{{ form.currency || 'USD' }}）</view>
-      <input class="input" disabled :value="unpaidYuan" :placeholder="`与合同币种一致（${form.currency || 'USD'}）`" />
+      <view class="muted">按收汇对账到账金额与合同总额轧差（{{ SALES_CURRENCY }}）</view>
+      <input class="input" disabled :value="unpaidYuan" :placeholder="`与合同币种一致（${SALES_CURRENCY}）`" />
       <view class="btn" v-if="canWriteBusiness" @click="save">保存合同要素</view>
       <view class="muted" v-if="canWriteBusiness && !hasLimit" style="margin-top: 8rpx">须先保存中信保限额，否则保存销售合同将被拒绝。</view>
     </view>
@@ -196,7 +197,8 @@
       <view class="label">投保限额</view>
       <input class="input" type="digit" v-model="sino.limitYuan" placeholder="须不低于合同总金额" />
       <view class="label">限额币种</view>
-      <input class="input" v-model="sino.currency" placeholder="须与合同一致" />
+      <view class="readonly">USD</view>
+      <view class="muted">中信保占用与限额固定美元，不可更改</view>
       <view class="btn" v-if="canWriteBusiness" @click="saveSino">保存中信保信息</view>
       <view class="btn btn-ghost" v-if="canWriteBusiness" @click="tryAdvance">尝试确认并推进</view>
     </view>
@@ -219,6 +221,7 @@ import {
   nextWorkNodeFromForm,
   pipelineNodeName,
   previewExposure,
+  SALES_CURRENCY,
   yuanToFen,
 } from '../../api';
 import NextNodeCta from '../../components/NextNodeCta.vue';
@@ -283,7 +286,7 @@ const form = reactive({
   quantity: 10,
   unit: '套',
   amountYuan: '',
-  currency: 'USD',
+  currency: SALES_CURRENCY,
   shipmentPort: '',
   shipmentDate: '',
   etaDate: '',
@@ -310,7 +313,7 @@ const sino = reactive({
   evidenceRef: '',
   fileName: '',
   limitYuan: '',
-  currency: 'USD',
+  currency: SALES_CURRENCY,
 });
 
 const tradeTerm = computed(() => resolveTradeTerm(form.incoterms));
@@ -381,7 +384,7 @@ onLoad(async (q) => {
     form.quantity = ct.quantity ?? form.quantity;
     form.unit = ct.unit || form.unit;
     form.amountYuan = fenToYuan(ct.amountFen || c.value.amountFen);
-    form.currency = ct.currency || c.value.currency || 'USD';
+    form.currency = SALES_CURRENCY;
     form.shipmentPort = ct.shipmentPort || '';
     form.shipmentDate = ct.shipmentDate ? String(ct.shipmentDate).slice(0, 10) : '';
     form.etaDate = ct.etaDate ? String(ct.etaDate).slice(0, 10) : '';
@@ -402,16 +405,16 @@ onLoad(async (q) => {
       form.counterparty = buyer.name;
     }
     form.amountYuan = fenToYuan(c.value.amountFen);
-    form.currency = c.value.currency || 'USD';
+    form.currency = SALES_CURRENCY;
   }
   const p = latestSinosure(c.value.sinosurePolicies, 'N3');
   if (p) {
     sino.evidenceRef = p.evidenceRef || '';
     sino.fileName = p.fileName || '';
     sino.limitYuan = fenToYuan(p.insuredLimitFen);
-    sino.currency = p.currency || form.currency;
+    sino.currency = SALES_CURRENCY;
   } else {
-    sino.currency = form.currency;
+    sino.currency = SALES_CURRENCY;
   }
 });
 
@@ -596,7 +599,7 @@ async function save() {
       quantity: Number(form.quantity),
       unit: form.unit,
       amountFen: yuanToFen(form.amountYuan),
-      currency: form.currency,
+      currency: SALES_CURRENCY,
       shipmentPort: cif ? form.shipmentPort || null : null,
       shipmentDate: shipmentDateApplies ? ymdOrNull(form.shipmentDate) : null,
       etaDate: cif ? ymdOrNull(form.etaDate) : null,
@@ -638,7 +641,7 @@ async function saveSino() {
     evidenceRef: sino.evidenceRef,
     fileName: sino.fileName,
     insuredLimitFen: yuanToFen(sino.limitYuan),
-    currency: sino.currency || form.currency,
+    currency: SALES_CURRENCY,
   });
   c.value = await api.case(id.value);
   savedSession.value = true;

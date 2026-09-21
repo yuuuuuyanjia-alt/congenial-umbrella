@@ -57,8 +57,9 @@
         <view class="btn btn-ghost" v-if="canWriteBusiness" @click="stubUpload">模拟上传保单</view>
         <view class="label">投保限额</view>
         <input class="input" type="digit" v-model="sino.limitYuan" placeholder="须覆盖变更后合同金额" />
-        <view class="label">限额币种</view>
-        <input class="input" v-model="sino.currency" placeholder="须与合同一致" />
+      <view class="label">限额币种</view>
+      <view class="readonly">USD</view>
+      <view class="muted">中信保占用与限额固定美元，不可更改</view>
       </view>
       <view class="btn" v-if="canWriteBusiness" @click="saveSino">{{ sino.mode === 'confirm' ? '确认沿用并核对限额' : '保存中信保信息' }}</view>
     </view>
@@ -79,7 +80,7 @@
 <script setup lang="ts">
 import { onLoad, onShow } from '@dcloudio/uni-app';
 import { computed, reactive, ref } from 'vue';
-import { api, fenToYuan, latestSinosure, yuanToFen } from '../../api';
+import { api, fenToYuan, latestSinosure, SALES_CURRENCY, yuanToFen } from '../../api';
 import SinosureExposure from '../../components/SinosureExposure.vue';
 import { useDemoRole } from '../../role';
 
@@ -103,7 +104,7 @@ const sino = reactive({
   evidenceRef: '',
   fileName: '',
   limitYuan: '',
-  currency: 'USD',
+  currency: SALES_CURRENCY,
 });
 
 const n3Hint = computed(() => formatPolicy(latestSinosure(c.value?.sinosurePolicies, 'N3')));
@@ -161,9 +162,9 @@ async function reload() {
     sino.evidenceRef = src.evidenceRef || '';
     sino.fileName = src.fileName || '';
     sino.limitYuan = fenToYuan(src.insuredLimitFen);
-    sino.currency = src.currency || c.value.currency || 'USD';
+    sino.currency = SALES_CURRENCY;
   } else {
-    sino.currency = c.value.currency || 'USD';
+    sino.currency = SALES_CURRENCY;
   }
 }
 
@@ -216,7 +217,7 @@ async function saveSino() {
       evidenceRef: sino.evidenceRef,
       fileName: sino.fileName,
       insuredLimitFen: yuanToFen(sino.limitYuan),
-      currency: sino.currency,
+      currency: SALES_CURRENCY,
       changeOrderId: latestChange?.id,
       confirmedExisting: false,
     });

@@ -30,7 +30,7 @@ export const EvalTag = {
   NO_LIMIT: '限额未登记',
 } as const;
 
-export const PROFIT_MISSING_LABEL = '毛利估算/暂缺';
+export const PROFIT_MISSING_LABEL = '待合同毛利率表';
 
 export type DeductionValue = 'none' | number;
 

@@ -143,7 +143,7 @@ describe('客户评估 evaluateBuyer（内部口径，非中信保官方）', ()
     expect(withReason.suggestedGrade).toBe(EvalGrade.A);
   });
 
-  it('采购成本缺失 → costMissing，展示「毛利估算/暂缺」，不编造成本', () => {
+  it('采购成本缺失 → costMissing，展示「待合同毛利率表」，不编造成本', () => {
     const missing = facts({
       salesFen: 12_800_000,
       costFen: null,
@@ -155,7 +155,7 @@ describe('客户评估 evaluateBuyer（内部口径，非中信保官方）', ()
     expect(r.profit.grossFen).toBeNull();
     expect(r.profit.marginPct).toBeNull();
     expect(r.profit.label).toBe(PROFIT_MISSING_LABEL);
-    expect(r.profit.label).toContain('暂缺');
+    expect(r.profit.label).toContain('毛利率表');
   });
 
   it('factsFromCases：CNY 采购相对 USD 销售视为成本暂缺（无汇率不换算）', () => {
