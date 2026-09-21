@@ -1,9 +1,15 @@
 <script setup lang="ts">
 import { onLaunch } from '@dcloudio/uni-app';
 import { ensureDemoUser } from './role';
+// #ifdef H5
+import { enableH5Clipboard } from './h5-selection';
+// #endif
 onLaunch(() => {
   console.log('出口风控小程序启动');
   ensureDemoUser().catch(() => {});
+  // #ifdef H5
+  enableH5Clipboard();
+  // #endif
 });
 </script>
 
@@ -173,4 +179,54 @@ select {
   font-weight: 650;
   color: #0f3d2e;
 }
+
+/* #ifdef H5 */
+/* uni-h5 base.css: html,body { user-select: none } — inherited onto all copy and inputs. */
+html,
+body,
+page,
+uni-app,
+uni-page,
+uni-page-wrapper,
+uni-page-body {
+  -webkit-user-select: text !important;
+  user-select: text !important;
+  -webkit-touch-callout: default;
+}
+
+.card,
+.h1,
+.h2,
+.muted,
+.label,
+.readonly,
+.err,
+.ok,
+.wrap,
+uni-view,
+uni-text {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+input,
+textarea,
+uni-input,
+uni-textarea,
+.uni-input-input,
+.uni-textarea-textarea,
+.input {
+  -webkit-user-select: text !important;
+  user-select: text !important;
+  -webkit-touch-callout: default !important;
+}
+
+/* Buttons/chips can stay non-select; do not put this on .card / .chips wrappers. */
+.btn,
+.choice-btn,
+.chip {
+  -webkit-user-select: none;
+  user-select: none;
+}
+/* #endif */
 </style>
