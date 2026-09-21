@@ -263,8 +263,8 @@ function taxBadge(h: any) {
 function taxReason(h: any) {
   const caseNo = h.case?.caseNo || '未知案件';
   const node = `${h.nodeCode || ''} ${pipelineNodeName(h.nodeCode)}`.trim();
-  const band = h.band === 'RED' ? '红线' : '黄灯';
-  return `${caseNo} · ${node} · ${band}：${h.summary || h.reasonCode || '退税·融资性审核'}`;
+  const summary = h.summary || h.reasonCode || '退税·融资性审核';
+  return `${caseNo} · ${node}：${summary}`;
 }
 
 function taxStatusBadge(h: any) {
