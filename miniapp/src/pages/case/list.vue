@@ -30,7 +30,7 @@
           class="btn btn-ghost"
           v-if="nextOf(c)"
           @click.stop="openNext(c)"
-        >进入下一节点 · {{ nextOf(c).code }} {{ nextOf(c).name }}</view>
+        >{{ nextCtaLabel(c) }}</view>
       </view>
     </template>
 
@@ -49,7 +49,7 @@
           class="btn btn-ghost"
           v-if="nextOf(c)"
           @click.stop="openNext(c)"
-        >进入下一节点 · {{ nextOf(c).code }} {{ nextOf(c).name }}</view>
+        >{{ nextCtaLabel(c) }}</view>
       </view>
     </template>
 
@@ -66,6 +66,7 @@ import {
   api,
   decisionClass,
   decisionText,
+  formNextNodeButtonLabel,
   goToNode,
   groupSalesListByShipment,
   isProcurementListCase,
@@ -86,7 +87,7 @@ const focusGroup = ref<'unshipped' | 'shipped' | 'completed'>('unshipped');
 const title = computed(() => (kind.value === 'procurement' ? '采购合同管理' : '销售合同管理'));
 const hint = computed(() =>
   kind.value === 'procurement'
-    ? '此处只列国内采购合同/备货。打开后填写采购合同；保存或推进前须从已签订的销售合同中任选一笔关联（不限于本案）。货款可选一次性付清或分期支付（分期须填约定付款时间、付款比例、金额）。本案已离开采购节点时，可点「进入下一节点」直达当前九节点步骤。'
+    ? '此处只列国内采购合同/备货（N5）。打开后填写采购合同；保存或推进前须从已签订的销售合同中任选一笔关联（不限于本案）。货款可选一次性付清或分期支付（分期须填约定付款时间、付款比例、金额）。装运、单证、报关、收汇属于出口案，不在本采购合同办理；采购完成后可点「去办装运（出口案）」跳转。'
     : '出口销售合同按未出运、已出运、已完成分组。已完成须已出运、客户已提货且收汇对账已回款。打开卡片仍填写销售合同（销售合同/订单确认）。国内采购订单不在本列表。本案已离开销售合同节点时，可点「进入下一节点」直达当前九节点步骤。',
 );
 const empty = computed(() =>
@@ -147,7 +148,7 @@ function secondary(c: any) {
   const amt = money(c.contract?.amountFen ?? c.amountFen, c.contract?.currency || c.currency);
   if (kind.value === 'procurement') {
     const poAmt = money(c.procurementPlan?.amountFen ?? c.amountFen, c.procurementPlan?.currency || c.currency);
-    return `${c.caseNo} · ${node} · ${status} · ${poAmt}`;
+    return `${c.caseNo} · 采购合同/国内备货 · ${status} · ${poAmt}`;
   }
   const signed = c.signed ? '已签订' : '待签订';
   return `${c.goodsDesc || ''} · ${signed} · ${node} · ${amt}`.replace(/^ · /, '');
@@ -184,6 +185,10 @@ function formNode() {
 function nextOf(c: any) {
   if (!listShowsNextNodeButton(formNode(), c?.currentNode)) return null;
   return nextWorkNodeFromForm(formNode(), { currentNode: c.currentNode, changeOrders: c.changeOrders });
+}
+
+function nextCtaLabel(c: any) {
+  return formNextNodeButtonLabel(formNode(), nextOf(c));
 }
 
 function openNext(c: any) {
