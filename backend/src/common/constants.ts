@@ -268,7 +268,7 @@ export const UserRole = {
 export type UserRoleValue = (typeof UserRole)[keyof typeof UserRole];
 
 export const UserRoleLabel: Record<string, string> = {
-  SALES: '业务岗',
+  SALES: '业务',
   RISK: '风控',
   MANAGER: '主管',
 };

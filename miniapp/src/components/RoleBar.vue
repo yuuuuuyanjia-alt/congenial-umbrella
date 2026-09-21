@@ -2,7 +2,7 @@
   <view class="card">
     <view class="row">
       <view class="h2" style="margin: 0">{{ compact ? '当前角色' : '演示角色' }}</view>
-      <view class="badge badge-pass" v-if="current">{{ current.name }} · {{ labelOf(current.role) }}</view>
+      <view class="badge badge-pass" v-if="current">{{ labelOf(current.role) }}</view>
     </view>
     <view class="muted" style="margin-top: 8rpx">{{ hint }}</view>
     <view class="choice-row" style="margin-top: 16rpx">
@@ -13,8 +13,7 @@
         :key="u.id"
         @click="pick(u)"
       >
-        {{ u.name }}
-        <view class="muted" style="margin-top: 6rpx; color: inherit">{{ labelOf(u.role) }}</view>
+        {{ labelOf(u.role) }}
       </view>
     </view>
   </view>
@@ -65,6 +64,6 @@ function labelOf(role?: string) {
 function pick(u: DemoUser) {
   persistDemoUser(u);
   emit('change', u);
-  uni.showToast({ title: `已切换为${u.name}（${labelOf(u.role)}）`, icon: 'none' });
+  uni.showToast({ title: `已切换为${labelOf(u.role)}`, icon: 'none' });
 }
 </script>

@@ -166,9 +166,9 @@ async function main() {
   await prisma.user.deleteMany();
 
   const [sales, compliance, approver] = await Promise.all([
-    prisma.user.create({ data: { name: '王磊', role: 'SALES' } }),
-    prisma.user.create({ data: { name: '陈可', role: 'RISK' } }),
-    prisma.user.create({ data: { name: '赵衡', role: 'MANAGER' } }),
+    prisma.user.create({ data: { name: '业务岗', role: 'SALES' } }),
+    prisma.user.create({ data: { name: '风控', role: 'RISK' } }),
+    prisma.user.create({ data: { name: '主管', role: 'MANAGER' } }),
   ]);
 
   await prisma.blacklistEntry.createMany({ data: LISTS });
