@@ -96,9 +96,9 @@ npm run miniapp
 
 | 账号 | `User.role` | 岗位 | 可写 | 首页入口顺序 |
 | --- | --- | --- | --- | --- |
-| 王磊 | `SALES` | 业务岗 | 客户 / 销售 / 采购录入，N1–N9 过闸。工作台领取/放行/驳回隐藏且接口拒绝 | 合同、供应商、客户、工作台 |
-| 陈可 | `RISK` | 风控 | 工作台领取/放行/驳回与筛查处置。可查看合同；未扩大金额改写 | 工作台优先，其后合同/客户/供应商 |
-| 赵衡 | `MANAGER` | 主管 | 本轮只读（评估、占用、列表）。不可审批、推进、改合同 | 客户、合同优先 |
+| 业务 | `SALES` | 业务 | 客户 / 销售 / 采购录入，N1–N9 过闸。工作台领取/放行/驳回隐藏且接口拒绝 | 合同、供应商、客户、工作台 |
+| 风控 | `RISK` | 风控 | 工作台领取/放行/驳回与筛查处置。可查看合同；未扩大金额改写 | 工作台优先，其后合同/客户/供应商 |
+| 主管 | `MANAGER` | 主管 | 本轮只读（评估、占用、列表）。不可审批、推进、改合同 | 客户、合同优先 |
 
 ```bash
 # 列出种子用户
@@ -333,7 +333,7 @@ curl -s -X POST http://127.0.0.1:3000/api/cases/<DEMO-LIMIT-HIGH的id>/nodes/N3/
 
 常用接口：
 
-- `GET /api/users` 演示用户（含 `role` / `roleLabel`：SALES 业务岗、RISK 风控、MANAGER 主管）
+- `GET /api/users` 演示用户（含 `role` / `roleLabel`：SALES 业务、RISK 风控、MANAGER 主管）
 - `GET /api/cases` 案件列表；`?kind=sales` 销售合同列表（已达 N3 或已有销售合同；条目含 `shipmentBucket`：`unshipped` 未出运 / `shipped` 已出运 / `completed` 已完成；`completed` 的已回款口径与占用释放相同，取 N9 settlement）；`?kind=procurement` 采购合同列表（已达 N5 或已有采购 PO，条目含 `procurementTitle`：供应商采购产品出口客户）
 - `GET /api/catalog` 节点、HS 模板、延期原因、价格基础等
 - `POST /api/cases/:id/nodes/N1/screen` 模拟筛查

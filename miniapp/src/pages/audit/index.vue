@@ -9,7 +9,7 @@
         <view class="h2" style="margin: 0">{{ a.action }}</view>
         <view class="muted">{{ a.nodeCode }}</view>
       </view>
-      <view class="muted">{{ a.createdAt }} · {{ a.actor?.name || '系统' }}</view>
+      <view class="muted">{{ a.createdAt }} · {{ actorLabel(a.actor) }}</view>
       <view class="muted">{{ stringify(a.detail) }}</view>
     </view>
   </view>
@@ -19,12 +19,17 @@
 import { onLoad } from '@dcloudio/uni-app';
 import { ref } from 'vue';
 import { api } from '../../api';
+import { demoActorLabel } from '../../role';
 
 const logs = ref<any[]>([]);
 
 onLoad(async (q) => {
   logs.value = await api.audit(q?.id);
 });
+
+function actorLabel(actor: any) {
+  return demoActorLabel(actor) || '系统';
+}
 
 function stringify(d: any) {
   try {

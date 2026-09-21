@@ -9,7 +9,7 @@ export const UserRole = {
 } as const;
 
 export const UserRoleLabel: Record<string, string> = {
-  SALES: '业务岗',
+  SALES: '业务',
   RISK: '风控',
   MANAGER: '主管',
 };
@@ -43,6 +43,12 @@ export function persistDemoUser(u: DemoUser) {
 
 export function roleLabelOf(role?: string | null) {
   return (role && UserRoleLabel[role]) || role || '';
+}
+
+/** Demo UI: role label only — never seed personal names. */
+export function demoActorLabel(u?: { role?: string | null; roleLabel?: string | null; name?: string | null } | null) {
+  if (!u) return '';
+  return roleLabelOf(u.role) || u.roleLabel || '';
 }
 
 export function canWriteBusiness(role?: string | null) {

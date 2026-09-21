@@ -125,7 +125,7 @@ import { computed, reactive, ref } from 'vue';
 import { onShow } from '@dcloudio/uni-app';
 import { api, decisionClass, decisionText, money, pipelineNodeName } from '../../api';
 import RoleBar from '../../components/RoleBar.vue';
-import { useDemoRole } from '../../role';
+import { demoActorLabel, useDemoRole } from '../../role';
 
 const { canWriteWorkbench, roleLabel, refresh: refreshRole } = useDemoRole();
 
@@ -207,7 +207,8 @@ function occupancyStatusBadge(h: any) {
 
 function occupancyStatus(h: any) {
   const label = occupancyStatusBadge(h);
-  if (h.claimedBy?.name) return `${label}（领取人 ${h.claimedBy.name}）`;
+  const claimant = demoActorLabel(h.claimedBy);
+  if (claimant) return `${label}（领取人 ${claimant}）`;
   return label;
 }
 
@@ -273,7 +274,8 @@ function taxStatusBadge(h: any) {
 
 function taxStatus(h: any) {
   const label = taxStatusBadge(h);
-  if (h.claimedBy?.name) return `${label}（领取人 ${h.claimedBy.name}）`;
+  const claimant = demoActorLabel(h.claimedBy);
+  if (claimant) return `${label}（领取人 ${claimant}）`;
   return label;
 }
 
