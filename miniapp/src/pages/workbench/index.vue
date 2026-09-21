@@ -1,5 +1,6 @@
 <template>
   <view class="wrap">
+    <RoleBar compact @change="refreshRole" />
     <view class="card">
       <view class="h2">审核工作台</view>
       <view class="choice-row" style="margin-top: 4rpx">
@@ -19,6 +20,9 @@
         </view>
       </view>
       <view class="muted" style="margin-top: 16rpx">{{ tabHint }}</view>
+      <view class="err" v-if="!canWriteWorkbench" style="margin-top: 12rpx">
+        当前为{{ roleLabel }}，工作台只读。领取 / 放行 / 驳回与筛查处置请切换风控岗。
+      </view>
     </view>
 
     <template v-if="tab === 'occupancy'">
@@ -30,10 +34,10 @@
         </view>
         <view class="line-actions">
           <view class="muted">可操作：{{ occupancyActionsHint(h) }}</view>
-          <input class="input" v-model="comments[h.id]" placeholder="审核备注（可选）" />
-          <view class="btn" v-if="h.status === 'OPEN' || h.status === 'REJECTED'" @click="actOccupancy(h, 'CLAIM')">领取</view>
-          <view class="btn" v-if="h.status !== 'APPROVED'" @click="actOccupancy(h, 'APPROVE')">放行</view>
-          <view class="btn btn-danger" v-if="h.status === 'OPEN' || h.status === 'CLAIMED'" @click="actOccupancy(h, 'REJECT')">驳回</view>
+          <input class="input" v-if="canWriteWorkbench" v-model="comments[h.id]" placeholder="审核备注（可选）" />
+          <view class="btn" v-if="canWriteWorkbench && (h.status === 'OPEN' || h.status === 'REJECTED')" @click="actOccupancy(h, 'CLAIM')">领取</view>
+          <view class="btn" v-if="canWriteWorkbench && h.status !== 'APPROVED'" @click="actOccupancy(h, 'APPROVE')">放行</view>
+          <view class="btn btn-danger" v-if="canWriteWorkbench && (h.status === 'OPEN' || h.status === 'CLAIMED')" @click="actOccupancy(h, 'REJECT')">驳回</view>
         </view>
       </view>
       <view class="card" v-if="loaded && !occupancyQueue.length">
@@ -52,11 +56,11 @@
           <view class="badge" :class="decisionClass(h.riskLevel)">{{ hitStatus(h) }}</view>
         </view>
         <view class="line-actions">
-          <view class="muted">可操作：误报排除 / 确认真实 / 补充信息 / 持续监控</view>
-          <view class="btn btn-ghost" @click="actHit(h, 'FALSE_POSITIVE')">误报排除</view>
-          <view class="btn btn-danger" @click="actHit(h, 'CONFIRM_TRUE')">确认真实</view>
-          <view class="btn btn-warn" @click="actHit(h, 'SUPPLEMENT')">补充信息</view>
-          <view class="btn" @click="actHit(h, 'MONITOR')">持续监控</view>
+          <view class="muted">可操作：{{ canWriteWorkbench ? '误报排除 / 确认真实 / 补充信息 / 持续监控' : '只读' }}</view>
+          <view class="btn btn-ghost" v-if="canWriteWorkbench" @click="actHit(h, 'FALSE_POSITIVE')">误报排除</view>
+          <view class="btn btn-danger" v-if="canWriteWorkbench" @click="actHit(h, 'CONFIRM_TRUE')">确认真实</view>
+          <view class="btn btn-warn" v-if="canWriteWorkbench" @click="actHit(h, 'SUPPLEMENT')">补充信息</view>
+          <view class="btn" v-if="canWriteWorkbench" @click="actHit(h, 'MONITOR')">持续监控</view>
         </view>
       </view>
       <view class="card" v-if="loaded && !hitQueue.length">
@@ -73,6 +77,10 @@
 import { computed, reactive, ref } from 'vue';
 import { onShow } from '@dcloudio/uni-app';
 import { api, decisionClass, decisionText, money, pipelineNodeName } from '../../api';
+import RoleBar from '../../components/RoleBar.vue';
+import { useDemoRole } from '../../role';
+
+const { canWriteWorkbench, roleLabel, refresh: refreshRole } = useDemoRole();
 
 const tab = ref<'occupancy' | 'sanctions'>('occupancy');
 const queue = ref<any[]>([]);
@@ -149,6 +157,7 @@ function occupancyStatus(h: any) {
 }
 
 function occupancyActionsHint(h: any) {
+  if (!canWriteWorkbench.value) return '只读';
   const parts: string[] = [];
   if (h.status === 'OPEN' || h.status === 'REJECTED') parts.push('领取');
   if (h.status !== 'APPROVED') parts.push('放行');

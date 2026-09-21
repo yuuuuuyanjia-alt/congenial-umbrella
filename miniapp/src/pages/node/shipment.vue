@@ -5,6 +5,7 @@
       <view class="muted">
         须同时具备客户书面指示与内部审批。CIF / CFR 等卖方出单：点选「正本提单」或「电放提单」其一即可（不必两样都有）。FOB / EXW / FAS / FCA 等买方安排运输：可不控提单，走「无提单」路径并留下依据。T/T 是结算方式不是运输术语；装运规则跟随所选 Incoterm，未填运输术语时按 FOB 回退。存在未生效变更单时禁止装运。
       </view>
+      <view class="err" v-if="!canWriteBusiness" style="margin-top: 8rpx">当前为{{ roleLabel }}，本页只读，不可保存或推进。</view>
     </view>
     <PendingChangeBlock :case-id="id" :case-data="c" />
     <view class="card">
@@ -71,12 +72,12 @@
         <input class="input" v-model="form.noBlReason" placeholder="如：FOB 买方自行订舱，卖方不控提单" />
         <view class="label">依据编号（装船通知 / 订舱 / 买方运输安排）</view>
         <input class="input" v-model="form.noBlRef" placeholder="例如 SA-2026-001 或 BK-FOB-88" />
-        <view class="btn btn-ghost" @click="stubUpload">演示上传装船通知 / 订舱记录</view>
+        <view class="btn btn-ghost" v-if="canWriteBusiness" @click="stubUpload">演示上传装船通知 / 订舱记录</view>
         <view class="muted" v-if="form.noBlEvidenceStub">已挂演示附件：{{ form.noBlEvidenceStub }}</view>
       </view>
 
-      <view class="btn" @click="save">保存指示</view>
-      <view class="btn btn-danger" @click="tryAdvance">校验硬闸门并推进</view>
+      <view class="btn" v-if="canWriteBusiness" @click="save">保存指示</view>
+      <view class="btn btn-danger" v-if="canWriteBusiness" @click="tryAdvance">校验硬闸门并推进</view>
     </view>
     <view class="err" v-if="err">{{ err }}</view>
     <view class="ok" v-if="ok">{{ ok }}</view>
@@ -88,10 +89,12 @@ import { onLoad } from '@dcloudio/uni-app';
 import { computed, reactive, ref } from 'vue';
 import { api } from '../../api';
 import PendingChangeBlock from '../../components/PendingChangeBlock.vue';
+import { useDemoRole } from '../../role';
 
 const BUYER_FREIGHT = ['FOB', 'EXW', 'FAS', 'FCA'];
 
 const id = ref('');
+const { canWriteBusiness, roleLabel } = useDemoRole();
 const err = ref('');
 const ok = ref('');
 const c = ref<any>(null);

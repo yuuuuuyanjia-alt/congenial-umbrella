@@ -8,13 +8,12 @@
       </view>
     </view>
 
+    <RoleBar @change="onRoleChange" />
+
     <view class="card">
       <view class="h2">工作入口</view>
-      <view class="muted">销售与采购分开办理：请先签订销售合同，再办理采购合同并关联已签销售合同。</view>
-      <view class="btn" @click="go('/pages/case/hub')">合同管理</view>
-      <view class="btn" @click="go('/pages/supplier/list')">供应商管理</view>
-      <view class="btn" @click="go('/pages/customer/list')">客户管理</view>
-      <view class="btn" @click="go('/pages/workbench/index')">审核工作台</view>
+      <view class="muted">{{ entryHint }}</view>
+      <view class="btn" v-for="e in entries" :key="e.url" @click="go(e.url)">{{ e.label }}</view>
     </view>
 
     <view class="h2" style="margin: 8rpx 8rpx 16rpx">演示路径</view>
@@ -29,10 +28,25 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { api } from '../../api';
+import RoleBar from '../../components/RoleBar.vue';
+import { demoSession, homeEntriesFor, roleLabelOf, useDemoRole } from '../../role';
 
 const cases = ref<any[]>([]);
+const { role } = useDemoRole();
+const entries = computed(() => homeEntriesFor(role.value));
+const entryHint = computed(() => {
+  if (role.value === 'RISK') return '风控岗默认先进入审核工作台；合同与客户为只读优先，现有写入接口未扩大。';
+  if (role.value === 'MANAGER') return '主管本轮只读：先看客户评估与案件列表，不可审批、推进或改合同。';
+  return '业务岗可录入客户/销售/采购并推进 N1–N9。工作台只读，领取/放行请切换风控岗。';
+});
+function onRoleChange() {
+  role.value = demoSession.value?.role || role.value;
+  uni.setNavigationBarTitle({
+    title: demoSession.value ? `出口风控 · ${roleLabelOf(demoSession.value.role)}` : '出口风控',
+  });
+}
 const paths = [
   {
     caseNo: 'DEMO-PASS',

@@ -3,6 +3,7 @@
     <view class="card">
       <view class="h2">收汇对账 · 硬闸门</view>
       <view class="muted">付款人≠买方时必须有第三方关系证明；另需汇款附言、单证一致证明与放行审批。水单/到账金额是已回款唯一账本：保存后销售列表「已完成」与中信保占用「已回款」同步更新。存在未生效变更单时禁止放行。</view>
+      <view class="err" v-if="!canWriteBusiness" style="margin-top: 8rpx">当前为{{ roleLabel }}，本页只读，不可保存或放行。</view>
     </view>
     <PendingChangeBlock :case-id="id" :case-data="c" />
     <view class="card">
@@ -27,8 +28,8 @@
       <switch :checked="form.hasReleaseApproval" @change="(e: any) => (form.hasReleaseApproval = e.detail.value)" />
       <view class="label">第三方关系证明（代付时必填）</view>
       <switch :checked="form.hasThirdPartyProof" @change="(e: any) => (form.hasThirdPartyProof = e.detail.value)" />
-      <view class="btn" @click="save">保存收汇材料</view>
-      <view class="btn btn-danger" @click="tryAdvance">校验硬闸门并放行</view>
+      <view class="btn" v-if="canWriteBusiness" @click="save">保存收汇材料</view>
+      <view class="btn btn-danger" v-if="canWriteBusiness" @click="tryAdvance">校验硬闸门并放行</view>
     </view>
     <view class="err" v-if="err">{{ err }}</view>
     <view class="ok" v-if="ok">{{ ok }}</view>
@@ -40,8 +41,10 @@ import { onLoad } from '@dcloudio/uni-app';
 import { computed, reactive, ref } from 'vue';
 import { api, fenToYuan, yuanToFen } from '../../api';
 import PendingChangeBlock from '../../components/PendingChangeBlock.vue';
+import { useDemoRole } from '../../role';
 
 const id = ref('');
+const { canWriteBusiness, roleLabel } = useDemoRole();
 const err = ref('');
 const ok = ref('');
 const c = ref<any>(null);

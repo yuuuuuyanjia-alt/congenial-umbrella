@@ -3,6 +3,7 @@
     <view class="card">
       <view class="h2">变更管理</view>
       <view class="muted">交货期 / 数量 / 收货人 / 付款条件变更必须出变更单。客户确认 + 内部确认后生效。未生效变更会硬拦截采购（N5）及装运及后续节点（N6–N9）。进入本节点时须再次确认中信保：按变更后金额重算占用（未履行完毕未回款 + 已履行完毕未回款 + 本笔合同金额）。无变更单时可直接推进，无需重复登记中信保。</view>
+      <view class="err" v-if="!canWriteBusiness" style="margin-top: 8rpx">当前为{{ roleLabel }}，本页只读，不可保存或推进。</view>
     </view>
     <view class="card">
       <view class="label">变更字段</view>
@@ -13,7 +14,7 @@
       <input class="input" v-model="form.newValue" />
       <view class="label">原因</view>
       <input class="input" v-model="form.reason" />
-      <view class="btn" @click="create">创建变更单</view>
+      <view class="btn" v-if="canWriteBusiness" @click="create">创建变更单</view>
     </view>
 
     <view class="card" v-for="co in c.changeOrders || []" :key="co.id">
@@ -26,10 +27,10 @@
       <view class="muted">客户确认 {{ co.customerAckEvidenceId || '无' }} · 内部 {{ co.internalAckEvidenceId || '无' }}</view>
       <view class="label" v-if="co.status !== 'APPLIED'">客户确认编号</view>
       <input class="input" v-if="co.status !== 'APPLIED'" v-model="ackRef[co.id]" placeholder="邮件/函件编号" />
-      <view class="btn btn-ghost" v-if="!co.customerAck" @click="ack(co, 'CUSTOMER')">客户确认</view>
-      <view class="btn btn-ghost" v-if="!co.internalAck" @click="ack(co, 'INTERNAL')">内部确认</view>
-      <view class="btn btn-warn" v-if="co.isSensitive && !co.approved" @click="ack(co, 'APPROVAL')">敏感审批</view>
-      <view class="btn" v-if="co.status !== 'APPLIED' && co.status !== 'SUPERSEDED'" @click="apply(co)">应用新版本</view>
+      <view class="btn btn-ghost" v-if="canWriteBusiness && !co.customerAck" @click="ack(co, 'CUSTOMER')">客户确认</view>
+      <view class="btn btn-ghost" v-if="canWriteBusiness && !co.internalAck" @click="ack(co, 'INTERNAL')">内部确认</view>
+      <view class="btn btn-warn" v-if="canWriteBusiness && co.isSensitive && !co.approved" @click="ack(co, 'APPROVAL')">敏感审批</view>
+      <view class="btn" v-if="canWriteBusiness && co.status !== 'APPLIED' && co.status !== 'SUPERSEDED'" @click="apply(co)">应用新版本</view>
     </view>
 
     <view class="card" v-if="(c.changeOrders || []).length">
@@ -53,13 +54,13 @@
         <input class="input" v-model="sino.evidenceRef" placeholder="可手填编号，或点下方模拟上传" />
         <view class="label">附件名称</view>
         <input class="input" v-model="sino.fileName" placeholder="如 中信保限额批注.pdf" />
-        <view class="btn btn-ghost" @click="stubUpload">模拟上传保单</view>
+        <view class="btn btn-ghost" v-if="canWriteBusiness" @click="stubUpload">模拟上传保单</view>
         <view class="label">投保限额</view>
         <input class="input" type="digit" v-model="sino.limitYuan" placeholder="须覆盖变更后合同金额" />
         <view class="label">限额币种</view>
         <input class="input" v-model="sino.currency" placeholder="须与合同一致" />
       </view>
-      <view class="btn" @click="saveSino">{{ sino.mode === 'confirm' ? '确认沿用并核对限额' : '保存中信保信息' }}</view>
+      <view class="btn" v-if="canWriteBusiness" @click="saveSino">{{ sino.mode === 'confirm' ? '确认沿用并核对限额' : '保存中信保信息' }}</view>
     </view>
 
     <view class="card" v-for="v in c.contractVersions || []" :key="v.id">
@@ -69,7 +70,7 @@
       </view>
     </view>
 
-    <view class="btn btn-ghost" @click="tryAdvance">无待确认变更则推进 / 校验过闸</view>
+    <view class="btn btn-ghost" v-if="canWriteBusiness" @click="tryAdvance">无待确认变更则推进 / 校验过闸</view>
     <view class="err" v-if="err">{{ err }}</view>
     <view class="ok" v-if="ok">{{ ok }}</view>
   </view>
@@ -80,8 +81,10 @@ import { onLoad, onShow } from '@dcloudio/uni-app';
 import { computed, reactive, ref } from 'vue';
 import { api, fenToYuan, latestSinosure, yuanToFen } from '../../api';
 import SinosureExposure from '../../components/SinosureExposure.vue';
+import { useDemoRole } from '../../role';
 
 const id = ref('');
+const { canWriteBusiness, roleLabel } = useDemoRole();
 const c = ref<any>(null);
 const err = ref('');
 const ok = ref('');

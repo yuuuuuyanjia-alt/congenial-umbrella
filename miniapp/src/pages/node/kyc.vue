@@ -3,6 +3,7 @@
     <view class="card">
       <view class="h2">询盘 / 客户 KYC</view>
       <view class="muted">须确认买方、付款人、收货人关系，并对 OFAC / UN / EU / UK 与中国不可靠实体清单做模拟筛查。高置信命中硬拦截。</view>
+      <view class="err" v-if="!canWriteBusiness" style="margin-top: 8rpx">当前为{{ roleLabel }}，本页只读，不可保存或推进。</view>
       <view class="muted" style="margin-top: 8rpx">买方在本节点填写后，待案件到达合同/订单确认（N3）时自动录入客户管理；若已有同一客户（按名称+国家或税号匹配）则合并到已有档案，不重复建档。</view>
     </view>
 
@@ -10,11 +11,11 @@
       <view class="label">{{ role.label }}</view>
       <input class="input" v-model="forms[role.key].name" :placeholder="'输入' + role.label + '名称'" />
       <input class="input" v-model="forms[role.key].country" placeholder="国家/地区" />
-      <view class="btn btn-ghost" @click="save(role.key)">保存{{ role.label }}</view>
+      <view class="btn btn-ghost" v-if="canWriteBusiness" @click="save(role.key)">保存{{ role.label }}</view>
     </view>
 
-    <view class="btn" @click="runScreen">执行模拟筛查并生成 KYC 报告</view>
-    <view class="btn" @click="tryAdvance">尝试推进本节点</view>
+    <view class="btn" v-if="canWriteBusiness" @click="runScreen">执行模拟筛查并生成 KYC 报告</view>
+    <view class="btn" v-if="canWriteBusiness" @click="tryAdvance">尝试推进本节点</view>
 
     <view class="card" v-if="kycReport">
       <view class="h2">KYC 报告</view>
@@ -42,6 +43,9 @@
 import { onLoad } from '@dcloudio/uni-app';
 import { computed, reactive, ref } from 'vue';
 import { api, decisionClass, decisionText, toastErr } from '../../api';
+import { useDemoRole } from '../../role';
+
+const { canWriteBusiness, roleLabel } = useDemoRole();
 
 const id = ref('');
 const c = ref<any>(null);

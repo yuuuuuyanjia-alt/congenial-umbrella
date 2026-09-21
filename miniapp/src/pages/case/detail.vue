@@ -1,5 +1,7 @@
 <template>
-  <view class="wrap" v-if="c">
+  <view class="wrap">
+    <RoleBar compact />
+    <template v-if="c">
     <view class="card">
       <view class="muted">{{ c.caseNo }}</view>
       <view class="h1">{{ c.title }}</view>
@@ -53,6 +55,7 @@
 
     <view class="btn btn-ghost" @click="go(`/pages/audit/index?id=${c.id}`)">查看审计日志</view>
     <view class="btn btn-ghost" @click="go('/pages/workbench/index')">审核工作台</view>
+    </template>
   </view>
 </template>
 
@@ -60,6 +63,7 @@
 import { onLoad, onShow } from '@dcloudio/uni-app';
 import { computed, ref } from 'vue';
 import { api, decisionClass, decisionText, money, nodePage } from '../../api';
+import RoleBar from '../../components/RoleBar.vue';
 
 const id = ref('');
 const c = ref<any>(null);

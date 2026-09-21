@@ -3,12 +3,13 @@
     <view class="card">
       <view class="h2">报关放行</view>
       <view class="muted">核对 HS 编码与申报要素模板、原产地证据。税则品名/计量单位不符仅软提示；HS 或要素严重缺项禁止申报。电子口岸状态为模拟同步。存在未生效变更单时禁止申报。</view>
+      <view class="err" v-if="!canWriteBusiness" style="margin-top: 8rpx">当前为{{ roleLabel }}，本页只读，不可保存或申报。</view>
     </view>
     <PendingChangeBlock :case-id="id" :case-data="c" />
     <view class="card">
       <view class="label">HS 编码</view>
       <input class="input" v-model="form.hsCode" placeholder="8458.11.00" />
-      <view class="btn btn-ghost" @click="applyTpl">载入模板要素</view>
+      <view class="btn btn-ghost" v-if="canWriteBusiness" @click="applyTpl">载入模板要素</view>
       <view class="muted" v-if="tpl">模板：{{ tpl.productName }} · 单位 {{ tpl.unit }} · 税则 {{ tpl.exportTaxName }}</view>
       <view class="label">报关品名</view>
       <input class="input" v-model="form.productName" />
@@ -28,9 +29,9 @@
       <input class="input" v-model="form.unit" />
       <view class="label">出口税则品名</view>
       <input class="input" v-model="form.exportTaxName" />
-      <view class="btn" @click="save">保存报关单</view>
-      <view class="btn btn-ghost" @click="sync">模拟同步电子口岸</view>
-      <view class="btn btn-danger" @click="tryAdvance">校验并申报放行</view>
+      <view class="btn" v-if="canWriteBusiness" @click="save">保存报关单</view>
+      <view class="btn btn-ghost" v-if="canWriteBusiness" @click="sync">模拟同步电子口岸</view>
+      <view class="btn btn-danger" v-if="canWriteBusiness" @click="tryAdvance">校验并申报放行</view>
     </view>
     <view class="card" v-if="c.customs">
       <view class="row">
@@ -51,8 +52,10 @@ import { onLoad } from '@dcloudio/uni-app';
 import { computed, reactive, ref } from 'vue';
 import { api } from '../../api';
 import PendingChangeBlock from '../../components/PendingChangeBlock.vue';
+import { useDemoRole } from '../../role';
 
 const id = ref('');
+const { canWriteBusiness, roleLabel } = useDemoRole();
 const c = ref<any>(null);
 const catalog = ref<any>(null);
 const err = ref('');

@@ -3,7 +3,8 @@
     <view class="card">
       <view class="h2">{{ code }} 后续版本占位</view>
       <view class="muted">{{ message }}</view>
-      <view class="btn" @click="skip">标记 TODO 并跳过（演示用）</view>
+      <view class="err" v-if="!canWriteBusiness" style="margin-top: 8rpx">当前为{{ roleLabel }}，不可推进。</view>
+      <view class="btn" v-if="canWriteBusiness" @click="skip">标记 TODO 并跳过（演示用）</view>
       <view class="ok" v-if="ok">{{ ok }}</view>
     </view>
   </view>
@@ -13,6 +14,9 @@
 import { onLoad } from '@dcloudio/uni-app';
 import { ref } from 'vue';
 import { api } from '../../api';
+import { useDemoRole } from '../../role';
+
+const { canWriteBusiness, roleLabel } = useDemoRole();
 
 const id = ref('');
 const code = ref('N2');

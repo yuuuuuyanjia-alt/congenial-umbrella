@@ -258,12 +258,20 @@ export const DocTypeLabel: Record<string, string> = {
   BL: '提单',
 };
 
+/** 演示角色：业务岗 / 风控 / 主管。无单独录入员。 */
 export const UserRole = {
   SALES: 'SALES',
-  COMPLIANCE: 'COMPLIANCE',
-  APPROVER: 'APPROVER',
-  FINANCE: 'FINANCE',
+  RISK: 'RISK',
+  MANAGER: 'MANAGER',
 } as const;
+
+export type UserRoleValue = (typeof UserRole)[keyof typeof UserRole];
+
+export const UserRoleLabel: Record<string, string> = {
+  SALES: '业务岗',
+  RISK: '风控',
+  MANAGER: '主管',
+};
 
 export const COMPARE_FIELDS = [
   'buyerName',
