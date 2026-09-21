@@ -5,6 +5,7 @@ import { evaluateNode } from './gate.engine';
 import { CustomersService } from '../customers/customers.service';
 import { isSalesContractSigned, n3StatusOf } from '../cases/sales-link';
 import { OccupancyReviewStatus, occupancyFingerprint, planOccupancyReviewSync } from '../workbench/occupancy-review';
+import { parseDirectPort, planTaxFinanceReviewSync, TaxFinanceReviewStatus } from '../tax-finance/tax-finance';
 
 @Injectable()
 export class GateService {
@@ -32,6 +33,8 @@ export class GateService {
         customs: true,
         sinosurePolicies: { orderBy: { createdAt: 'asc' } },
         occupancyReviews: { orderBy: { createdAt: 'asc' } },
+        taxFinanceReviews: { orderBy: { createdAt: 'asc' } },
+        taxRebateChecklist: true,
       },
     });
     const goodsKey = normGoods(c.goodsDesc);
@@ -58,7 +61,12 @@ export class GateService {
       })),
       kycRan: c.kycReports.some((k) => k.nodeCode === 'N1'),
       supplierScreened: hasSupplierScreen(c.kycReports, c.parties),
-      contract: c.contract,
+      contract: c.contract
+        ? {
+            ...c.contract,
+            directPort: parseDirectPort(c.contract.directPortJson),
+          }
+        : null,
       shipment: c.shipment,
       documents: c.documents.map(
         (d): DocSnap => ({
@@ -131,6 +139,29 @@ export class GateService {
         claimedById: row.claimedById,
         comment: row.comment,
       })),
+      taxFinanceReviews: (c.taxFinanceReviews || []).map((row) => ({
+        id: row.id,
+        nodeCode: row.nodeCode,
+        status: row.status,
+        band: row.band,
+        reasonCode: row.reasonCode,
+        summary: row.summary,
+        fingerprint: row.fingerprint,
+        claimedById: row.claimedById,
+        comment: row.comment,
+      })),
+      taxRebate: c.taxRebateChecklist
+        ? {
+            inputInvoiceNo: c.taxRebateChecklist.inputInvoiceNo,
+            flowGoods: c.taxRebateChecklist.flowGoods,
+            flowCustoms: c.taxRebateChecklist.flowCustoms,
+            flowInvoice: c.taxRebateChecklist.flowInvoice,
+            flowRemittance: c.taxRebateChecklist.flowRemittance,
+            declaredAt: c.taxRebateChecklist.declaredAt,
+          }
+        : null,
+      caseGoodsDesc: c.goodsDesc,
+      salesContract: salesSideOf(c),
     };
   }
 
@@ -138,6 +169,7 @@ export class GateService {
     const snap = await this.snapshot(caseId);
     const result = evaluateNode(nodeCode, snap);
     await this.syncOccupancyReview(caseId, result, snap.occupancyReviews);
+    await this.syncTaxFinanceReview(caseId, result, snap.taxFinanceReviews);
     await this.prisma.gateCheck.create({
       data: {
         caseId,
@@ -155,7 +187,12 @@ export class GateService {
     const snap = await this.snapshot(caseId);
     const result = evaluateNode(nodeCode, snap);
     await this.syncOccupancyReview(caseId, result, snap.occupancyReviews);
+    await this.syncTaxFinanceReview(caseId, result, snap.taxFinanceReviews);
     return result;
+  }
+
+  async refreshTaxFinanceReview(caseId: string, nodeCode: string): Promise<GateResult> {
+    return this.refreshOccupancyReview(caseId, nodeCode);
   }
 
   private async syncOccupancyReview(
@@ -192,6 +229,70 @@ export class GateService {
       });
     }
   }
+
+  private async syncTaxFinanceReview(
+    caseId: string,
+    result: GateResult,
+    reviews: CaseSnapshot['taxFinanceReviews'],
+  ) {
+    if (!['N3', 'N5', 'N6', 'N7', 'N8'].includes(result.nodeCode)) return;
+    const view = result.taxFinance;
+    const plan = planTaxFinanceReviewSync(reviews, result.nodeCode, view?.band ? view : null);
+    if (plan.supersedeIds.length) {
+      await this.prisma.taxFinanceReview.updateMany({
+        where: { id: { in: plan.supersedeIds } },
+        data: { status: TaxFinanceReviewStatus.SUPERSEDED },
+      });
+    }
+    if (plan.create) {
+      await this.prisma.taxFinanceReview.create({
+        data: {
+          caseId,
+          ...plan.create,
+        },
+      });
+    }
+  }
+}
+
+function salesSideOf(c: {
+  contract?: {
+    deliveryMode?: string | null;
+    goodsDesc?: string | null;
+    amountFen?: number | null;
+    quantity?: number | null;
+    currency?: string | null;
+    directPortJson?: string | null;
+    consigneeName?: string | null;
+    buyerName?: string | null;
+  } | null;
+  procurementPlan?: {
+    salesCase?: {
+      contract?: {
+        deliveryMode?: string | null;
+        goodsDesc?: string | null;
+        amountFen?: number | null;
+        quantity?: number | null;
+        currency?: string | null;
+        directPortJson?: string | null;
+        consigneeName?: string | null;
+        buyerName?: string | null;
+      } | null;
+    } | null;
+  } | null;
+}) {
+  const row = c.procurementPlan?.salesCase?.contract || c.contract;
+  if (!row) return null;
+  return {
+    deliveryMode: row.deliveryMode,
+    goodsDesc: row.goodsDesc,
+    amountFen: row.amountFen,
+    quantity: row.quantity,
+    currency: row.currency,
+    directPort: parseDirectPort(row.directPortJson),
+    consigneeName: row.consigneeName,
+    buyerName: row.buyerName,
+  };
 }
 
 export function normGoods(desc: string) {

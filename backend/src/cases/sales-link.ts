@@ -17,6 +17,7 @@ export type SalesLinkCaseInput = {
     amountFen?: number | null;
     currency?: string | null;
     deliveryDate?: Date | string | null;
+    deliveryMode?: string | null;
   } | null;
   parties?: Array<{ role: string; name: string }>;
   nodes?: Array<{ code: string; status: string }>;
@@ -57,6 +58,8 @@ export type SalesLinkView = {
   goodsDesc: string;
   destination: string;
   deliveryDate: Date | string | null;
+  deliveryMode: string | null;
+  deliveryModeLabel: string | null;
 };
 
 export function n3StatusOf(nodes?: Array<{ code: string; status: string }> | null): string | null {
@@ -118,6 +121,15 @@ export function presentSalesLink(row: SalesLinkCaseInput): SalesLinkView {
     goodsDesc: row.goodsDesc,
     destination: row.destination,
     deliveryDate: row.contract?.deliveryDate ?? null,
+    deliveryMode: row.contract?.deliveryMode ?? null,
+    deliveryModeLabel:
+      row.contract?.deliveryMode === 'OWN_WAREHOUSE'
+        ? '自有仓发运'
+        : row.contract?.deliveryMode === 'BONDED'
+          ? '保税仓储'
+          : row.contract?.deliveryMode === 'DIRECT_PORT'
+            ? '港口直出'
+            : null,
   };
 }
 

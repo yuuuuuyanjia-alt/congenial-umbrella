@@ -53,6 +53,7 @@ import {
   isOccupancyHighApproved,
   matchingOccupancyReview,
 } from '../workbench/occupancy-review';
+import { applyTaxFinanceGate } from '../tax-finance/tax-finance';
 
 const HARD_GATES = new Set(['N6', 'N7', 'N9']);
 
@@ -68,28 +69,39 @@ export function emptyResult(nodeCode: string): GateResult {
 }
 
 export function evaluateNode(nodeCode: string, snap: CaseSnapshot): GateResult {
+  let result: GateResult;
   switch (nodeCode) {
     case 'N1':
-      return evaluateN1(snap);
+      result = evaluateN1(snap);
+      break;
     case 'N2':
-      return evaluateN2(snap);
+      result = evaluateN2(snap);
+      break;
     case 'N3':
-      return evaluateN3(snap);
+      result = evaluateN3(snap);
+      break;
     case 'N4':
-      return evaluateN4(snap);
+      result = evaluateN4(snap);
+      break;
     case 'N5':
-      return evaluateN5(snap);
+      result = evaluateN5(snap);
+      break;
     case 'N6':
-      return evaluateN6(snap);
+      result = evaluateN6(snap);
+      break;
     case 'N7':
-      return evaluateN7(snap);
+      result = evaluateN7(snap);
+      break;
     case 'N8':
-      return evaluateN8(snap);
+      result = evaluateN8(snap);
+      break;
     case 'N9':
-      return evaluateN9(snap);
+      result = evaluateN9(snap);
+      break;
     default:
-      return { ...emptyResult(nodeCode), canProceed: false, reasons: ['未知节点'] };
+      result = { ...emptyResult(nodeCode), canProceed: false, reasons: ['未知节点'] };
   }
+  return applyTaxFinanceGate(result, snap);
 }
 
 export function isSupplierHit(h: HitSnap): boolean {

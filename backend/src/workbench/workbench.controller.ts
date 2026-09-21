@@ -3,6 +3,7 @@ import { CasesService } from '../cases/cases.service';
 import { WorkbenchDto } from '../cases/dto';
 import { WorkbenchActionLabel } from '../common/constants';
 import { OccupancyWorkbenchActionLabel } from './occupancy-review';
+import { TaxFinanceWorkbenchActionLabel } from '../tax-finance/tax-finance';
 import { WorkbenchService } from './workbench.service';
 
 @Controller('workbench')
@@ -18,7 +19,8 @@ export class WorkbenchController {
       title: '审核工作台',
       actions: WorkbenchActionLabel,
       occupancyActions: OccupancyWorkbenchActionLabel,
-      queues: ['OPEN', 'CLAIMED', 'REJECTED', 'SUPPLEMENTED', 'MONITORING'],
+      taxFinanceActions: TaxFinanceWorkbenchActionLabel,
+      queues: ['OPEN', 'CLAIMED', 'REJECTED', 'HARD_BLOCKED', 'SUPPLEMENTED', 'MONITORING'],
     };
   }
 

@@ -36,6 +36,20 @@ import {
   occupancyActionNextStatus,
 } from '../workbench/occupancy-review';
 import {
+  DeliveryModeLabel,
+  FT4_DECLARE_REASON,
+  TAX_FINANCE_DIRECT_DOCS_REASON,
+  TAX_FINANCE_EMPTY_TURN_REASON,
+  TAX_FINANCE_QUEUE_STATUSES,
+  TAX_FINANCE_YELLOW_REVIEW_REASON,
+  TaxFinanceWorkbenchAction,
+  evaluateFt4,
+  isTaxFinanceWorkbenchAction,
+  parseDirectPort,
+  stringifyDirectPort,
+  taxFinanceActionNextStatus,
+} from '../tax-finance/tax-finance';
+import {
   explicitSalesCaseId,
   isEligibleSalesCase,
   isProcurementContractListItem,
@@ -70,6 +84,7 @@ import {
   SaveSettlementDto,
   SaveShipmentDto,
   SaveSinosureDto,
+  SaveTaxRebateDto,
   UpsertPartyDto,
 } from './dto';
 import { GateResult } from '../common/types';
@@ -180,6 +195,14 @@ export class CasesService {
             decidedBy: { select: { id: true, name: true, role: true } },
           },
         },
+        taxFinanceReviews: {
+          orderBy: { createdAt: 'desc' },
+          include: {
+            claimedBy: { select: { id: true, name: true, role: true } },
+            decidedBy: { select: { id: true, name: true, role: true } },
+          },
+        },
+        taxRebateChecklist: true,
       },
     });
     if (!c) throw new NotFoundException('案件不存在');
@@ -188,6 +211,20 @@ export class CasesService {
     const salesLink = c.procurementPlan?.salesCase ? presentSalesLink(c.procurementPlan.salesCase) : null;
     const supplierName = supplierNameOf(c);
     const contract = presentSalesContract(c.contract, c.settlement);
+    const presentedContract = contract
+      ? {
+          ...contract,
+          directPort: parseDirectPort(c.contract?.directPortJson),
+          deliveryModeLabel: c.contract?.deliveryMode
+            ? DeliveryModeLabel[c.contract.deliveryMode] || c.contract.deliveryMode
+            : null,
+        }
+      : null;
+    const taxRebateReady = evaluateFt4({
+      customs: c.customs ? { eportStatus: c.customs.eportStatus } : null,
+      settlement: c.settlement || undefined,
+      taxRebate: c.taxRebateChecklist,
+    });
     const shipmentStatus = presentSalesShipmentStatus({
       status: c.status,
       currentNode: c.currentNode,
@@ -210,7 +247,7 @@ export class CasesService {
           : null,
       }),
       catalog: NODE_CATALOG,
-      contract,
+      contract: presentedContract,
       ...shipmentStatus,
       sinosureExposure,
       kycReports: c.kycReports.map((k) => ({ ...k, payload: safeJson(k.payload) })),
@@ -244,6 +281,7 @@ export class CasesService {
             }),
           }
         : null,
+      taxRebateReady,
     };
   }
 
@@ -348,6 +386,8 @@ export class CasesService {
       hasRemittance: _ignoredHasRemittance,
       customerPickedUp,
       domesticPortArrivalAt,
+      deliveryMode,
+      directPort,
       ...rest
     } = dto;
     const parsedDelivery = parseDate(deliveryDate);
@@ -382,6 +422,8 @@ export class CasesService {
       shipmentDate: mode.shipmentDate ? parseDate(mode.shipmentDate) : null,
       etaDate: mode.etaDate ? parseDate(mode.etaDate) : null,
       domesticPortArrivalAt: mode.domesticPortArrivalAt ? parseDate(mode.domesticPortArrivalAt) : null,
+      deliveryMode: deliveryMode || null,
+      directPortJson: stringifyDirectPort(directPort || null),
     };
     const row = await this.prisma.contract.upsert({
       where: { caseId },
@@ -409,6 +451,7 @@ export class CasesService {
     });
     const occupancyGate = await this.gates.refreshOccupancyReview(caseId, 'N3');
     await this.applyOccupancyNodeStatus(caseId, 'N3', occupancyGate);
+    await this.applyTaxFinanceNodeStatus(caseId, 'N3', occupancyGate);
     const sinosureExposure = await this.customers.occupancyForCase(caseId, {
       newAmountFen: dto.amountFen ?? undefined,
       newCurrency: dto.currency,
@@ -954,6 +997,8 @@ export class CasesService {
     });
     const presented = presentPlanPayment(row);
     const salesLink = row.salesCase ? presentSalesLink(row.salesCase) : presentSalesLink(salesCase);
+    const taxGate = await this.gates.refreshTaxFinanceReview(caseId, 'N5');
+    await this.applyTaxFinanceNodeStatus(caseId, 'N5', taxGate);
     return {
       ...row,
       paymentModeLabel: presented.paymentModeLabel,
@@ -966,6 +1011,7 @@ export class CasesService {
         planContractDelivery: row.contractDelivery,
         caseContractDelivery: contract?.deliveryDate,
       }),
+      taxFinanceGate: taxGate,
     };
   }
 
@@ -1151,6 +1197,87 @@ export class CasesService {
     return this.gates.evaluateAndPersist(caseId, nodeCode);
   }
 
+  async saveTaxRebate(caseId: string, dto: SaveTaxRebateDto, actorId?: string) {
+    await this.ensureCase(caseId);
+    const row = await this.prisma.taxRebateChecklist.upsert({
+      where: { caseId },
+      create: {
+        caseId,
+        inputInvoiceNo: dto.inputInvoiceNo?.trim() || null,
+        flowGoods: !!dto.flowGoods,
+        flowCustoms: !!dto.flowCustoms,
+        flowInvoice: !!dto.flowInvoice,
+        flowRemittance: !!dto.flowRemittance,
+      },
+      update: {
+        inputInvoiceNo: dto.inputInvoiceNo?.trim() || null,
+        flowGoods: dto.flowGoods ?? undefined,
+        flowCustoms: dto.flowCustoms ?? undefined,
+        flowInvoice: dto.flowInvoice ?? undefined,
+        flowRemittance: dto.flowRemittance ?? undefined,
+      },
+    });
+    await this.audit.append({
+      caseId,
+      actorId,
+      action: 'TAX_REBATE_CHECKLIST_SAVED',
+      nodeCode: 'N9',
+      detail: dto,
+    });
+    const snap = await this.gates.snapshot(caseId);
+    return { ...row, ready: evaluateFt4(snap) };
+  }
+
+  async declareTaxRebate(caseId: string, actorId?: string) {
+    await this.ensureCase(caseId);
+    const snap = await this.gates.snapshot(caseId);
+    const ready = evaluateFt4(snap);
+    if (!ready.canDeclare) {
+      await this.persistGateCheck(caseId, {
+        nodeCode: 'FT4',
+        decision: Decision.HARD_BLOCK,
+        canProceed: false,
+        missing: ready.missing,
+        reasons: ready.reasons,
+        alerts: [],
+      });
+      throw new HttpException(
+        {
+          code: 'GATE_REFUSED',
+          message: FT4_DECLARE_REASON,
+          nodeCode: 'FT4',
+          decision: Decision.HARD_BLOCK,
+          canProceed: false,
+          missing: ready.missing,
+          reasons: ready.reasons,
+          alerts: [],
+        },
+        HttpStatus.CONFLICT,
+      );
+    }
+    const row = await this.prisma.taxRebateChecklist.upsert({
+      where: { caseId },
+      create: {
+        caseId,
+        inputInvoiceNo: snap.taxRebate?.inputInvoiceNo || null,
+        flowGoods: true,
+        flowCustoms: true,
+        flowInvoice: true,
+        flowRemittance: true,
+        declaredAt: new Date(),
+      },
+      update: { declaredAt: new Date() },
+    });
+    await this.audit.append({
+      caseId,
+      actorId,
+      action: 'TAX_REBATE_DECLARED',
+      nodeCode: 'FT4',
+      detail: { checklistId: row.id },
+    });
+    return { ...row, ready: { ...ready, canDeclare: true } };
+  }
+
   async exposurePreview(
     caseId: string,
     override?: { newAmountFen?: number; newCurrency?: string },
@@ -1261,7 +1388,28 @@ export class CasesService {
     actorId?: string,
   ) {
     await this.ensureCase(caseId);
-    if (input.reviewId || isOccupancyWorkbenchAction(input.action)) {
+    if (input.reviewId) {
+      const occupancy = await this.prisma.occupancyReview.findUnique({ where: { id: input.reviewId } });
+      if (occupancy && occupancy.caseId === caseId) {
+        return this.applyOccupancyWorkbench(caseId, input, actorId);
+      }
+      const tax = await this.prisma.taxFinanceReview.findUnique({ where: { id: input.reviewId } });
+      if (tax && tax.caseId === caseId) {
+        return this.applyTaxFinanceWorkbench(caseId, input, actorId);
+      }
+      throw new NotFoundException('审核任务不存在');
+    }
+    if (isOccupancyWorkbenchAction(input.action) || isTaxFinanceWorkbenchAction(input.action)) {
+      const occupancy = await this.prisma.occupancyReview.findFirst({
+        where: { caseId, status: { in: [...OCCUPANCY_QUEUE_STATUSES] } },
+        orderBy: { createdAt: 'desc' },
+      });
+      if (occupancy) return this.applyOccupancyWorkbench(caseId, { ...input, reviewId: occupancy.id }, actorId);
+      const tax = await this.prisma.taxFinanceReview.findFirst({
+        where: { caseId, status: { in: [...TAX_FINANCE_QUEUE_STATUSES] } },
+        orderBy: { createdAt: 'desc' },
+      });
+      if (tax) return this.applyTaxFinanceWorkbench(caseId, { ...input, reviewId: tax.id }, actorId);
       return this.applyOccupancyWorkbench(caseId, input, actorId);
     }
     let hit: { id: string; disposition: string; nodeCode?: string } | null = null;
@@ -1412,11 +1560,120 @@ export class CasesService {
     return { action, review, gate: reeval, occupancy: review };
   }
 
+  private async applyTaxFinanceWorkbench(
+    caseId: string,
+    input: { hitId?: string; reviewId?: string; action: string; comment?: string },
+    actorId?: string,
+  ) {
+    const actor = actorId?.trim() || null;
+    let review = input.reviewId
+      ? await this.prisma.taxFinanceReview.findUnique({ where: { id: input.reviewId } })
+      : await this.prisma.taxFinanceReview.findFirst({
+          where: { caseId, status: { in: [...TAX_FINANCE_QUEUE_STATUSES] } },
+          orderBy: { createdAt: 'desc' },
+        });
+    if (!review || review.caseId !== caseId) {
+      throw new NotFoundException('退税·融资性审核任务不存在');
+    }
+    const next = taxFinanceActionNextStatus(review.status, input.action);
+    if (!next.ok) throw new BadRequestException(next.error);
+
+    const now = new Date();
+    const data: {
+      status: string;
+      comment?: string | null;
+      claimedById?: string | null;
+      claimedAt?: Date | null;
+      decidedById?: string | null;
+      decidedAt?: Date | null;
+    } = {
+      status: next.status,
+      comment: input.comment ?? review.comment,
+    };
+    if (input.action === TaxFinanceWorkbenchAction.CLAIM || !review.claimedAt) {
+      data.claimedById = actor || review.claimedById;
+      data.claimedAt = review.claimedAt || now;
+    }
+    if (
+      input.action === TaxFinanceWorkbenchAction.APPROVE ||
+      input.action === TaxFinanceWorkbenchAction.REJECT
+    ) {
+      data.decidedById = actor;
+      data.decidedAt = now;
+    }
+    review = await this.prisma.taxFinanceReview.update({
+      where: { id: review.id },
+      data,
+    });
+    const action = await this.prisma.workbenchAction.create({
+      data: {
+        caseId,
+        taxFinanceReviewId: review.id,
+        actorId: actor,
+        action: input.action,
+        comment: input.comment,
+      },
+    });
+    await this.audit.append({
+      caseId,
+      actorId: actor,
+      action: `WORKBENCH_${input.action}`,
+      nodeCode: review.nodeCode,
+      detail: {
+        ...input,
+        reviewId: review.id,
+        kind: 'TAX_FINANCE',
+        status: review.status,
+        fingerprint: review.fingerprint,
+        band: review.band,
+        reasonCode: review.reasonCode,
+      },
+    });
+    const nodeCode = review.nodeCode;
+    const reeval: GateResult = await this.gates.evaluateAndPersist(caseId, nodeCode);
+    await this.applyTaxFinanceNodeStatus(caseId, nodeCode, reeval);
+    await this.prisma.tradeCase.update({
+      where: { id: caseId },
+      data: {
+        status: reeval.decision === Decision.HARD_BLOCK ? CaseStatus.BLOCKED : CaseStatus.IN_PROGRESS,
+        overallRisk:
+          reeval.decision === Decision.HARD_BLOCK
+            ? RiskLevel.HIGH
+            : reeval.decision === Decision.REVIEW
+              ? RiskLevel.MEDIUM
+              : RiskLevel.MEDIUM,
+        currentNode: nodeCode,
+      },
+    });
+    return { action, review, gate: reeval, taxFinance: review };
+  }
+
   private async applyOccupancyNodeStatus(caseId: string, nodeCode: string, result: GateResult) {
     const high =
       result.exposure?.band === 'HIGH' ||
       (result.missing || []).some((m) => /_SINOSURE_EXPOSURE_HIGH$/.test(m));
     if (!high && result.decision !== Decision.REVIEW) return;
+    const nodeStatus = result.canProceed
+      ? NodeStatus.IN_PROGRESS
+      : result.decision === Decision.REVIEW
+        ? NodeStatus.REVIEW
+        : NodeStatus.BLOCKED;
+    await this.prisma.caseNode.updateMany({
+      where: { caseId, code: nodeCode, status: { not: NodeStatus.PASSED } },
+      data: {
+        status: nodeStatus,
+        decision: result.decision,
+        summary: [...result.reasons, ...result.alerts].join('；'),
+      },
+    });
+  }
+
+  private async applyTaxFinanceNodeStatus(caseId: string, nodeCode: string, result: GateResult) {
+    const flagged =
+      result.taxFinance?.band === 'YELLOW' ||
+      result.taxFinance?.band === 'RED' ||
+      (result.missing || []).some((m) => /^FT[1-4]_/.test(m));
+    if (!flagged && result.decision !== Decision.REVIEW && result.decision !== Decision.HARD_BLOCK) return;
     const nodeStatus = result.canProceed
       ? NodeStatus.IN_PROGRESS
       : result.decision === Decision.REVIEW
@@ -1589,6 +1846,7 @@ export class CasesService {
     const salesLink = result.missing.includes('N5_SALES_LINK') || result.missing.includes('N5_SALES_NOT_SIGNED');
     const pendingChange = (result.missing || []).some((m) => /_PENDING_CHANGE$/.test(m));
     const occupancyHigh = (result.missing || []).some((m) => /_SINOSURE_EXPOSURE_HIGH$/.test(m));
+    const taxFt = (result.missing || []).some((m) => /^FT[1-4]_/.test(m));
     throw new HttpException(
       {
         code: 'GATE_REFUSED',
@@ -1602,7 +1860,14 @@ export class CasesService {
                 ? result.reasons.find((r) => r.includes('未生效')) || N6_PLUS_PENDING_CHANGE_REASON
                 : occupancyHigh
                   ? result.reasons.find((r) => r.includes('工作台')) || SINOSURE_EXPOSURE_HIGH_REVIEW_REASON
-                  : '闸门拒绝推进：证据不足或命中硬拦截'),
+                  : taxFt
+                    ? result.reasons[0] ||
+                      (result.missing.includes('FT2_DIRECT_PORT_DOCS')
+                        ? TAX_FINANCE_DIRECT_DOCS_REASON
+                        : result.missing.includes('FT2_EMPTY_TURN')
+                          ? TAX_FINANCE_EMPTY_TURN_REASON
+                          : TAX_FINANCE_YELLOW_REVIEW_REASON)
+                    : '闸门拒绝推进：证据不足或命中硬拦截'),
         ...result,
       },
       HttpStatus.CONFLICT,

@@ -22,7 +22,7 @@ export const NODE_CATALOG = [
     mvp: true,
     isHardGate: false,
     isStub: false,
-    summary: '销售/出口合同与采购合同分开签订。所有权保留与争议解决条款必填；中信保限额未登记不得签订销售合同；须上传保单并登记投保限额；按买方占用测算（未履行完毕未回款+已履行完毕未回款+新签合同），超额分档：中风险软提示、高风险工作台领取/放行/驳回、超高风险硬拦截。运输术语（Incoterms）与结算方式独立：FOB / CIF（及 CIP 等）只表示运输；前 T/T / 后 T/T 只表示结算，可与 FOB/CIF 组合。CIF/CIP 填装运港与装运日期；FOB 填国内段到达口岸/港口时间；T/T 填对应收汇节点。客户是否提货可填；收汇金额以收汇对账（N9）水单/到账为唯一事实源，本节点只读。销售合同列表按未出运/已出运/已完成分组。',
+    summary: '销售/出口合同与采购合同分开签订。所有权保留与争议解决条款必填；中信保限额未登记不得签订销售合同；须上传保单并登记投保限额；按买方占用测算（未履行完毕未回款+已履行完毕未回款+新签合同），超额分档：中风险软提示、高风险工作台领取/放行/驳回、超高风险硬拦截。须选择交货方式（自有仓 / 保税 / 港口直出），不强制自有仓；港口直出须四问+证据闭环。运输术语（Incoterms）与结算方式独立：FOB / CIF（及 CIP 等）只表示运输；前 T/T / 后 T/T 只表示结算，可与 FOB/CIF 组合。CIF/CIP 填装运港与装运日期；FOB 填国内段到达口岸/港口时间；T/T 填对应收汇节点。客户是否提货可填；收汇金额以收汇对账（N9）水单/到账为唯一事实源，本节点只读。销售合同列表按未出运/已出运/已完成分组。',
   },
   {
     code: 'N4',
@@ -38,7 +38,7 @@ export const NODE_CATALOG = [
     mvp: true,
     isHardGate: false,
     isStub: false,
-    summary: '采购合同与销售合同分开签订。公司惯例先销售后采购：须关联一笔已达 N3 且已签的销售/出口合同，否则不得保存或推进；登记国内供应商、采购合同/PO、供应商实际交付日期与实际交付日期；供应商须过制裁/不可靠实体筛查；供应商实际交付日期或实际交付日期任一不得晚于关联销售合同交货期，除非已登记结构化延期并保留客户同意证据。',
+    summary: '采购合同与销售合同分开签订。公司惯例先销售后采购：须关联一笔已达 N3 且已签的销售/出口合同，否则不得保存或推进；登记国内供应商、采购合同/PO、供应商实际交付日期与实际交付日期；供应商须过制裁/不可靠实体筛查；供应商实际交付日期或实际交付日期任一不得晚于关联销售合同交货期，除非已登记结构化延期并保留客户同意证据。交货方式只读同步自关联销售合同；港口直出薄利须退税·融资性工作台审核。',
   },
   {
     code: 'N6',
@@ -62,7 +62,7 @@ export const NODE_CATALOG = [
     mvp: true,
     isHardGate: false,
     isStub: false,
-    summary: 'HS 编码与申报要素模板核对、原产地证据；税则品名/计量单位不符软提示；严重缺项禁止申报。存在未生效变更单时硬拦截。',
+    summary: 'HS 编码与申报要素模板核对、原产地证据；税则品名/计量单位不符软提示；严重缺项禁止申报。存在未生效变更单时硬拦截。港口直出须与直出单证货描/收货人一致，严重不符红线硬拦截。',
   },
   {
     code: 'N9',
@@ -446,6 +446,10 @@ export const EvidenceKind = {
   EPORT_SYNC: 'EPORT_SYNC',
   SINOSURE_POLICY: 'SINOSURE_POLICY',
   SINOSURE_CONFIRM: 'SINOSURE_CONFIRM',
+  DIRECT_PORT_GOODS: 'DIRECT_PORT_GOODS',
+  DIRECT_PORT_CUSTOMS_PARTY: 'DIRECT_PORT_CUSTOMS_PARTY',
+  DIRECT_PORT_REMITTANCE: 'DIRECT_PORT_REMITTANCE',
+  DIRECT_PORT_EMPTY_TURN: 'DIRECT_PORT_EMPTY_TURN',
 } as const;
 
 /** 模糊报价用语：命中则禁止推进 */
