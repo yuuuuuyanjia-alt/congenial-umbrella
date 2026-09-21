@@ -230,7 +230,7 @@ export function formNextNodeButtonLabel(
 
 export function formNextNodeHeading(formNode: string) {
   if (formNode === 'N5') return '出口案后续（不属于本采购合同）';
-  return '九节点下一步';
+  return '';
 }
 
 export function goToNode(caseId: string, code: string) {

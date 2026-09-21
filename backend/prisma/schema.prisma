@@ -241,7 +241,7 @@ model Contract {
   remittedFen         Int       @default(0)
   /// 交货方式：OWN_WAREHOUSE 自有仓 | BONDED 保税（遗留） | DIRECT_PORT 港口直出。本轮表单仅自有仓 / 港口直出。
   deliveryMode        String?
-  /// 港口直出：货物仓储地点 / 批次号 / 电子底账编号（JSON）。自有仓可空。
+  /// 港口直出：货物仓储地点 / 批次号（JSON）。自有仓可空。旧数据可含电子底账编号，闸门不再要求。
   directPortJson      String?
   /// 前 T/T 收汇水单/凭证（JSON 数组：{ ref, fileName }）
   ttVoucherJson       String?

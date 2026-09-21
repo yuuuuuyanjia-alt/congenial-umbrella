@@ -58,11 +58,9 @@ export interface ContractSnap {
 export interface DirectPortSnap {
   warehouseLocation?: string | null;
   batchNo?: string | null;
-  eLedgerNo?: string | null;
   goodsWhereAnswer?: string | null;
   goodsWhereRef?: string | null;
   customsPartyAnswer?: string | null;
-  customsPartyRef?: string | null;
   remittanceBoundAnswer?: string | null;
   remittanceBoundRef?: string | null;
   emptyTurnLikely?: boolean | null;

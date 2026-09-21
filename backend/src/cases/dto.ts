@@ -38,11 +38,9 @@ export class UpsertPartyDto {
 export class DirectPortDto {
   @IsOptional() @IsString() warehouseLocation?: string | null;
   @IsOptional() @IsString() batchNo?: string | null;
-  @IsOptional() @IsString() eLedgerNo?: string | null;
   @IsOptional() @IsString() goodsWhereAnswer?: string | null;
   @IsOptional() @IsString() goodsWhereRef?: string | null;
   @IsOptional() @IsString() customsPartyAnswer?: string | null;
-  @IsOptional() @IsString() customsPartyRef?: string | null;
   @IsOptional() @IsString() remittanceBoundAnswer?: string | null;
   @IsOptional() @IsString() remittanceBoundRef?: string | null;
   @IsOptional() @IsBoolean() emptyTurnLikely?: boolean | null;

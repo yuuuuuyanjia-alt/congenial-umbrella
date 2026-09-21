@@ -26,7 +26,6 @@
 
     <view class="btn" v-if="canWriteBusiness" @click="runScreen">执行模拟筛查并生成 KYC 报告</view>
     <view class="btn" v-if="canWriteBusiness" @click="tryAdvance">尝试推进本节点</view>
-    <NextNodeCta v-if="nextReady" :target="nextTarget" :ready="nextReady" :hint="nextHint" @go="goNext" />
 
     <view class="card" v-if="kycReport">
       <view class="h2">KYC 报告</view>
@@ -47,7 +46,14 @@
 
     <view class="err" v-if="err">{{ err }}</view>
     <view class="ok" v-if="ok">{{ ok }}</view>
-    <NextNodeCta v-if="nextReady" :target="nextTarget" :ready="nextReady" :hint="nextHint" @go="goNext" />
+    <NextNodeCta
+      v-if="nextReady"
+      :target="nextTarget"
+      :ready="nextReady"
+      :hint="nextHint"
+      button-label="进入下一步"
+      @go="goNext"
+    />
   </view>
 </template>
 

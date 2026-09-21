@@ -65,8 +65,6 @@
         <input class="input" v-model="directPort.warehouseLocation" placeholder="如洋山港待装仓" />
         <view class="label">批次号</view>
         <input class="input" v-model="directPort.batchNo" placeholder="批次号" />
-        <view class="label">电子底账编号</view>
-        <input class="input" v-model="directPort.eLedgerNo" placeholder="电子底账编号" />
       </template>
     </view>
 
@@ -129,7 +127,6 @@
       :target="nextTarget"
       :ready="nextReady"
       :hint="nextHint"
-      heading=""
       button-label="进入下一步"
       @go="goNext"
     />
@@ -218,7 +215,6 @@ const form = reactive({
 const directPort = reactive({
   warehouseLocation: '',
   batchNo: '',
-  eLedgerNo: '',
 });
 const sino = reactive({
   evidenceRef: '',
@@ -427,7 +423,6 @@ function applyDirectPort(dp?: any) {
   if (!dp) return;
   directPort.warehouseLocation = dp.warehouseLocation || dp.goodsWhereAnswer || '';
   directPort.batchNo = dp.batchNo || dp.goodsWhereRef || '';
-  directPort.eLedgerNo = dp.eLedgerNo || dp.customsPartyRef || '';
 }
 
 function stubVoucher() {
@@ -488,7 +483,6 @@ async function save() {
           ? {
               warehouseLocation: directPort.warehouseLocation || null,
               batchNo: directPort.batchNo || null,
-              eLedgerNo: directPort.eLedgerNo || null,
             }
           : null,
     });
@@ -537,7 +531,7 @@ async function tryAdvance() {
       err.value = `${err.value}\n须由风控岗在审核工作台领取并放行，无需修改合同金额。`;
     }
     if (Array.isArray(e?.missing) && e.missing.some((m: string) => String(m).startsWith('FT'))) {
-      err.value = `${err.value}\n港口直出请补仓储地点、批次号与电子底账编号。`;
+      err.value = `${err.value}\n港口直出请补仓储地点与批次号。`;
     }
   }
 }

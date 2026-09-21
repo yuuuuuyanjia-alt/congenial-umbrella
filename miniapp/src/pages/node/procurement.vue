@@ -85,7 +85,7 @@
 
     <view class="card" v-if="selectedSales">
       <view class="h2">交货方式（只读，同步自销售合同）</view>
-      <view class="muted">采购侧不改交货方式。港口直出由销售合同登记仓储地点、批次号与电子底账编号。</view>
+      <view class="muted">采购侧不改交货方式。港口直出由销售合同登记仓储地点与批次号。</view>
       <view class="h2" style="margin-top: 12rpx">{{ selectedSales.deliveryModeLabel || '销售合同尚未选择交货方式' }}</view>
       <view class="muted" v-if="selectedSales.deliveryMode === 'DIRECT_PORT'" style="margin-top: 8rpx">
         港口直出：购销薄利将进入工作台「退税·融资性审核」。货描须与销售合同匹配。
