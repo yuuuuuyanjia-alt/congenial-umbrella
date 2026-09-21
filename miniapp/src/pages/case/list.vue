@@ -1,7 +1,48 @@
 <template>
   <view class="wrap">
+    <RoleBar compact />
     <view class="h1" style="margin-bottom: 8rpx">{{ title }}</view>
     <view class="muted" style="margin-bottom: 16rpx">{{ hint }}</view>
+
+    <view class="card" v-if="canCreate && kind === 'sales'">
+      <view class="h2">新建销售合同</view>
+      <view class="muted">将创建出口案并打开询盘/客户 KYC。请按 N1 筛查 → N2 报价 → N3 销售合同办理，不能跳过。</view>
+      <view class="label">标题</view>
+      <input class="input" v-model="draft.title" :placeholder="DEMO_CREATE.salesTitle" />
+      <view class="label">金额（元）</view>
+      <input class="input" type="digit" v-model="draft.amountYuan" placeholder="25000.00" />
+      <view class="btn" :class="{ 'btn-ghost': creating }" @click="createSales">{{ creating ? '正在创建…' : '新建销售合同' }}</view>
+    </view>
+
+    <view class="card" v-if="canCreate && kind === 'procurement'">
+      <view class="h2">新建采购合同</view>
+      <view class="muted">请选择一笔已签订的销售合同，打开该案的采购合同（N5）。已有采购合同则进入编辑。不会新建没有销售合同的案件；保存仍须带上该销售合同关联。</view>
+      <view class="muted" v-if="!signedSales.length" style="margin-top: 8rpx">暂无已签订的销售合同。请先完成销售合同签订。</view>
+      <view
+        class="card"
+        style="box-shadow: none; border: 2rpx solid #c5d4cb; margin-bottom: 12rpx; margin-top: 12rpx"
+        :style="pickedSalesId === opt.id ? 'border-color: #0f3d2e' : ''"
+        v-for="opt in signedSales"
+        :key="opt.id"
+        @click="pickedSalesId = opt.id"
+      >
+        <view class="row">
+          <view style="flex: 1; min-width: 0">
+            <view class="h2" style="margin: 0">{{ opt.customer || opt.title }} · {{ opt.caseNo }}</view>
+            <view class="muted" style="margin-top: 6rpx">
+              {{ opt.goodsDesc || '' }} · {{ money(opt.contract?.amountFen ?? opt.amountFen, opt.contract?.currency || opt.currency) }}
+              · {{ opt.poNo || opt.procurementPlan ? '已有采购合同，将进入编辑' : '待登记采购合同' }}
+            </view>
+          </view>
+          <view class="badge" :class="pickedSalesId === opt.id ? 'badge-pass' : 'badge-stub'">
+            {{ pickedSalesId === opt.id ? '已选' : opt.statusLabel || '已签订' }}
+          </view>
+        </view>
+      </view>
+      <view class="btn" :class="{ 'btn-ghost': !pickedSalesId }" @click="openPickedProcurement">
+        {{ pickedSalesBtn }}
+      </view>
+    </view>
 
     <view class="choice-row" v-if="kind === 'sales'" style="margin-bottom: 20rpx">
       <view
@@ -61,7 +102,7 @@
 
 <script setup lang="ts">
 import { onLoad, onShow } from '@dcloudio/uni-app';
-import { computed, ref } from 'vue';
+import { computed, reactive, ref } from 'vue';
 import {
   api,
   decisionClass,
@@ -77,12 +118,33 @@ import {
   procurementContractTitle,
   salesShipmentBadgeClass,
   salesShipmentBucketLabel,
+  toastErr,
 } from '../../api';
+import {
+  buildCreateCaseBody,
+  canShowCreateContract,
+  DEMO_CREATE,
+  procurementOpenUrl,
+  salesCreateLandingPage,
+  signedSalesPicks,
+} from '../../create-flow';
+import RoleBar from '../../components/RoleBar.vue';
+import { useDemoRole } from '../../role';
 
 const kind = ref<'sales' | 'procurement' | ''>('');
 const raw = ref<any[]>([]);
 const loaded = ref(false);
+const creating = ref(false);
+const pickedSalesId = ref('');
+const signedSales = ref<any[]>([]);
 const focusGroup = ref<'unshipped' | 'shipped' | 'completed'>('unshipped');
+const { role, canWriteBusiness } = useDemoRole();
+const draft = reactive({
+  title: DEMO_CREATE.salesTitle,
+  amountYuan: DEMO_CREATE.amountYuan,
+});
+
+const canCreate = computed(() => !!kind.value && canShowCreateContract(role.value) && canWriteBusiness.value);
 
 const title = computed(() => (kind.value === 'procurement' ? '采购合同管理' : '销售合同管理'));
 const hint = computed(() =>
@@ -90,10 +152,19 @@ const hint = computed(() =>
     ? '此处只列国内采购合同/备货（N5）。打开后填写采购合同；保存或推进前须从已签订的销售合同中任选一笔关联（不限于本案）。货款可选一次性付清或分期支付（分期须填约定付款时间、付款比例、金额）。装运、单证、报关、收汇属于出口案，不在本采购合同办理；采购完成后可点「去办装运（出口案）」跳转。'
     : '出口销售合同按未出运、已出运、已完成分组。已完成须已出运、客户已提货且收汇对账已回款。打开卡片仍填写销售合同（销售合同/订单确认）。国内采购订单不在本列表。本案已离开销售合同节点时，可点「进入下一节点」直达当前九节点步骤。',
 );
+const pickedSalesBtn = computed(() => {
+  const hit = signedSales.value.find((c) => c.id === pickedSalesId.value);
+  if (!hit) return '请先选择已签订的销售合同';
+  return hit.poNo || hit.procurementPlan ? '编辑该案采购合同' : '打开该案采购合同';
+});
 const empty = computed(() =>
   kind.value === 'procurement'
-    ? '暂无采购合同。请先完成销售合同签订，待案件到达国内采购/备货后再登记采购合同。'
-    : '暂无销售合同。询盘未通过或尚未到达销售合同节点的案件不在此列。',
+    ? canCreate.value
+      ? '暂无采购合同。请点上方选择一笔已签订的销售合同办理采购。'
+      : '暂无采购合同。请先完成销售合同签订，待案件到达国内采购/备货后再登记采购合同。'
+    : canCreate.value
+      ? '暂无销售合同。可点上方新建；新案从询盘 KYC 起，通过后才会出现在本列表。'
+      : '暂无销售合同。询盘未通过或尚未到达销售合同节点的案件不在此列。',
 );
 
 const list = computed(() => {
@@ -115,6 +186,9 @@ onLoad((q) => {
   kind.value = q.kind;
   loaded.value = false;
   raw.value = [];
+  draft.title = DEMO_CREATE.salesTitle;
+  draft.amountYuan = DEMO_CREATE.amountYuan;
+  pickedSalesId.value = '';
   if (q?.group === 'shipped' || q?.group === 'completed' || q?.group === 'unshipped') {
     focusGroup.value = q.group;
   }
@@ -125,12 +199,42 @@ onShow(async () => {
   if (!kind.value) return;
   try {
     raw.value = await api.cases(kind.value || undefined);
+    if (kind.value === 'procurement' && canCreate.value) {
+      const sales = await api.cases('sales');
+      signedSales.value = signedSalesPicks(sales);
+      if (!pickedSalesId.value && signedSales.value.length) {
+        const wip = signedSales.value.find((c) => !c.poNo && !c.procurementPlan);
+        pickedSalesId.value = (wip || signedSales.value[0]).id;
+      }
+    }
   } catch {
     uni.showToast({ title: '无法加载合同，请先启动后端', icon: 'none' });
   } finally {
     loaded.value = true;
   }
 });
+
+async function createSales() {
+  if (kind.value !== 'sales' || !canCreate.value || creating.value) return;
+  creating.value = true;
+  try {
+    const created = await api.createCase(buildCreateCaseBody(draft.title, draft.amountYuan));
+    if (!created?.id) throw { message: '创建成功但未返回案件' };
+    uni.navigateTo({ url: salesCreateLandingPage(created.id) });
+  } catch (e) {
+    toastErr(e);
+  } finally {
+    creating.value = false;
+  }
+}
+
+function openPickedProcurement() {
+  if (!pickedSalesId.value) {
+    uni.showToast({ title: '请先选择已签订的销售合同', icon: 'none' });
+    return;
+  }
+  uni.navigateTo({ url: procurementOpenUrl(pickedSalesId.value) });
+}
 
 function primaryNo(c: any) {
   if (kind.value === 'procurement') return c.poNo ? `采购合同 ${c.poNo}` : '采购合同待登记';

@@ -104,22 +104,48 @@ export function canWriteWorkbench(role?: string | null) {
 
 export const HOME_ENTRIES: Record<string, { url: string; label: string }[]> = {
   SALES: [
-    { url: '/pages/case/hub', label: '合同管理' },
+    { url: '/pages/case/list?kind=sales', label: '销售合同' },
+    { url: '/pages/case/list?kind=procurement', label: '采购合同' },
     { url: '/pages/supplier/list', label: '供应商管理' },
     { url: '/pages/customer/list', label: '客户管理' },
   ],
   RISK: [
     { url: '/pages/workbench/index', label: '审核工作台' },
-    { url: '/pages/case/hub', label: '合同管理' },
+    { url: '/pages/case/list?kind=sales', label: '销售合同' },
+    { url: '/pages/case/list?kind=procurement', label: '采购合同' },
     { url: '/pages/customer/list', label: '客户管理' },
     { url: '/pages/supplier/list', label: '供应商管理' },
   ],
   MANAGER: [
     { url: '/pages/customer/list', label: '客户管理' },
-    { url: '/pages/case/hub', label: '合同管理' },
+    { url: '/pages/case/list?kind=sales', label: '销售合同' },
+    { url: '/pages/case/list?kind=procurement', label: '采购合同' },
     { url: '/pages/supplier/list', label: '供应商管理' },
   ],
 };
+
+export function isContractHomeEntry(e: { url: string }) {
+  return /\/pages\/case\/list\?kind=(sales|procurement)/.test(e.url);
+}
+
+/** Keep role order; consecutive 销售/采购 entries render as a primary pair. */
+export function homeEntryBlocks(role?: string | null) {
+  const blocks: { type: 'contracts' | 'btn'; items: { url: string; label: string }[] }[] = [];
+  let pair: { url: string; label: string }[] = [];
+  for (const e of homeEntriesFor(role)) {
+    if (isContractHomeEntry(e)) {
+      pair.push(e);
+      continue;
+    }
+    if (pair.length) {
+      blocks.push({ type: 'contracts', items: pair });
+      pair = [];
+    }
+    blocks.push({ type: 'btn', items: [e] });
+  }
+  if (pair.length) blocks.push({ type: 'contracts', items: pair });
+  return blocks;
+}
 
 export function homeEntriesFor(role?: string | null) {
   return HOME_ENTRIES[role || UserRole.SALES] || HOME_ENTRIES.SALES;

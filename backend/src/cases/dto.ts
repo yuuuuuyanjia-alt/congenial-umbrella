@@ -7,6 +7,9 @@ export class CreateCaseDto {
   @IsString() destination: string;
   @IsInt() amountFen: number;
   @IsOptional() @IsString() currency?: string;
+  /** 演示新建销售合同时预填买方；付款人/收货人同名。 */
+  @IsOptional() @IsString() buyerName?: string;
+  @IsOptional() @IsString() buyerCountry?: string;
 }
 
 export class UpsertPartyDto {
