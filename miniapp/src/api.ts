@@ -34,6 +34,7 @@ export const api = {
   audit: (id: string) => request('GET', `/cases/${id}/audit`),
   createCase: (body: unknown) => request('POST', '/cases', body),
   upsertParty: (id: string, body: unknown) => request('POST', `/cases/${id}/parties`, body),
+  saveInquiry: (id: string, body: unknown) => request('POST', `/cases/${id}/nodes/N1/inquiry`, body),
   screen: (id: string) => request('POST', `/cases/${id}/nodes/N1/screen`),
   screenSupplier: (id: string) => request('POST', `/cases/${id}/nodes/N5/screen`),
   saveContract: (id: string, body: unknown) => request('POST', `/cases/${id}/nodes/N3/contract`, body),
@@ -393,7 +394,9 @@ export function remittanceText(code?: string | null) {
 }
 
 export const SALES_CURRENCY = 'USD';
+export const SALES_CURRENCY_OPTIONS = ['CNY', 'USD'] as const;
 export const PROCUREMENT_CURRENCY = 'CNY';
+export const CNY_EXCLUDED_FROM_USD_OCCUPANCY_TIP = '人民币合同暂不计入美元占用';
 
 export function money(fen?: number | null, currency = SALES_CURRENCY) {
   if (fen == null || !Number.isFinite(Number(fen))) return '未登记';
@@ -453,11 +456,14 @@ export function bandOfExcessFen(excessFen: number) {
   return 'ULTRA_HIGH';
 }
 
-export function previewExposure(base: any, newAmountFen: number) {
+export function previewExposure(base: any, newAmountFen: number, newCurrency?: string | null) {
   if (!base) return null;
   const openUnpaidFen = Number(base.openUnpaidFen) || 0;
   const fulfilledUnpaidFen = Number(base.fulfilledUnpaidFen) || 0;
-  const newFen = Math.max(0, Number(newAmountFen) || 0);
+  const ccy = String(newCurrency || SALES_CURRENCY).toUpperCase();
+  const countNew = ccy === 'USD';
+  const rawNew = Math.max(0, Number(newAmountFen) || 0);
+  const newFen = countNew ? rawNew : 0;
   const occupancyFen = openUnpaidFen + fulfilledUnpaidFen + newFen;
   const insuredLimitFen = base.insuredLimitFen != null ? Number(base.insuredLimitFen) : null;
   const remainingFen = insuredLimitFen != null ? Math.max(0, insuredLimitFen - occupancyFen) : 0;
@@ -485,7 +491,11 @@ export function previewExposure(base: any, newAmountFen: number) {
           : band
             ? 'SOFT_ALERT'
             : null;
-  const currency = base.currency || 'USD';
+  const currency = 'USD';
+  const notes = [...(base.notes || [])];
+  if (!countNew && rawNew > 0 && !notes.includes(CNY_EXCLUDED_FROM_USD_OCCUPANCY_TIP)) {
+    notes.push(`${CNY_EXCLUDED_FROM_USD_OCCUPANCY_TIP}（原币 ${money(rawNew, ccy)}）`);
+  }
   return {
     ...base,
     newContractFen: newFen,
@@ -496,6 +506,7 @@ export function previewExposure(base: any, newAmountFen: number) {
     bandLabel,
     gateDecision,
     currency,
+    notes,
     summary:
       insuredLimitFen == null
         ? '尚未登记投保限额。'

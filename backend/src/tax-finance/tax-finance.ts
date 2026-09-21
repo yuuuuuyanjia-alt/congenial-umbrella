@@ -16,7 +16,7 @@ export const DeliveryMode = {
 export type DeliveryModeCode = (typeof DeliveryMode)[keyof typeof DeliveryMode];
 
 export const DeliveryModeLabel: Record<string, string> = {
-  OWN_WAREHOUSE: '自有仓发运',
+  OWN_WAREHOUSE: '自有仓',
   BONDED: '保税仓储',
   DIRECT_PORT: '港口直出',
 };
@@ -77,9 +77,9 @@ export const TAX_FINANCE_YELLOW_REVIEW_REASON =
 export const TAX_FINANCE_YELLOW_REJECTED_REASON = '工作台已驳回该退税·融资性审核，禁止推进';
 export const TAX_FINANCE_EMPTY_TURN_REASON =
   '红线：港口直出迹象像空转/假出口，硬拦截，不得推进';
-export const TAX_FINANCE_DELIVERY_MODE_REASON = '须选择交货方式（自有仓 / 保税 / 港口直出），不强制自有仓';
+export const TAX_FINANCE_DELIVERY_MODE_REASON = '须选择交货方式（自有仓 / 港口直出）';
 export const TAX_FINANCE_DIRECT_DOCS_REASON =
-  '港口直出须完成四问并上传/填写证据：货在证据、报关主体可解释、收汇与本案绑定、是否像空转';
+  '港口直出须填写货物仓储地点、批次号与电子底账编号';
 export const FT4_DECLARE_REASON = '退税申报前须完成就绪清单：报关放行、N9 收汇、进项发票号、四流闭环';
 
 export const WorkbenchItemKindTax = {
@@ -87,6 +87,9 @@ export const WorkbenchItemKindTax = {
 } as const;
 
 export interface DirectPortSnap {
+  warehouseLocation?: string | null;
+  batchNo?: string | null;
+  eLedgerNo?: string | null;
   goodsWhereAnswer?: string | null;
   goodsWhereRef?: string | null;
   customsPartyAnswer?: string | null;
@@ -155,22 +158,44 @@ export function isDeliveryMode(v?: string | null): v is DeliveryModeCode {
 
 export function parseDirectPort(raw?: string | null | DirectPortSnap): DirectPortSnap | null {
   if (!raw) return null;
-  if (typeof raw === 'object') return raw;
-  try {
-    const v = JSON.parse(raw) as DirectPortSnap;
-    return v && typeof v === 'object' ? v : null;
-  } catch {
-    return null;
+  let v: DirectPortSnap | null = null;
+  if (typeof raw === 'object') v = raw;
+  else {
+    try {
+      const parsed = JSON.parse(raw) as DirectPortSnap;
+      v = parsed && typeof parsed === 'object' ? parsed : null;
+    } catch {
+      return null;
+    }
   }
+  if (!v) return null;
+  const warehouseLocation = v.warehouseLocation || v.goodsWhereAnswer || null;
+  const batchNo = v.batchNo || v.goodsWhereRef || null;
+  const eLedgerNo = v.eLedgerNo || v.customsPartyRef || null;
+  return {
+    ...v,
+    warehouseLocation,
+    batchNo,
+    eLedgerNo,
+    goodsWhereAnswer: v.goodsWhereAnswer || warehouseLocation,
+    goodsWhereRef: v.goodsWhereRef || batchNo,
+    customsPartyRef: v.customsPartyRef || eLedgerNo,
+  };
 }
 
 export function stringifyDirectPort(dp?: DirectPortSnap | null): string | null {
   if (!dp) return null;
+  const warehouseLocation = dp.warehouseLocation || dp.goodsWhereAnswer || null;
+  const batchNo = dp.batchNo || dp.goodsWhereRef || null;
+  const eLedgerNo = dp.eLedgerNo || dp.customsPartyRef || null;
   return JSON.stringify({
-    goodsWhereAnswer: dp.goodsWhereAnswer ?? null,
-    goodsWhereRef: dp.goodsWhereRef ?? null,
+    warehouseLocation,
+    batchNo,
+    eLedgerNo,
+    goodsWhereAnswer: dp.goodsWhereAnswer || warehouseLocation,
+    goodsWhereRef: dp.goodsWhereRef || batchNo,
     customsPartyAnswer: dp.customsPartyAnswer ?? null,
-    customsPartyRef: dp.customsPartyRef ?? null,
+    customsPartyRef: dp.customsPartyRef || eLedgerNo,
     remittanceBoundAnswer: dp.remittanceBoundAnswer ?? null,
     remittanceBoundRef: dp.remittanceBoundRef ?? null,
     emptyTurnLikely: dp.emptyTurnLikely ?? null,
@@ -185,14 +210,12 @@ function filled(v?: string | null): boolean {
 
 export function directPortGaps(dp?: DirectPortSnap | null): string[] {
   const missing: string[] = [];
-  if (!filled(dp?.goodsWhereAnswer) || !filled(dp?.goodsWhereRef)) missing.push('FT2_GOODS_WHERE');
-  if (!filled(dp?.customsPartyAnswer) || !filled(dp?.customsPartyRef)) missing.push('FT2_CUSTOMS_PARTY');
-  if (!filled(dp?.remittanceBoundAnswer) || !filled(dp?.remittanceBoundRef)) {
-    missing.push('FT2_REMITTANCE_BOUND');
-  }
-  if (dp?.emptyTurnLikely !== true && dp?.emptyTurnLikely !== false) {
-    missing.push('FT2_EMPTY_TURN_ANSWER');
-  }
+  const warehouse = dp?.warehouseLocation || dp?.goodsWhereAnswer;
+  const batch = dp?.batchNo || dp?.goodsWhereRef;
+  const ledger = dp?.eLedgerNo || dp?.customsPartyRef;
+  if (!filled(warehouse)) missing.push('FT2_WAREHOUSE_LOCATION');
+  if (!filled(batch)) missing.push('FT2_BATCH_NO');
+  if (!filled(ledger)) missing.push('FT2_E_LEDGER');
   return missing;
 }
 
@@ -548,7 +571,7 @@ export function evaluateTaxFinance(snap: CaseSnapshot, nodeCode: string): TaxFin
   }
 
   if (direct && r.view.directPortComplete) {
-    r.reasons.push('港口直出四问与证据齐全，货物流+报关+发票+收汇可闭环，不强制自有仓');
+    r.reasons.push('港口直出已填仓储地点、批次号与电子底账编号');
     r.view.summary = r.reasons[r.reasons.length - 1];
   }
   r.view.fingerprint = fp;
@@ -648,15 +671,13 @@ export function evaluateFt4(snap: {
 
 export function completeDirectPortFixture(over: Partial<DirectPortSnap> = {}): DirectPortSnap {
   return {
-    goodsWhereAnswer: '货物在上海洋山港待装，仓单 YG-2026-088',
-    goodsWhereRef: 'WH-YG-2026-088',
-    customsPartyAnswer: '本企业为出口报关主体，非过桥',
-    customsPartyRef: 'CUSTOMS-PARTY-SELF',
-    remittanceBoundAnswer: '收汇水单发票号与本案合同一致',
-    remittanceBoundRef: 'SWIFT-BIND-088',
+    warehouseLocation: '上海洋山港待装仓',
+    batchNo: 'BATCH-YG-2026-088',
+    eLedgerNo: 'ELEDGER-2026-088',
+    goodsWhereAnswer: '上海洋山港待装仓',
+    goodsWhereRef: 'BATCH-YG-2026-088',
+    customsPartyRef: 'ELEDGER-2026-088',
     emptyTurnLikely: false,
-    emptyTurnAnswer: '有实物流与采购入库记录，不像空转',
-    emptyTurnRef: 'NOTE-NOT-LOOP',
     ...over,
   };
 }

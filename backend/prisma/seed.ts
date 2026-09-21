@@ -82,7 +82,7 @@ const HS = [
     hsCode: '8413.70.00',
     productName: '工业泵',
     requiredElementsJson: JSON.stringify(['品牌', '型号', '扬程', '介质']),
-    unit: '台',
+    unit: 'TON',
     exportTaxName: '离心泵',
   },
   {
@@ -328,7 +328,7 @@ async function seedPassCase(salesId: string, approverId: string, complianceId: s
           isFinal: true,
           deliveryDate: new Date('2026-11-30'),
           quantity: 10,
-          unit: '套',
+          unit: 'TON',
           ...fields,
           destination: 'Hamburg',
           shipmentPort: 'Shanghai',
@@ -817,7 +817,7 @@ async function seedGateDemoCase(salesId: string) {
           isFinal: false,
           deliveryDate: new Date('2026-12-15'),
           quantity: 6,
-          unit: '台',
+          unit: 'TON',
           ...fields,
           destination: 'Singapore',
         },
@@ -962,7 +962,7 @@ async function seedFobNoBlCase(salesId: string, approverId: string) {
           isFinal: true,
           deliveryDate: new Date('2026-12-20'),
           quantity: 10,
-          unit: '套',
+          unit: 'TON',
           ...fields,
           destination: 'Singapore',
           paymentDueAt: new Date('2027-01-04T00:00:00.000Z'),
@@ -1121,7 +1121,7 @@ async function seedSinosureOverLimitCase(salesId: string) {
           isFinal: false,
           deliveryDate: new Date('2026-12-20'),
           quantity: 10,
-          unit: '台',
+          unit: 'TON',
           ...fields,
           destination: 'Melbourne, AU',
         },
@@ -1337,7 +1337,7 @@ async function seedSupplierBlockCase(salesId: string) {
           isFinal: true,
           deliveryDate: new Date('2026-12-10'),
           quantity: 8,
-          unit: '套',
+          unit: 'TON',
           ...fields,
           destination: 'Hamburg',
         },
@@ -1498,7 +1498,7 @@ async function seedNordlichtLateCase(salesId: string, approverId: string) {
           deliveryDate: new Date('2026-03-15T00:00:00.000Z'),
           paymentDueAt: new Date('2026-04-14T00:00:00.000Z'),
           quantity: 4,
-          unit: '套',
+          unit: 'TON',
           ...fields,
           destination: 'Hamburg',
           shipmentPort: 'Ningbo',
@@ -1667,7 +1667,7 @@ async function seedNordlichtOpenCase(salesId: string, approverId: string) {
           deliveryDate: new Date('2026-12-01T00:00:00.000Z'),
           paymentDueAt: new Date('2026-12-31T00:00:00.000Z'),
           quantity: 6,
-          unit: '套',
+          unit: 'TON',
           ...fields,
           destination: 'Hamburg',
           shipmentPort: 'Shanghai',
@@ -1766,6 +1766,7 @@ async function seedBareExport(opts: {
   buyer: string;
   country: string;
   goodsDesc: string;
+  goodsSpec?: string;
   destination: string;
   amountFen: number;
   currency?: string;
@@ -1803,6 +1804,7 @@ async function seedBareExport(opts: {
       currentNode: opts.currentNode,
       overallRisk: opts.overallRisk || 'LOW',
       goodsDesc: opts.goodsDesc,
+      goodsSpec: opts.goodsSpec || null,
       destination: opts.destination,
       amountFen: opts.amountFen,
       currency,
@@ -1820,6 +1822,7 @@ async function seedBareExport(opts: {
           buyerName: opts.buyer,
           consigneeName: opts.buyer,
           goodsDesc: opts.goodsDesc,
+          goodsSpec: opts.goodsSpec || null,
           amountFen: opts.amountFen,
           currency,
           incoterms,
@@ -1831,7 +1834,7 @@ async function seedBareExport(opts: {
           isFinal: opts.currentNode !== 'N3',
           deliveryDate: opts.deliveryDate || new Date('2026-12-15T00:00:00.000Z'),
           quantity: opts.quantity ?? 2,
-          unit: opts.unit || '套',
+          unit: opts.unit || 'TON',
           destination: opts.destination,
           shipmentDate: opts.shipmentDate ?? null,
           customerPickedUp: opts.customerPickedUp ?? null,
@@ -2125,7 +2128,7 @@ async function seedDirectPortYellowCase(salesId: string) {
     fileName: '中信保限额批注-Ostsee.pdf',
     salesId,
     quantity: 4,
-    unit: '台',
+    unit: 'TON',
     deliveryMode: DeliveryMode.DIRECT_PORT,
     directPortJson: stringifyDirectPort(dp),
     nodeOverrides: {
@@ -2134,7 +2137,7 @@ async function seedDirectPortYellowCase(salesId: string) {
       N3: {
         status: 'PASSED',
         decision: 'PASS',
-        summary: '港口直出四问齐全，未强制自有仓；交货方式已选',
+        summary: '港口直出已填仓储地点、批次号与电子底账编号',
       },
       N4: { status: 'PASSED', decision: 'PASS', summary: '无待确认变更' },
       N5: {
@@ -2225,7 +2228,7 @@ async function seedDirectPortRedCase(salesId: string) {
     fileName: '中信保限额批注-Loopturn.pdf',
     salesId,
     quantity: 3,
-    unit: '台',
+    unit: 'TON',
     deliveryMode: DeliveryMode.DIRECT_PORT,
     directPortJson: stringifyDirectPort(dp),
     nodeOverrides: {

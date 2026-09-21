@@ -144,7 +144,7 @@ const paths = [
     title: '港口直出黄灯',
     tag: 'TAX REVIEW',
     cls: 'badge-review',
-    desc: '港口直出四问齐全、不强制自有仓；购销薄利进入工作台第三页领取/通过/驳回。',
+    desc: '港口直出已填仓储地点、批次号与电子底账；购销薄利进入工作台第三页领取/通过/驳回。',
   },
   {
     caseNo: 'DEMO-PORT-RED',

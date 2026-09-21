@@ -8,6 +8,7 @@ import {
   isSalesRemittanceComplete,
   isSalesShipped,
   isTtPaymentTermsText,
+  mergeOmittedCifShipmentFields,
   normalizeTransportIncoterms,
   presentSalesContract,
   presentSalesShipmentStatus,
@@ -257,6 +258,27 @@ describe('切换术语清脏字段', () => {
     expect(out.ttTiming).toBe('ADVANCE');
     expect(out.ttPercentBps).toBe(3000);
     expect(out.paymentTerms).toBe('前 T/T');
+  });
+
+  it('N3 省略 CIF 装运字段时保留已有港口与日期', () => {
+    const merged = mergeOmittedCifShipmentFields(
+      { shipmentPort: undefined, shipmentDate: undefined, etaDate: undefined, arrivalPort: undefined },
+      {
+        shipmentPort: 'Shanghai',
+        shipmentDate: '2026-08-15',
+        etaDate: '2026-09-20',
+        arrivalPort: 'Hamburg',
+      },
+    );
+    expect(merged.shipmentPort).toBe('Shanghai');
+    expect(merged.shipmentDate).toBe('2026-08-15');
+    expect(merged.etaDate).toBe('2026-09-20');
+    expect(merged.arrivalPort).toBe('Hamburg');
+    const cleared = mergeOmittedCifShipmentFields(
+      { shipmentPort: null, shipmentDate: null, etaDate: null, arrivalPort: null },
+      { shipmentPort: 'Shanghai' },
+    );
+    expect(cleared.shipmentPort).toBeNull();
   });
 
   it('取消 CIF 电汇时保留 CIF 装运日（装运块仍适用）', () => {

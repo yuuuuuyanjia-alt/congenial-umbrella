@@ -1,6 +1,6 @@
 import { Allow, IsArray, IsBoolean, IsIn, IsInt, IsNumber, IsObject, IsOptional, IsString, ValidateNested } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
-import { PROCUREMENT_CURRENCY, SALES_CURRENCY } from '../common/currencies';
+import { PROCUREMENT_CURRENCY, SALES_CURRENCY, SALES_CURRENCY_OPTIONS } from '../common/currencies';
 
 function ToCurrency() {
   return Transform(({ value }) => {
@@ -16,8 +16,9 @@ export class CreateCaseDto {
   @IsInt() amountFen: number;
   @IsOptional()
   @ToCurrency()
-  @IsIn([SALES_CURRENCY], { message: '出口案件币种须为 USD' })
+  @IsIn([...SALES_CURRENCY_OPTIONS], { message: '出口案件币种须为 CNY 或 USD' })
   currency?: string;
+  @IsOptional() @IsString() goodsSpec?: string;
   /** 演示新建销售合同时预填买方；收货人同名。付款人不再预填。 */
   @IsOptional() @IsString() buyerName?: string;
   @IsOptional() @IsString() buyerCountry?: string;
@@ -35,6 +36,9 @@ export class UpsertPartyDto {
 }
 
 export class DirectPortDto {
+  @IsOptional() @IsString() warehouseLocation?: string | null;
+  @IsOptional() @IsString() batchNo?: string | null;
+  @IsOptional() @IsString() eLedgerNo?: string | null;
   @IsOptional() @IsString() goodsWhereAnswer?: string | null;
   @IsOptional() @IsString() goodsWhereRef?: string | null;
   @IsOptional() @IsString() customsPartyAnswer?: string | null;
@@ -46,18 +50,29 @@ export class DirectPortDto {
   @IsOptional() @IsString() emptyTurnRef?: string | null;
 }
 
+export class TtVoucherDto {
+  @IsOptional() @IsString() ref?: string;
+  @IsOptional() @IsString() fileName?: string | null;
+}
+
+export class SaveInquiryDto {
+  @IsOptional() @IsString() goodsDesc?: string;
+  @IsOptional() @IsString() goodsSpec?: string;
+}
+
 export class SaveContractDto {
   @IsString() counterparty: string;
   @IsOptional() @IsString() incoterms?: string;
   @IsOptional() @IsString() paymentTerms?: string;
-  @IsBoolean() hasRetentionOfTitle: boolean;
-  @IsBoolean() hasDisputeClause: boolean;
+  @IsOptional() @IsBoolean() hasRetentionOfTitle?: boolean;
+  @IsOptional() @IsBoolean() hasDisputeClause?: boolean;
   @IsOptional() @IsBoolean() isFinal?: boolean;
   @IsOptional() @IsString() goodsDesc?: string;
+  @IsOptional() @IsString() goodsSpec?: string;
   @IsOptional() @IsInt() amountFen?: number;
   @IsOptional()
   @ToCurrency()
-  @IsIn([SALES_CURRENCY], { message: '销售合同币种须为 USD' })
+  @IsIn([...SALES_CURRENCY_OPTIONS], { message: '销售合同币种须为 CNY 或 USD' })
   currency?: string;
   @IsOptional() @IsString() destination?: string;
   @IsOptional() @IsString() buyerName?: string;
@@ -83,6 +98,11 @@ export class SaveContractDto {
   @ValidateNested()
   @Type(() => DirectPortDto)
   directPort?: DirectPortDto;
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => TtVoucherDto)
+  ttVouchers?: TtVoucherDto[];
 }
 
 export class SaveShipmentDto {
@@ -98,6 +118,10 @@ export class SaveShipmentDto {
   @IsOptional() @IsString() noBlRef?: string;
   @IsOptional() @IsString() noBlEvidenceStub?: string;
   @IsOptional() @IsString() incotermsOverride?: string;
+  @IsOptional() @IsString() shipmentPort?: string | null;
+  @IsOptional() @IsString() shipmentDate?: string | null;
+  @IsOptional() @IsString() etaDate?: string | null;
+  @IsOptional() @IsString() arrivalPort?: string | null;
 }
 
 export class SaveDocumentDto {
@@ -167,10 +191,12 @@ export class SaveQuoteDto {
   @IsOptional() @IsInt() amountFen?: number;
   @IsOptional()
   @ToCurrency()
-  @IsIn([SALES_CURRENCY], { message: '报价币种须为 USD' })
+  @IsIn([...SALES_CURRENCY_OPTIONS], { message: '报价币种须为 CNY 或 USD' })
   currency?: string;
   @IsOptional() @IsString() notes?: string;
   @IsOptional() @IsString() abnormalPriceNote?: string;
+  @IsOptional() @IsString() goodsDesc?: string;
+  @IsOptional() @IsString() goodsSpec?: string;
 }
 
 export class ChangeDiffDto {

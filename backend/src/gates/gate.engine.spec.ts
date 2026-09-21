@@ -332,7 +332,7 @@ describe('闸门引擎 MVP 节点', () => {
     expect(r.canProceed).toBe(false);
   });
 
-  it('N3 缺少所有权保留/争议条款拒绝', () => {
+  it('N3 不再要求所有权保留或争议条款', () => {
     const r = evaluateN3(
       baseSnap({
         contract: {
@@ -344,8 +344,8 @@ describe('闸门引擎 MVP 节点', () => {
         },
       }),
     );
-    expect(r.canProceed).toBe(false);
-    expect(r.missing).toEqual(expect.arrayContaining(['N3_RETENTION_OF_TITLE', 'N3_DISPUTE_CLAUSE']));
+    expect(r.canProceed).toBe(true);
+    expect(r.missing).not.toEqual(expect.arrayContaining(['N3_RETENTION_OF_TITLE', 'N3_DISPUTE_CLAUSE']));
   });
 
   it('N3 未登记中信保限额拒绝签订合同', () => {
@@ -442,6 +442,27 @@ describe('闸门引擎 MVP 节点', () => {
     );
     expect(r.canProceed).toBe(false);
     expect(r.missing).toContain('N3_SINOSURE_CURRENCY');
+  });
+
+  it('N3 人民币合同配美元限额可推进，金额不计入美元占用', () => {
+    const r = evaluateN3(
+      baseSnap({
+        quotes: [],
+        caseCurrency: 'CNY',
+        caseAmountFen: 80_000_000,
+        contract: {
+          ...baseSnap().contract!,
+          currency: 'CNY',
+          amountFen: 80_000_000,
+          quantity: null,
+        },
+      }),
+    );
+    expect(r.missing).not.toContain('N3_SINOSURE_CURRENCY');
+    expect(r.canProceed).toBe(true);
+    expect(r.exposure?.newContractFen).toBe(0);
+    expect(r.exposure?.currency).toBe('USD');
+    expect([...r.alerts, ...r.reasons].join('')).toContain('人民币合同暂不计入美元占用');
   });
 
   it('N3 条款与中信保限额齐全可通过', () => {

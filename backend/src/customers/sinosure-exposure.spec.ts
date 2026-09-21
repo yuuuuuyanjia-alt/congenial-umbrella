@@ -184,17 +184,62 @@ describe('中信保占用公式与超额分档', () => {
     expect(isExportFulfilled({ status: 'COMPLETED' })).toBe(true);
   });
 
-  it('非美元不换算：超额按超高风险硬拦截', () => {
+  it('人民币新签不换汇、不计入美元占用', () => {
     const r = evaluateOccupancy({
-      newContractFen: 200_000,
-      insuredLimitFen: 100_000,
-      currency: 'CNY',
-      limitCurrency: 'CNY',
+      newContractFen: 8_000_000,
+      insuredLimitFen: 1_000_000,
+      currency: 'USD',
+      limitCurrency: 'USD',
       contractCurrency: 'CNY',
     });
-    expect(r.usdBandsApply).toBe(false);
-    expect(r.band).toBe(ExposureBand.ULTRA_HIGH);
-    expect(r.gateDecision).toBe(ExposureGateDecision.HARD_BLOCK);
+    expect(r.usdBandsApply).toBe(true);
+    expect(r.newContractFen).toBe(0);
+    expect(r.occupancyFen).toBe(0);
+    expect(r.band).toBe(ExposureBand.WITHIN_LIMIT);
+    expect(r.gateDecision).toBe(ExposureGateDecision.PASS);
+    expect(r.notes.join('')).toContain('人民币合同暂不计入美元占用');
+  });
+
+  it('买方占用池只收美元合同，人民币合同进 excludedNonUsd', () => {
+    const r = evaluateBuyerOccupancy(
+      [
+        {
+          id: 'usd-open',
+          caseNo: 'USD-1',
+          hasContract: true,
+          amountFen: 800_000,
+          receivedFen: 0,
+          currency: 'USD',
+          status: 'IN_PROGRESS',
+          currentNode: 'N5',
+          nodes: [{ code: 'N6', status: 'NOT_STARTED' }],
+        },
+        {
+          id: 'cny-open',
+          caseNo: 'CNY-1',
+          hasContract: true,
+          amountFen: 9_000_000,
+          receivedFen: 0,
+          currency: 'CNY',
+          status: 'IN_PROGRESS',
+          currentNode: 'N5',
+          nodes: [{ code: 'N6', status: 'NOT_STARTED' }],
+        },
+      ],
+      {
+        insuredLimitFen: 4_000_000,
+        limitCurrency: 'USD',
+        newCaseId: 'new-cny',
+        newAmountFen: 2_500_000,
+        newCurrency: 'CNY',
+      },
+    );
+    expect(r.currency).toBe('USD');
+    expect(r.openUnpaidFen).toBe(800_000);
+    expect(r.newContractFen).toBe(0);
+    expect(r.occupancyFen).toBe(800_000);
+    expect(r.excludedNonUsd.map((l) => l.caseNo)).toContain('CNY-1');
+    expect(r.notes.join('')).toContain('人民币合同暂不计入美元占用');
   });
 
   it('N3 已通过后不再把本案当新签，避免占用双计', () => {

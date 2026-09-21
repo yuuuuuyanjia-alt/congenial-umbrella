@@ -9,11 +9,11 @@
       <view class="muted">将创建出口案并打开询盘/客户 KYC。请按 N1 筛查 → N2 报价 → N3 销售合同办理，不能跳过。</view>
       <view class="label">标题</view>
       <input class="input" v-model="draft.title" :placeholder="DEMO_CREATE.salesTitle" />
-      <view class="label">金额（USD）</view>
+      <view class="label">金额</view>
       <input class="input" type="digit" v-model="draft.amountYuan" placeholder="25000.00" />
       <view class="label">币种</view>
       <view class="readonly">USD</view>
-      <view class="muted">销售合同 / 出口案金额固定美元，不可更改</view>
+      <view class="muted">演示新建默认美元。签订销售合同时可选 CNY / USD。</view>
       <view class="btn" :class="{ 'btn-ghost': creating }" @click="createSales">{{ creating ? '正在创建…' : '新建销售合同' }}</view>
     </view>
 

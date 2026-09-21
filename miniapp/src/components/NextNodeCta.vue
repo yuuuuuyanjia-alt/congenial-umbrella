@@ -1,6 +1,6 @@
 <template>
   <view class="card" v-if="target">
-    <view class="h2">{{ heading }}</view>
+    <view class="h2" v-if="heading">{{ heading }}</view>
     <view class="muted">{{ hint }}</view>
     <view class="btn" v-if="ready" @click="$emit('go')">{{ resolvedLabel }}</view>
   </view>

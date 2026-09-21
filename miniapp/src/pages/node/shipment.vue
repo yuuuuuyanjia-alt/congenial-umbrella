@@ -22,6 +22,19 @@
       </view>
       <view class="muted" v-else>卖方出单路径：须点选正本或电放其一；无提单须先把本节点术语改为 FOB 等。</view>
 
+      <template v-if="showCifShipping">
+        <view class="h2" style="margin-top: 24rpx">CIF 装运</view>
+        <view class="label">装运港口</view>
+        <input class="input" v-model="form.shipmentPort" placeholder="如 Shanghai" />
+        <view class="label">装运日期</view>
+        <input class="input" v-model="form.shipmentDate" placeholder="年-月-日，如 2026-08-15" />
+        <view class="h2" style="margin-top: 24rpx">货物状态</view>
+        <view class="label">预计到达日期</view>
+        <input class="input" v-model="form.etaDate" placeholder="年-月-日，如 2026-09-20" />
+        <view class="label">到达港口</view>
+        <input class="input" v-model="form.arrivalPort" placeholder="预计到达的港口，如 Hamburg" />
+      </template>
+
       <view class="label">客户书面指示编号</view>
       <input class="input" v-model="form.instructionRef" placeholder="例如 INST-2026-001" />
       <view class="label">已收到客户书面指示</view>
@@ -109,6 +122,10 @@ const form = reactive({
   noBlReason: '',
   noBlRef: '',
   noBlEvidenceStub: '',
+  shipmentPort: '',
+  shipmentDate: '',
+  etaDate: '',
+  arrivalPort: '',
 });
 
 const isNoBl = computed(() => form.blControl === 'NO_BL' || form.blControl === 'FOB_NO_BL');
@@ -116,6 +133,10 @@ const blTypeSelected = computed(
   () => form.blControl === 'ORIGINAL' || form.blControl === 'TELEX_RELEASE',
 );
 const buyerFreight = computed(() => BUYER_FREIGHT.includes(effectiveIncotermsCode(form.n6Incoterms)));
+const showCifShipping = computed(() => {
+  const code = effectiveIncotermsCode(form.n6Incoterms);
+  return code === 'CIF' || code === 'CIP' || !!c.value?.contract?.cifShippingVisible;
+});
 const blLabel = computed(() => {
   if (form.blControl === 'ORIGINAL') return '正本提单';
   if (form.blControl === 'TELEX_RELEASE') return '电放提单';
@@ -141,6 +162,11 @@ onLoad(async (q) => {
   } else {
     form.n6Incoterms = contractIncoterms.value;
   }
+  const ct = c.value.contract || {};
+  form.shipmentPort = ct.shipmentPort || '';
+  form.shipmentDate = ct.shipmentDate ? String(ct.shipmentDate).slice(0, 10) : '';
+  form.etaDate = ct.etaDate ? String(ct.etaDate).slice(0, 10) : '';
+  form.arrivalPort = ct.arrivalPort || '';
 });
 
 function incotermsCode(raw: string) {
@@ -197,6 +223,14 @@ function payload() {
     noBlRef: isNoBl.value ? form.noBlRef : '',
     noBlEvidenceStub: isNoBl.value ? form.noBlEvidenceStub : '',
     incotermsOverride: override || null,
+    ...(showCifShipping.value
+      ? {
+          shipmentPort: form.shipmentPort || null,
+          shipmentDate: form.shipmentDate || null,
+          etaDate: form.etaDate || null,
+          arrivalPort: form.arrivalPort || null,
+        }
+      : {}),
   };
 }
 

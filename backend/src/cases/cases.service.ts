@@ -29,7 +29,7 @@ import {
   SINOSURE_EXPOSURE_HIGH_REVIEW_REASON,
   VersionStatus,
 } from '../common/constants';
-import { requireProcurementCurrency, requireSalesCurrency } from '../common/currencies';
+import { requireProcurementCurrency, requireSalesCurrency, requireSinosureLimitCurrency } from '../common/currencies';
 import { evaluateN3ContractSave, isChangeField, isSensitiveChange, nextNode } from '../gates/gate.engine';
 import {
   OCCUPANCY_QUEUE_STATUSES,
@@ -68,12 +68,19 @@ import {
 import { demoPartiesFromBuyer } from './create-flow';
 import { advanceResponseNextNode, laterNode, resolveAdvance } from './advance-guard';
 import {
+  isCifFamilyIncoterms,
+  mergeOmittedCifShipmentFields,
   normalizeTransportIncoterms,
   presentSalesContract,
   presentSalesShipmentStatus,
   sanitizeSalesContractModeFields,
   TT_TIMING,
 } from './sales-contract';
+import {
+  parseContractUnit,
+  parseTtVouchers,
+  stringifyTtVouchers,
+} from './goods-fields';
 import {
   AckChangeDto,
   CreateCaseDto,
@@ -82,6 +89,7 @@ import {
   SaveCustomsDto,
   SaveDocumentDto,
   SaveFixDto,
+  SaveInquiryDto,
   SavePlanDto,
   SaveQuoteDto,
   SaveSettlementDto,
@@ -222,6 +230,7 @@ export class CasesService {
     const presentedContract = contract
       ? {
           ...contract,
+          ttVouchers: parseTtVouchers(c.contract?.ttVoucherJson),
           directPort: parseDirectPort(c.contract?.directPortJson),
           deliveryModeLabel: c.contract?.deliveryMode
             ? DeliveryModeLabel[c.contract.deliveryMode] || c.contract.deliveryMode
@@ -309,6 +318,7 @@ export class CasesService {
         currentNode: 'N1',
         overallRisk: RiskLevel.LOW,
         goodsDesc: dto.goodsDesc,
+        goodsSpec: dto.goodsSpec || null,
         destination: dto.destination,
         amountFen: dto.amountFen,
         currency: requireSalesCurrency(dto.currency, '出口案件'),
@@ -339,6 +349,25 @@ export class CasesService {
       detail: { caseNo, title: dto.title, buyerSeeded: parties.length > 0 },
     });
     return this.get(created.id);
+  }
+
+  async saveInquiry(caseId: string, dto: SaveInquiryDto, actorId?: string) {
+    await this.ensureCase(caseId);
+    const data: { goodsDesc?: string; goodsSpec?: string | null } = {};
+    if (dto.goodsDesc != null) data.goodsDesc = dto.goodsDesc;
+    if (dto.goodsSpec != null) data.goodsSpec = dto.goodsSpec;
+    if (Object.keys(data).length) {
+      await this.prisma.tradeCase.update({ where: { id: caseId }, data });
+    }
+    await this.touchNode(caseId, 'N1', NodeStatus.IN_PROGRESS);
+    await this.audit.append({
+      caseId,
+      actorId,
+      action: 'INQUIRY_GOODS_SAVED',
+      nodeCode: 'N1',
+      detail: { goodsDesc: dto.goodsDesc ?? null, goodsSpec: dto.goodsSpec ?? null },
+    });
+    return this.get(caseId);
   }
 
   async upsertParty(caseId: string, dto: UpsertPartyDto, actorId?: string) {
@@ -396,6 +425,7 @@ export class CasesService {
       });
       this.throwGateRefused(limitGate, N3_SINOSURE_UNREGISTERED_REASON);
     }
+    const existing = await this.prisma.contract.findUnique({ where: { caseId } });
     const {
       deliveryDate,
       paymentDueAt,
@@ -407,18 +437,40 @@ export class CasesService {
       domesticPortArrivalAt,
       deliveryMode,
       directPort,
+      ttVouchers,
+      goodsDesc,
+      goodsSpec,
+      unit,
+      hasRetentionOfTitle,
+      hasDisputeClause,
       ...rest
     } = dto;
     const currency = requireSalesCurrency(dto.currency, '销售合同');
-    const parsedDelivery = parseDate(deliveryDate);
+    const cifMerged = mergeOmittedCifShipmentFields(
+      {
+        shipmentPort: rest.shipmentPort,
+        shipmentDate: parseDate(shipmentDate),
+        etaDate: parseDate(etaDate),
+        arrivalPort: rest.arrivalPort,
+      },
+      existing
+        ? {
+            shipmentPort: existing.shipmentPort,
+            shipmentDate: existing.shipmentDate,
+            etaDate: existing.etaDate,
+            arrivalPort: existing.arrivalPort,
+          }
+        : null,
+    );
+    const parsedDelivery = parseDate(deliveryDate) ?? existing?.deliveryDate ?? null;
     const mode = sanitizeSalesContractModeFields({
       incoterms: rest.incoterms,
       ttTiming: rest.ttTiming,
       paymentTerms: rest.paymentTerms,
-      shipmentPort: rest.shipmentPort,
-      shipmentDate: parseDate(shipmentDate),
-      etaDate: parseDate(etaDate),
-      arrivalPort: rest.arrivalPort,
+      shipmentPort: cifMerged.shipmentPort,
+      shipmentDate: cifMerged.shipmentDate,
+      etaDate: cifMerged.etaDate,
+      arrivalPort: cifMerged.arrivalPort,
       domesticPortArrivalAt: parseDate(domesticPortArrivalAt),
       ttPercentBps: rest.ttPercentBps,
       ttAdvanceFen: rest.ttAdvanceFen,
@@ -429,6 +481,11 @@ export class CasesService {
     const data = {
       ...rest,
       currency,
+      goodsDesc: goodsDesc ?? existing?.goodsDesc ?? null,
+      goodsSpec: goodsSpec ?? existing?.goodsSpec ?? null,
+      unit: parseContractUnit(unit) || existing?.unit || null,
+      hasRetentionOfTitle: hasRetentionOfTitle ?? existing?.hasRetentionOfTitle ?? false,
+      hasDisputeClause: hasDisputeClause ?? existing?.hasDisputeClause ?? false,
       incoterms: mode.incoterms,
       paymentTerms: mode.paymentTerms,
       ttTiming: mode.ttTiming,
@@ -437,14 +494,22 @@ export class CasesService {
       ttDaysAfterShipment: mode.ttDaysAfterShipment,
       shipmentPort: mode.shipmentPort,
       arrivalPort: mode.arrivalPort,
-      customerPickedUp: customerPickedUp ?? null,
+      customerPickedUp: customerPickedUp ?? existing?.customerPickedUp ?? null,
       deliveryDate: parsedDelivery,
       paymentDueAt: parseDate(paymentDueAt) ?? derivePaymentDueAt(dueSource, mode.paymentTerms),
       shipmentDate: mode.shipmentDate ? parseDate(mode.shipmentDate) : null,
       etaDate: mode.etaDate ? parseDate(mode.etaDate) : null,
       domesticPortArrivalAt: mode.domesticPortArrivalAt ? parseDate(mode.domesticPortArrivalAt) : null,
-      deliveryMode: deliveryMode || null,
-      directPortJson: stringifyDirectPort(directPort || null),
+      deliveryMode: deliveryMode || existing?.deliveryMode || null,
+      directPortJson: stringifyDirectPort(
+        (deliveryMode || existing?.deliveryMode) === 'DIRECT_PORT'
+          ? directPort || parseDirectPort(existing?.directPortJson)
+          : null,
+      ),
+      ttVoucherJson:
+        mode.ttTiming === TT_TIMING.ADVANCE
+          ? stringifyTtVouchers(ttVouchers !== undefined ? ttVouchers : parseTtVouchers(existing?.ttVoucherJson))
+          : null,
     };
     const row = await this.prisma.contract.upsert({
       where: { caseId },
@@ -455,6 +520,8 @@ export class CasesService {
       where: { id: caseId },
       data: {
         ...(dto.amountFen != null ? { amountFen: dto.amountFen } : {}),
+        ...(goodsDesc != null ? { goodsDesc } : {}),
+        ...(goodsSpec != null ? { goodsSpec } : {}),
         currency,
       },
     });
@@ -498,7 +565,7 @@ export class CasesService {
     let evidenceRef = dto.evidenceRef?.trim() || '';
     let fileName = dto.fileName?.trim() || '';
     let insuredLimitFen = dto.insuredLimitFen;
-    const currency = requireSalesCurrency(dto.currency, '中信保限额');
+    const currency = requireSinosureLimitCurrency(dto.currency, '中信保限额');
     let confirmedExisting = !!dto.confirmedExisting;
     let sourceId: string | null = null;
 
@@ -607,6 +674,8 @@ export class CasesService {
       quantity: dto.quantity ?? null,
       amountFen,
       notes: dto.notes ?? null,
+      goodsDesc: dto.goodsDesc ?? null,
+      goodsSpec: dto.goodsSpec ?? null,
     };
     const row = await this.prisma.quote.create({
       data: {
@@ -626,6 +695,8 @@ export class CasesService {
         currency: requireSalesCurrency(dto.currency, '报价'),
         notes: dto.notes,
         abnormalPriceNote: null,
+        goodsDesc: dto.goodsDesc ?? null,
+        goodsSpec: dto.goodsSpec ?? null,
         snapshotJson: JSON.stringify(snapshot),
       },
     });
@@ -635,6 +706,15 @@ export class CasesService {
       payload: snapshot,
     });
     await this.touchNode(caseId, 'N2', NodeStatus.IN_PROGRESS);
+    if (dto.goodsDesc != null || dto.goodsSpec != null) {
+      await this.prisma.tradeCase.update({
+        where: { id: caseId },
+        data: {
+          ...(dto.goodsDesc != null ? { goodsDesc: dto.goodsDesc } : {}),
+          ...(dto.goodsSpec != null ? { goodsSpec: dto.goodsSpec } : {}),
+        },
+      });
+    }
     await this.audit.append({
       caseId,
       actorId,
@@ -1126,6 +1206,29 @@ export class CasesService {
       create: { caseId, ...data },
       update: data,
     });
+    const existingContract = await this.prisma.contract.findUnique({ where: { caseId } });
+    const cifIncoming = {
+      shipmentPort: dto.shipmentPort,
+      shipmentDate: parseDate(dto.shipmentDate),
+      etaDate: parseDate(dto.etaDate),
+      arrivalPort: dto.arrivalPort,
+    };
+    const hasCifPayload = [dto.shipmentPort, dto.shipmentDate, dto.etaDate, dto.arrivalPort].some(
+      (v) => v !== undefined,
+    );
+    const effectiveTerm = normalizeTransportIncoterms(dto.incotermsOverride) || existingContract?.incoterms;
+    if (existingContract && (isCifFamilyIncoterms(effectiveTerm) || hasCifPayload)) {
+      const merged = mergeOmittedCifShipmentFields(cifIncoming, existingContract);
+      await this.prisma.contract.update({
+        where: { caseId },
+        data: {
+          shipmentPort: merged.shipmentPort ?? null,
+          shipmentDate: merged.shipmentDate ? parseDate(merged.shipmentDate) : null,
+          etaDate: merged.etaDate ? parseDate(merged.etaDate) : null,
+          arrivalPort: merged.arrivalPort ?? null,
+        },
+      });
+    }
     await this.touchNode(caseId, 'N6', NodeStatus.IN_PROGRESS);
     await this.audit.append({
       caseId,

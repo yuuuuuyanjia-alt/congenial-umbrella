@@ -42,6 +42,7 @@ import {
 import {
   ExposureBand,
   evaluateOccupancy,
+  isUsd,
   moneyLabel,
   newContractFenForNode,
 } from '../customers/sinosure-exposure';
@@ -238,14 +239,6 @@ export function evaluateN3(snap: CaseSnapshot): GateResult {
     r.canProceed = false;
     return r;
   }
-  if (!c.hasRetentionOfTitle) {
-    r.missing.push('N3_RETENTION_OF_TITLE');
-    r.reasons.push('缺少所有权保留条款（必填）');
-  }
-  if (!c.hasDisputeClause) {
-    r.missing.push('N3_DISPUTE_CLAUSE');
-    r.reasons.push('缺少争议解决条款（必填）');
-  }
   const transportCode = parseIncotermsCode(c.incoterms);
   if (!transportCode) {
     r.missing.push('N3_INCOTERMS');
@@ -280,7 +273,7 @@ export function evaluateN3(snap: CaseSnapshot): GateResult {
   return finalizeExposureDecision(
     r,
     snap,
-    '所有权保留与争议条款齐全，贸易术语、付款条件与中信保占用已校验',
+    '贸易术语、付款条件与中信保占用已校验',
   );
 }
 
@@ -1090,9 +1083,9 @@ function applySinosureGate(
       nodeCode === 'N3' ? N3_SINOSURE_UNREGISTERED_REASON : '变更后须重新登记中信保投保限额',
     );
   }
-  if (pol?.currency && currency && pol.currency.toUpperCase() !== currency.toUpperCase()) {
+  if (pol?.currency && !isUsd(pol.currency)) {
     r.missing.push(`${nodeCode}_SINOSURE_CURRENCY`);
-    r.reasons.push(`中信保限额币种（${pol.currency}）与合同币种（${currency}）不一致，禁止推进`);
+    r.reasons.push(`中信保限额币种须为美元（当前 ${pol.currency}），禁止推进`);
   }
 
   const exp = evaluateOccupancy({
@@ -1100,7 +1093,7 @@ function applySinosureGate(
     fulfilledUnpaidFen: snap.sinosureOccupancy?.fulfilledUnpaidFen ?? 0,
     newContractFen: newContractFenForNode({ nodeCode, nodes: snap.nodes, totalFen }),
     insuredLimitFen: pol?.insuredLimitFen ?? 0,
-    currency: pol?.currency || currency || 'USD',
+    currency: 'USD',
     limitCurrency: pol?.currency || null,
     contractCurrency: currency,
   });

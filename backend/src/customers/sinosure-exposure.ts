@@ -1,7 +1,10 @@
+import { CNY_EXCLUDED_FROM_USD_OCCUPANCY_TIP } from '../common/currencies';
+
 /**
- * 中信保占用测算（演示环境以美元计，金额单位为分）。
+ * 中信保占用测算（演示环境以美元计，金额单位为分）。不换汇。
  *
  * 占用 = 未履行完毕合同未回款 + 已履行完毕合同未回款 + 新签订合同金额
+ * 仅美元销售计入占用；人民币合同展示原币并提示暂不计入美元占用。
  *
  * 超额分档（美元，左闭右开）：
  *   [10,000, 20,000) 中风险
@@ -108,6 +111,7 @@ export interface SinosureExposure {
   notes: string[];
   openContracts: ExposureLine[];
   fulfilledUnpaidContracts: ExposureLine[];
+  excludedNonUsd: ExposureLine[];
 }
 
 export function isUsd(currency?: string | null): boolean {
@@ -311,30 +315,33 @@ export function evaluateOccupancy(input: {
   contractCurrency?: string | null;
   openContracts?: ExposureLine[];
   fulfilledUnpaidContracts?: ExposureLine[];
+  excludedNonUsd?: ExposureLine[];
   notes?: string[];
 }): SinosureExposure {
-  const currency = (input.currency || input.limitCurrency || input.contractCurrency || EXPOSURE_CURRENCY).toUpperCase();
   const limitCurrency = input.limitCurrency ? String(input.limitCurrency).toUpperCase() : null;
-  const contractCurrency = input.contractCurrency ? String(input.contractCurrency).toUpperCase() : currency;
+  const contractCurrency = input.contractCurrency ? String(input.contractCurrency).toUpperCase() : null;
+  const currency = EXPOSURE_CURRENCY;
   const openUnpaidFen = Math.max(0, Number(input.openUnpaidFen) || 0);
   const fulfilledUnpaidFen = Math.max(0, Number(input.fulfilledUnpaidFen) || 0);
-  const newContractFen = Math.max(0, Number(input.newContractFen) || 0);
+  const countNew = !contractCurrency || isUsd(contractCurrency);
+  const newContractFen = countNew ? Math.max(0, Number(input.newContractFen) || 0) : 0;
   const occupancyFen = openUnpaidFen + fulfilledUnpaidFen + newContractFen;
   const insuredLimitFen =
     input.insuredLimitFen != null && Number(input.insuredLimitFen) > 0 ? Number(input.insuredLimitFen) : null;
 
-  const currencyOk =
-    (!limitCurrency || limitCurrency === currency) &&
-    (!contractCurrency || contractCurrency === currency);
-  const usdBandsApply = currencyOk && isUsd(currency) && (!limitCurrency || isUsd(limitCurrency));
+  const currencyOk = !limitCurrency || isUsd(limitCurrency);
+  const usdBandsApply = currencyOk;
 
   const notes = [...(input.notes || [])];
+  if (!countNew && Number(input.newContractFen) > 0) {
+    notes.push(
+      `${CNY_EXCLUDED_FROM_USD_OCCUPANCY_TIP}（原币 ${moneyLabel(Number(input.newContractFen) || 0, contractCurrency || 'CNY')}）`,
+    );
+  }
   if (!currencyOk) {
     notes.push(
-      `限额币种（${limitCurrency || '未填'}）与测算币种（${currency}）或合同币种（${contractCurrency}）不一致，未换算。演示环境占用分档仅支持美元。`,
+      `限额币种（${limitCurrency || '未填'}）须为美元；未换算，占用分档仅支持美元。`,
     );
-  } else if (!isUsd(currency)) {
-    notes.push('演示环境超额分档以美元计；非美元保单不换算，超额一律按超高风险硬拦截。');
   }
 
   let remainingFen = 0;
@@ -389,6 +396,7 @@ export function evaluateOccupancy(input: {
     notes,
     openContracts: input.openContracts || [],
     fulfilledUnpaidContracts: input.fulfilledUnpaidContracts || [],
+    excludedNonUsd: input.excludedNonUsd || [],
   };
 }
 
@@ -402,28 +410,36 @@ export function evaluateBuyerOccupancy(
     newCurrency?: string | null;
   },
 ): SinosureExposure {
+  const newUsd = !opts.newCurrency || isUsd(opts.newCurrency);
+  const countedNew = newUsd ? Math.max(0, Number(opts.newAmountFen) || 0) : 0;
   const split = splitOccupancy(rows, {
     newCaseId: opts.newCaseId,
-    newAmountFen: opts.newAmountFen,
+    newAmountFen: countedNew,
   });
   const notes: string[] = [];
+  if (!newUsd && Number(opts.newAmountFen) > 0) {
+    notes.push(
+      `${CNY_EXCLUDED_FROM_USD_OCCUPANCY_TIP}（原币 ${moneyLabel(Number(opts.newAmountFen) || 0, opts.newCurrency || 'CNY')}）`,
+    );
+  }
   if (split.skippedNonUsd.length) {
     notes.push(
-      `有 ${split.skippedNonUsd.length} 笔非美元合同未计入占用（演示环境不换算）：${split.skippedNonUsd
-        .map((l) => l.caseNo || l.id)
+      `${CNY_EXCLUDED_FROM_USD_OCCUPANCY_TIP}：${split.skippedNonUsd
+        .map((l) => `${l.caseNo || l.id} ${moneyLabel(l.amountFen, l.currency)}`)
         .join('、')}`,
     );
   }
   return evaluateOccupancy({
     openUnpaidFen: split.openUnpaidFen,
     fulfilledUnpaidFen: split.fulfilledUnpaidFen,
-    newContractFen: split.newContractFen,
+    newContractFen: countedNew,
     insuredLimitFen: opts.insuredLimitFen,
-    currency: opts.newCurrency || opts.limitCurrency || EXPOSURE_CURRENCY,
+    currency: EXPOSURE_CURRENCY,
     limitCurrency: opts.limitCurrency,
-    contractCurrency: opts.newCurrency || opts.limitCurrency || EXPOSURE_CURRENCY,
+    contractCurrency: newUsd ? EXPOSURE_CURRENCY : opts.newCurrency || 'CNY',
     openContracts: split.openContracts,
     fulfilledUnpaidContracts: split.fulfilledUnpaidContracts,
+    excludedNonUsd: split.skippedNonUsd,
     notes,
   });
 }

@@ -40,6 +40,7 @@ describe('新建销售/采购合同（N1 起 / 采购点选已签销售合同）
     const sales = demoCreateCaseInput();
     expect(sales.title).toBe(DEMO_CREATE_DEFAULTS.salesTitle);
     expect(sales.goodsDesc).toBe(DEMO_CREATE_DEFAULTS.goodsDesc);
+    expect(sales.goodsDesc).not.toBe('机械');
     expect(sales.destination).toBe(DEMO_CREATE_DEFAULTS.destination);
     expect(sales.amountFen).toBe(DEMO_CREATE_DEFAULTS.amountFen);
     expect(sales.currency).toBe('USD');

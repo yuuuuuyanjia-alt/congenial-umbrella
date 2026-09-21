@@ -1,13 +1,25 @@
 import { BadRequestException } from '@nestjs/common';
 
-/** 销售合同 / 出口案件金额 / 中信保占用：固定美元。 */
+/** 销售合同 / 出口案件金额默认美元；可选人民币。 */
 export const SALES_CURRENCY = 'USD';
+
+export const SALES_CURRENCY_OPTIONS = ['CNY', 'USD'] as const;
+
+export type SalesCurrencyCode = (typeof SALES_CURRENCY_OPTIONS)[number];
 
 /** 采购合同 / PO 金额：固定人民币。 */
 export const PROCUREMENT_CURRENCY = 'CNY';
 
+/** 中信保占用不换汇；人民币合同展示用。 */
+export const CNY_EXCLUDED_FROM_USD_OCCUPANCY_TIP = '人民币合同暂不计入美元占用';
+
 export function normalizeCurrency(raw?: string | null): string {
   return String(raw ?? '').trim().toUpperCase();
+}
+
+export function isSalesCurrency(raw?: string | null): raw is SalesCurrencyCode {
+  const n = normalizeCurrency(raw);
+  return n === 'USD' || n === 'CNY';
 }
 
 export function isLockedCurrency(raw: string | null | undefined, required: string): boolean {
@@ -33,7 +45,20 @@ export function requireLockedCurrency(
   });
 }
 
+/** 销售/出口/报价：可选 CNY 或 USD；省略默认 USD。 */
 export function requireSalesCurrency(raw?: string | null, label = '销售合同'): string {
+  const n = normalizeCurrency(raw);
+  if (!n) return SALES_CURRENCY;
+  if (n === 'USD' || n === 'CNY') return n;
+  throw new BadRequestException({
+    code: 'CURRENCY_UNSUPPORTED',
+    message: `${label}币种须为 CNY 或 USD，不能为 ${String(raw).trim()}`,
+    allowed: [...SALES_CURRENCY_OPTIONS],
+    received: String(raw).trim(),
+  });
+}
+
+export function requireSinosureLimitCurrency(raw?: string | null, label = '中信保限额'): string {
   return requireLockedCurrency(raw, SALES_CURRENCY, label);
 }
 

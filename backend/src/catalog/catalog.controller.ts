@@ -1,5 +1,6 @@
 import { Controller, Get } from '@nestjs/common';
 import { SALES_SHIPMENT_BUCKET_ORDER, SalesShipmentBucketLabel, TRADE_TERM_OPTIONS, TtTimingLabel } from '../cases/sales-contract';
+import { PROCUREMENT_CURRENCY, SALES_CURRENCY, SALES_CURRENCY_OPTIONS } from '../common/currencies';
 import { RemittanceStatusLabel } from '../customers/remittance';
 import { PrismaService } from '../prisma/prisma.service';
 import {
@@ -72,7 +73,7 @@ export class CatalogController {
       occupancyWorkbench: OccupancyWorkbenchActionLabel,
       taxFinanceWorkbench: TaxFinanceWorkbenchActionLabel,
       deliveryMode: DeliveryModeLabel,
-      deliveryModes: [DeliveryMode.OWN_WAREHOUSE, DeliveryMode.BONDED, DeliveryMode.DIRECT_PORT],
+      deliveryModes: [DeliveryMode.OWN_WAREHOUSE, DeliveryMode.DIRECT_PORT],
       priceBasis: PriceBasisLabel,
       quoteIncludedItems: QuoteIncludedItemLabel,
       quotePriceUnits: QuotePriceUnitLabel,
@@ -87,7 +88,7 @@ export class CatalogController {
       installmentStatus: InstallmentStatusLabel,
       sinosure: {
         label: '中信保',
-        n3: '中信保限额未登记，不得签订合同。须先登记投保限额；占用=未履行完毕未回款+已履行完毕未回款+新签合同。超额1–2万中风险软提示，2–5万高风险须工作台领取/放行/驳回，5万以上超高风险硬拦截。CIF/CIP 可登记装运港、装运日期、预计到港与客户是否提货；约定客户付款日期与收汇/未收汇（未收汇=合同总额−收汇金额）',
+        n3: '中信保限额未登记，不得签订合同。限额币种固定美元。占用不换汇，仅美元销售计入美元占用；人民币合同展示原币并提示暂不计入美元占用。占用=未履行完毕未回款+已履行完毕未回款+新签合同（美元）。超额1–2万中风险软提示，2–5万高风险须工作台领取/放行/驳回，5万以上超高风险硬拦截。',
         n4: '进入变更管理须再次确认或重新上传，并按变更后金额重算买方占用；高风险占用同样走工作台审核。未生效变更禁止推进 N5 采购及 N6+ 装运后续节点',
         formula: '占用 = 未履行完毕合同未回款 + 已履行完毕合同未回款 + 新签订合同金额',
         bandsUsd: {
@@ -95,7 +96,7 @@ export class CatalogController {
           high: '[20000, 50000) 高风险，工作台领取/放行/驳回；放行后可推进，驳回后仍阻断',
           ultraHigh: '[50000, ∞) 超高风险，硬拦截，不进工作台',
           belowMedium: '(0, 10000) 仍显示超额，软提示',
-          currency: '演示环境分档以美元计，不自动换算。销售合同/出口金额与中信保占用固定 USD，采购合同/PO 固定 CNY',
+          currency: '占用分档以美元计，不换汇。销售合同可选 CNY / USD；仅 USD 计入占用。中信保限额固定 USD。采购合同/PO 固定 CNY',
         },
       },
       customers: {
@@ -117,9 +118,12 @@ export class CatalogController {
         bucketOrder: SALES_SHIPMENT_BUCKET_ORDER,
         grouping:
           '列表按未出运 / 已出运 / 已完成分组。已出运：CIF 装运日期已填，或 FOB 国内段到达口岸/港口时间已填，或电汇结算下装运日期已填，或 N6 已通过/已过装运节点，或已有提单号，或 FOB 等无提单路径已登记。已完成：已出运且客户已提货且 N9 已回款（水单/到账且未收汇为 0）。已出运列不含已完成。',
-        n3: '运输术语（FOB / CIF 及 CIP 等）与结算方式（前 T/T / 后 T/T）独立，可组合例如 FOB + 前 T/T。销售合同金额固定美元。须选择交货方式（自有仓 / 保税 / 港口直出），不强制自有仓。港口直出须四问+证据：货在证据、报关主体可解释、收汇与本案绑定、是否像空转。CIF/CIP 填写装运港口、装运日期、预计到港；FOB 填写国内段到达口岸/港口时间；电汇填写对应收汇节点。客户是否提货可填；收汇金额以 N9 水单/到账为唯一事实源，本节点只读。T/T 不得写入 incoterms。',
+        n3: '运输术语仅 FOB / CIF，与结算方式（前 T/T / 后 T/T）独立。销售合同金额可选人民币或美元。交货方式为自有仓或港口直出；直出填货物仓储地点、批次号、电子底账编号。货物名称与规格自询盘/报价带入。CIF 装运（含货物状态）在装运页办理。前 T/T 登记收汇凭证、收汇金额与比例。',
         tradeTerms: TRADE_TERM_OPTIONS,
         ttTiming: TtTimingLabel,
+        currencies: SALES_CURRENCY_OPTIONS,
+        defaultCurrency: SALES_CURRENCY,
+        procurementCurrency: PROCUREMENT_CURRENCY,
         n6n7:
           '装运/单证规则跟随所选运输术语：FOB/EXW/FAS/FCA 买方安排运输（可无提单）；CIF/CFR 等卖方出单（须正本或电放）。N7 跟随 N6：无提单路径核验装船通知/订舱号，不硬要提单；卖方提单路径仍须提单一致。T/T 不是 Incoterm。无有效运输术语时明确回退为 FOB，避免把 T/T 切成 T 后误走卖方提单路径。存在未生效变更单时 N6/N7/N8/N9 硬拦截，须先生效变更。',
       },
@@ -127,7 +131,7 @@ export class CatalogController {
         label: '出口退税与融资性贸易审查',
         note: '公司是出口方不是过桥。不强制自有仓。港口直出须货物流+报关+发票+收汇闭环。红线硬拦截；黄灯（薄利+直出）进工作台第三页领取/通过/驳回。FT4 退税就绪清单在收汇后、申报前勾选。',
         ft1: 'N3/N5 签订前须交货方式；购销货描匹配；薄利+直出黄灯',
-        ft2: '选择港口直出则四问+证据必须齐全，否则 409',
+        ft2: '选择港口直出须填写货物仓储地点、批次号、电子底账编号，否则 409',
         ft3: 'N6–N8 装运/报关与直出单证严重不符红线',
         ft4: 'N9 之后申报退税前：报关放行、N9 收汇、进项发票号、四流勾选',
       },

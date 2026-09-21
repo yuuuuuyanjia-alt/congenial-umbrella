@@ -2,10 +2,14 @@
   <view class="wrap" v-if="c">
     <view class="card">
       <view class="h2">报价环节</view>
-      <view class="muted">勾选所含项目，填写有效期与美元单价（吨或千克）。含「价格待定 / 费用另议」不得推进。保存即生成新版本，旧版 SUPERSEDED。</view>
+      <view class="muted">勾选所含项目，填写有效期与单价（吨或千克）。含「价格待定 / 费用另议」不得推进。保存即生成新版本，旧版 SUPERSEDED。</view>
       <view class="err" v-if="!canWriteBusiness" style="margin-top: 8rpx">当前为{{ roleLabel }}，本页只读，不可保存或推进。</view>
     </view>
     <view class="card">
+      <view class="label">货物名称</view>
+      <input class="input" v-model="form.goodsDesc" placeholder="与询盘相同，可改" />
+      <view class="label">规格</view>
+      <input class="input" v-model="form.goodsSpec" placeholder="如型号、尺寸" />
       <view class="label">所含项目</view>
       <view class="choice-row">
         <view
@@ -18,7 +22,7 @@
       </view>
       <view class="label">有效期（YYYY-MM-DD）</view>
       <input class="input" v-model="form.validityUntil" placeholder="2026-12-31" />
-      <view class="label">单价（USD）</view>
+      <view class="label">单价</view>
       <input class="input" type="digit" v-model="form.unitPriceUsd" placeholder="美元金额" />
       <view class="label">单价单位</view>
       <view class="choice-row">
@@ -57,6 +61,7 @@
 import { onLoad } from '@dcloudio/uni-app';
 import { computed, reactive, ref } from 'vue';
 import { api, fenToYuan, goToNode, money, nextWorkNodeFromForm, pipelineNodeName, yuanToFen } from '../../api';
+import { resolveCarriedGoods } from '../../goods-fields';
 import NextNodeCta from '../../components/NextNodeCta.vue';
 import { useDemoRole } from '../../role';
 
@@ -76,6 +81,8 @@ const err = ref('');
 const ok = ref('');
 const advancedTo = ref<string | null>(null);
 const form = reactive({
+  goodsDesc: '',
+  goodsSpec: '',
   includedItemCodes: [] as string[],
   validityUntil: '2026-12-31',
   unitPriceUsd: '12800.00',
@@ -118,6 +125,13 @@ onLoad(async (q) => {
 async function reload() {
   c.value = await api.case(id.value);
   const active = (c.value.quotes || []).find((x: any) => x.status === 'ACTIVE') || c.value.quotes?.[0];
+  const carried = resolveCarriedGoods({
+    quote: active,
+    caseGoodsDesc: c.value.goodsDesc,
+    caseGoodsSpec: c.value.goodsSpec,
+  });
+  form.goodsDesc = carried.goodsDesc;
+  form.goodsSpec = carried.goodsSpec;
   if (active) {
     const codes = Array.isArray(active.includedItemCodes)
       ? active.includedItemCodes
@@ -169,6 +183,8 @@ function dateOnly(v: any) {
 
 function payload() {
   return {
+    goodsDesc: form.goodsDesc,
+    goodsSpec: form.goodsSpec,
     includedItemCodes: form.includedItemCodes,
     includedItems: form.includedItemCodes,
     validityUntil: form.validityUntil,

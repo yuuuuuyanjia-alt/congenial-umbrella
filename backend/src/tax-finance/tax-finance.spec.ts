@@ -212,8 +212,8 @@ describe('FT1 交货方式与购销匹配', () => {
   });
 });
 
-describe('FT2 港口直出四问', () => {
-  it('直出缺证据不得推进（409 missing）', () => {
+describe('FT2 港口直出仓储/批次/底账', () => {
+  it('直出缺仓储地点/批次号/电子底账不得推进', () => {
     const r = evaluateNode(
       'N3',
       base({
@@ -230,17 +230,24 @@ describe('FT2 港口直出四问', () => {
     expect(r.missing).toEqual(
       expect.arrayContaining([
         'FT2_DIRECT_PORT_DOCS',
-        'FT2_GOODS_WHERE',
-        'FT2_CUSTOMS_PARTY',
-        'FT2_REMITTANCE_BOUND',
+        'FT2_WAREHOUSE_LOCATION',
+        'FT2_BATCH_NO',
+        'FT2_E_LEDGER',
       ]),
     );
-    expect(r.reasons.join('')).toContain('四问');
+    expect(r.reasons.join('')).toContain('仓储地点');
   });
 
-  it('四问齐全则 isDirectPortComplete', () => {
+  it('仓储地点、批次号、电子底账齐全则 isDirectPortComplete', () => {
     expect(isDirectPortComplete(completeDirectPortFixture())).toBe(true);
-    expect(isDirectPortComplete({ goodsWhereAnswer: 'x' })).toBe(false);
+    expect(isDirectPortComplete({ warehouseLocation: 'x' })).toBe(false);
+    expect(
+      isDirectPortComplete({
+        goodsWhereAnswer: '仓',
+        goodsWhereRef: 'B1',
+        customsPartyRef: 'E1',
+      }),
+    ).toBe(true);
   });
 
   it('自答像空转为红线硬拦截，不进可处置队列', () => {
