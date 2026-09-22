@@ -102,6 +102,175 @@ export async function uploadDemoSinosure(caseId: string): Promise<SinosureUpload
   return postSinosureUpload(caseId, blob, DEMO_SINOSURE_FILE_NAME);
 }
 
+export type TradeDocNode = 'N6' | 'N7';
+
+export type TradeDocSlot = {
+  slot: string;
+  kind: string;
+  label: string;
+  demoName: string;
+};
+
+/** N6：上传发票、上传箱单。与 N7 的商业发票/发票/箱单不是同一份证据。 */
+export const N6_DOC_SLOTS: TradeDocSlot[] = [
+  { slot: 'invoice', kind: 'N6_INVOICE', label: '发票', demoName: '演示发票.pdf' },
+  { slot: 'packing', kind: 'N6_PACKING', label: '箱单', demoName: '演示箱单.pdf' },
+];
+
+/** N7 只保留这六份。商业发票与发票分别必填。 */
+export const N7_DOC_SLOTS: TradeDocSlot[] = [
+  { slot: 'sales-contract', kind: 'N7_SALES_CONTRACT', label: '销售合同', demoName: '演示销售合同.pdf' },
+  { slot: 'commercial-invoice', kind: 'N7_COMMERCIAL_INVOICE', label: '商业发票', demoName: '演示商业发票.pdf' },
+  { slot: 'packing', kind: 'N7_PACKING', label: '箱单', demoName: '演示箱单.pdf' },
+  { slot: 'purchase-contract', kind: 'N7_PURCHASE_CONTRACT', label: '采购合同', demoName: '演示采购合同.pdf' },
+  { slot: 'invoice', kind: 'N7_INVOICE', label: '发票', demoName: '演示发票.pdf' },
+  { slot: 'customs', kind: 'N7_CUSTOMS', label: '报关单', demoName: '演示报关单.pdf' },
+];
+
+export type TradeDocUploadResult = SinosureUploadResult & {
+  slot: string;
+  kind: string;
+  label: string;
+};
+
+export function tradeDocFileError(name: string, size: number): string | null {
+  const base = String(name || '').split(/[/\\]/).pop() || '';
+  const i = base.lastIndexOf('.');
+  const ext = i >= 0 ? base.slice(i).toLowerCase() : '';
+  if (!SINOSURE_UPLOAD_EXTS.includes(ext)) return '单证仅支持 PDF、Word、Excel 或常见图片';
+  if (!size) return '上传文件为空';
+  if (size > SINOSURE_UPLOAD_MAX_BYTES) return '单证文件不能超过 15MB';
+  return null;
+}
+
+export function latestTradeDoc(evidences: any[] | null | undefined, kind: string) {
+  const rows = (evidences || []).filter(
+    (row) => row?.kind === kind && typeof row?.payload?.storageKey === 'string' && row.payload.storageKey,
+  );
+  return rows.length ? rows[rows.length - 1] : null;
+}
+
+export async function postTradeDocUpload(
+  caseId: string,
+  node: TradeDocNode,
+  slot: string,
+  file: Blob,
+  fileName: string,
+): Promise<TradeDocUploadResult> {
+  const problem = tradeDocFileError(fileName, file.size);
+  if (problem) return Promise.reject({ message: problem });
+  if (typeof fetch !== 'function' || typeof FormData !== 'function') {
+    return Promise.reject({ message: '当前环境不支持上传单证' });
+  }
+  const fd = new FormData();
+  fd.append('file', file, fileName);
+  fd.append('fileName', fileName);
+  const res = await fetch(`${BASE}/cases/${caseId}/nodes/${node}/docs/${encodeURIComponent(slot)}/upload`, {
+    method: 'POST',
+    headers: demoHeaders(false),
+    body: fd,
+  });
+  const data = await res.json().catch(() => ({ message: '单证上传失败' }));
+  if (!res.ok) throw data;
+  return data as TradeDocUploadResult;
+}
+
+/** One-click sample: same built-in PDF as the Sinosure demo, no file picker. */
+export async function uploadDemoTradeDoc(
+  caseId: string,
+  node: TradeDocNode,
+  slot: TradeDocSlot,
+): Promise<TradeDocUploadResult> {
+  const blob = await loadDemoSinosurePdf();
+  return postTradeDocUpload(caseId, node, slot.slot, blob, slot.demoName);
+}
+
+export function chooseAndUploadTradeDoc(
+  caseId: string,
+  node: TradeDocNode,
+  slot: string,
+): Promise<TradeDocUploadResult> {
+  if (typeof document !== 'undefined' && typeof document.createElement === 'function') {
+    return chooseAndUploadTradeDocH5(caseId, node, slot);
+  }
+  return chooseAndUploadTradeDocMini(caseId, node, slot);
+}
+
+function chooseAndUploadTradeDocH5(
+  caseId: string,
+  node: TradeDocNode,
+  slot: string,
+): Promise<TradeDocUploadResult> {
+  return new Promise((resolve, reject) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.webp,application/pdf';
+    input.onchange = () => {
+      const file = input.files?.[0];
+      if (!file) {
+        reject({ message: '未选择文件' });
+        return;
+      }
+      postTradeDocUpload(caseId, node, slot, file, file.name).then(resolve, reject);
+    };
+    input.click();
+  });
+}
+
+function chooseAndUploadTradeDocMini(
+  caseId: string,
+  node: TradeDocNode,
+  slot: string,
+): Promise<TradeDocUploadResult> {
+  return new Promise((resolve, reject) => {
+    const uniAny = uni as any;
+    const chooser = uniAny.chooseFile || uniAny.chooseMessageFile;
+    if (!chooser) {
+      reject({ message: '当前环境不支持选择文件' });
+      return;
+    }
+    chooser({
+      count: 1,
+      type: 'all',
+      extension: SINOSURE_UPLOAD_EXTS,
+      success: (res: any) => {
+        const f = res.tempFiles?.[0];
+        const filePath = f?.path || f?.tempFilePath || res.tempFilePaths?.[0];
+        const fileName = f?.name || 'document.pdf';
+        const size = Number(f?.size || 0);
+        if (!filePath) {
+          reject({ message: '未选择文件' });
+          return;
+        }
+        const problem = tradeDocFileError(fileName, size || 1);
+        if (problem) {
+          reject({ message: problem });
+          return;
+        }
+        uni.uploadFile({
+          url: BASE + `/cases/${caseId}/nodes/${node}/docs/${encodeURIComponent(slot)}/upload`,
+          filePath,
+          name: 'file',
+          formData: { fileName },
+          header: demoHeaders(false),
+          success: (up) => {
+            let data: any = up.data;
+            try {
+              if (typeof data === 'string') data = JSON.parse(data);
+            } catch {
+              /* 保留原文 */
+            }
+            if (up.statusCode >= 200 && up.statusCode < 300) resolve(data as TradeDocUploadResult);
+            else reject(data || { message: '单证上传失败' });
+          },
+          fail: (err) => reject(err),
+        });
+      },
+      fail: (err: any) => reject(err?.errMsg ? { message: '未选择文件' } : err),
+    });
+  });
+}
+
 function chooseAndUploadSinosureH5(caseId: string): Promise<SinosureUploadResult> {
   return new Promise((resolve, reject) => {
     const input = document.createElement('input');

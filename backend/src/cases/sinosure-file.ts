@@ -78,9 +78,12 @@ export function safeStorageKey(caseId: string, fileId: string, originalName: str
   return `sinosure/${safeCase}/${safeId}${ext}`;
 }
 
+const STORAGE_KEY_PREFIXES = ['sinosure/', 'trade-docs/'] as const;
+
 export function assertSafeStorageKey(key: string): string {
   const norm = String(key || '').replace(/\\/g, '/').trim();
-  if (!norm.startsWith('sinosure/') || norm.includes('..') || norm.includes('\0')) {
+  const allowed = STORAGE_KEY_PREFIXES.some((prefix) => norm.startsWith(prefix));
+  if (!allowed || norm.includes('..') || norm.includes('\0')) {
     throw new SinosureFileError('非法文件引用');
   }
   return norm;

@@ -7,7 +7,7 @@ export class UploadExceptionFilter implements ExceptionFilter {
     const res = host.switchToHttp().getResponse();
     const code = (exception as { code?: string })?.code;
     if (code === 'LIMIT_FILE_SIZE') {
-      res.status(400).json({ statusCode: 400, message: '保单文件不能超过 15MB' });
+      res.status(400).json({ statusCode: 400, message: '上传文件不能超过 15MB' });
       return;
     }
     if (exception instanceof HttpException) {
@@ -16,7 +16,7 @@ export class UploadExceptionFilter implements ExceptionFilter {
       res.status(status).json(typeof body === 'string' ? { statusCode: status, message: body } : body);
       return;
     }
-    const message = exception instanceof Error ? exception.message : '保单文件无法上传';
+    const message = exception instanceof Error ? exception.message : '文件无法上传';
     res.status(400).json({ statusCode: 400, message });
   }
 }

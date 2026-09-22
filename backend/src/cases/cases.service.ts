@@ -24,6 +24,7 @@ import {
   NODE_CATALOG,
   NodeStatus,
   PartyRole,
+  tradeDocUpload,
   PartyRoleLabel,
   PriceBasis,
   QuoteStatus,
@@ -119,6 +120,7 @@ import {
   writeSinosureFile,
   type StoredFileMeta,
 } from './sinosure-file';
+import { writeTradeDocFile } from './trade-doc-file';
 
 @Injectable()
 export class CasesService {
@@ -727,17 +729,80 @@ export class CasesService {
     };
   }
 
+  async uploadNodeDocument(
+    caseId: string,
+    nodeCode: string,
+    slot: string,
+    file: { originalname: string; size: number; buffer: Buffer },
+    actorId?: string,
+    fileNameOverride?: string,
+  ) {
+    await this.ensureCase(caseId);
+    const spec = tradeDocUpload(nodeCode, slot);
+    if (!spec) throw new BadRequestException('不支持的单证类型');
+    if (!file?.buffer?.length) throw new BadRequestException(`请选择${spec.label}文件`);
+    const originalName = (fileNameOverride || file.originalname || '').trim();
+    let meta: StoredFileMeta;
+    try {
+      meta = await writeTradeDocFile({
+        caseId,
+        slot: spec.slot,
+        id: randomUUID(),
+        originalName,
+        buffer: file.buffer,
+      });
+    } catch (e) {
+      if (e instanceof SinosureFileError) throw new BadRequestException(e.message);
+      throw e;
+    }
+    const code = nodeCode.toUpperCase();
+    const ev = await this.addEvidence(caseId, code, spec.kind, {
+      ref: meta.storageKey,
+      note: spec.label,
+      payload: { ...meta, slot: spec.slot, uploaded: true },
+    });
+    await this.touchNode(caseId, code, NodeStatus.IN_PROGRESS);
+    await this.audit.append({
+      caseId,
+      actorId,
+      action: 'NODE_DOC_UPLOADED',
+      nodeCode: code,
+      detail: {
+        slot: spec.slot,
+        kind: spec.kind,
+        evidenceId: ev.id,
+        fileName: meta.fileName,
+        storageKey: meta.storageKey,
+        sha256: meta.sha256,
+        size: meta.size,
+        mime: meta.mime,
+      },
+    });
+    return {
+      evidenceId: ev.id,
+      evidenceRef: ev.id,
+      slot: spec.slot,
+      kind: spec.kind,
+      label: spec.label,
+      fileName: meta.fileName,
+      mime: meta.mime,
+      size: meta.size,
+      sha256: meta.sha256,
+      storageKey: meta.storageKey,
+    };
+  }
+
   async openEvidenceFile(caseId: string, evidenceId: string) {
     await this.ensureCase(caseId);
     const ev = await this.prisma.evidence.findFirst({ where: { id: evidenceId, caseId } });
     if (!ev) throw new NotFoundException('证据不存在');
     const meta = parseStoredFile(ev.payload);
-    if (!meta) throw new NotFoundException('该证据没有保单文件');
+    if (!meta) throw new NotFoundException('该证据没有文件');
     const absolutePath = absolutePathForKey(meta.storageKey);
     try {
       await access(absolutePath);
     } catch {
-      throw new NotFoundException('保单文件已缺失');
+      throw new NotFoundException('文件已缺失');
     }
     return {
       ...meta,

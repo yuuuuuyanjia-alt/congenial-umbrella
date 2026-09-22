@@ -102,7 +102,7 @@ const paths = [
     title: 'FOB 无提单',
     tag: 'NO BL',
     cls: 'badge-pass',
-    desc: '买方安排运输，N6 走无提单路径（书面指示 + 内部审批 + 装船通知）；N7 核验订舱号即可，不要求提单。',
+    desc: '买方安排运输，N6 走无提单路径（发票、箱单与内部审批）；N7 须再上传六份单证后才能推进。',
   },
   {
     caseNo: 'DEMO-LIMIT',

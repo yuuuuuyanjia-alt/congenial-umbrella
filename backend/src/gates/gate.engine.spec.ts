@@ -1,5 +1,5 @@
 import { Decision, N3_SINOSURE_UNREGISTERED_REASON, N6_PLUS_PENDING_CHANGE_REASON, SINOSURE_EXPOSURE_HIGH_REVIEW_REASON } from '../common/constants';
-import { CaseSnapshot } from '../common/types';
+import { CaseSnapshot, EvidenceFileSnap } from '../common/types';
 import {
   evaluateN2,
   evaluateN3,
@@ -12,12 +12,31 @@ import {
   evaluateN9,
   effectiveN6Incoterms,
   isCifFamilyIncoterms,
-  isN7NoBlPath,
   nextNode,
   parseIncotermsCode,
   checkProcurementDelayVsSalesDelivery,
 } from './gate.engine';
 import { OccupancyReviewStatus, occupancyFingerprint } from '../workbench/occupancy-review';
+
+function storedFile(kind: string, nodeCode: string): EvidenceFileSnap {
+  return {
+    id: `ev-${kind}`,
+    nodeCode,
+    kind,
+    fileName: `${kind}.pdf`,
+    storageKey: `trade-docs/case1/${kind.toLowerCase()}/file.pdf`,
+  };
+}
+
+const N6_FILES: EvidenceFileSnap[] = ['N6_INVOICE', 'N6_PACKING'].map((kind) => storedFile(kind, 'N6'));
+const N7_FILES: EvidenceFileSnap[] = [
+  'N7_SALES_CONTRACT',
+  'N7_COMMERCIAL_INVOICE',
+  'N7_PACKING',
+  'N7_PURCHASE_CONTRACT',
+  'N7_INVOICE',
+  'N7_CUSTOMS',
+].map((kind) => storedFile(kind, 'N7'));
 
 function baseSnap(over: Partial<CaseSnapshot> = {}): CaseSnapshot {
   return {
@@ -189,32 +208,9 @@ function baseSnap(over: Partial<CaseSnapshot> = {}): CaseSnapshot {
       },
     ],
     occupancyReviews: [],
+    evidences: [...N6_FILES, ...N7_FILES],
     ...over,
   };
-}
-
-function fobNoBlDocs() {
-  return baseSnap()
-    .documents.filter((d) => d.type !== 'BL')
-    .map((d) => ({ ...d, fields: { ...d.fields, incoterms: 'FOB' } }));
-}
-
-function fobNoBlSnap(over: Partial<CaseSnapshot> = {}): CaseSnapshot {
-  return baseSnap({
-    contract: { ...baseSnap().contract!, incoterms: 'FOB' },
-    shipment: {
-      hasCustomerWrittenInstruction: true,
-      instructionRef: 'INST-FOB-001',
-      hasInternalApproval: true,
-      blControl: 'NO_BL',
-      blNo: null,
-      noBlReason: 'FOB 买方指定货代，卖方不控提单',
-      noBlRef: 'SA-FOB-2026-001',
-      noBlEvidenceStub: 'DEMO-SA-FOB.pdf',
-    },
-    documents: fobNoBlDocs(),
-    ...over,
-  });
 }
 
 describe('闸门引擎 MVP 节点', () => {
@@ -692,13 +688,14 @@ describe('闸门引擎 MVP 节点', () => {
     expect(r.canProceed).toBe(true);
   });
 
-  it('N6 缺少书面指示/审批/提单控制拒绝推进', () => {
+  it('N6 缺少发票/箱单/审批/提单控制拒绝推进', () => {
     const r = evaluateN6(baseSnap({ shipment: null }));
     expect(r.canProceed).toBe(false);
     expect(r.decision).toBe(Decision.HARD_BLOCK);
 
     const r2 = evaluateN6(
       baseSnap({
+        evidences: [],
         shipment: {
           hasCustomerWrittenInstruction: false,
           hasInternalApproval: false,
@@ -707,13 +704,56 @@ describe('闸门引擎 MVP 节点', () => {
       }),
     );
     expect(r2.canProceed).toBe(false);
+    expect(r2.decision).toBe(Decision.HARD_BLOCK);
     expect(r2.missing).toEqual(
-      expect.arrayContaining([
-        'N6_CUSTOMER_WRITTEN_INSTRUCTION',
-        'N6_INTERNAL_APPROVAL',
-        'N6_BL_CONTROL',
-      ]),
+      expect.arrayContaining(['N6_INVOICE', 'N6_PACKING', 'N6_INTERNAL_APPROVAL', 'N6_BL_CONTROL']),
     );
+    expect(r2.missing).not.toContain('N6_CUSTOMER_WRITTEN_INSTRUCTION');
+    expect(r2.missing).not.toContain('N6_NO_BL_JUSTIFICATION');
+  });
+
+  it('N6 只缺箱单时拒绝，发票不能顶替箱单', () => {
+    const r = evaluateN6(
+      baseSnap({
+        evidences: (baseSnap().evidences || []).filter((e) => e.kind !== 'N6_PACKING'),
+      }),
+    );
+    expect(r.canProceed).toBe(false);
+    expect(r.decision).toBe(Decision.HARD_BLOCK);
+    expect(r.missing).toContain('N6_PACKING');
+    expect(r.missing).not.toContain('N6_INVOICE');
+  });
+
+  it('N6 只有文件名、没有落盘 storageKey 不算上传', () => {
+    const r = evaluateN6(
+      baseSnap({
+        evidences: [
+          { id: 'a', nodeCode: 'N6', kind: 'N6_INVOICE', fileName: '发票.pdf', storageKey: '' },
+          { id: 'b', nodeCode: 'N6', kind: 'N6_PACKING', fileName: '箱单.pdf', storageKey: 'trade-docs/c/p.pdf' },
+        ],
+      }),
+    );
+    expect(r.missing).toContain('N6_INVOICE');
+    expect(r.missing).not.toContain('N6_PACKING');
+  });
+
+  it('N6 无书面指示、无订舱号，发票箱单齐全且正本即可过闸', () => {
+    const r = evaluateN6(
+      baseSnap({
+        shipment: {
+          hasCustomerWrittenInstruction: false,
+          instructionRef: null,
+          hasInternalApproval: true,
+          blControl: 'ORIGINAL',
+          noBlRef: null,
+          noBlReason: null,
+          noBlEvidenceStub: null,
+        },
+      }),
+    );
+    expect(r.canProceed).toBe(true);
+    expect(r.missing).not.toContain('N6_CUSTOMER_WRITTEN_INSTRUCTION');
+    expect(r.missing).not.toContain('N6_NO_BL_JUSTIFICATION');
   });
 
   it('N6 正本或电放任一即可过闸（不必同时具备）', () => {
@@ -828,20 +868,25 @@ describe('闸门引擎 MVP 节点', () => {
     expect(r.missing).not.toContain('N6_BL_CONTROL');
   });
 
-  it('N6 FOB 无提单缺依据则拒绝', () => {
+  it('N6 FOB 无提单不再要求订舱依据或书面指示', () => {
     const r = evaluateN6(
       baseSnap({
         contract: { ...baseSnap().contract!, incoterms: 'FOB' },
         shipment: {
-          hasCustomerWrittenInstruction: true,
-          instructionRef: 'INST-001',
+          hasCustomerWrittenInstruction: false,
+          instructionRef: null,
           hasInternalApproval: true,
           blControl: 'NO_BL',
+          noBlReason: '',
+          noBlRef: '',
+          noBlEvidenceStub: '',
         },
       }),
     );
-    expect(r.canProceed).toBe(false);
-    expect(r.missing).toContain('N6_NO_BL_JUSTIFICATION');
+    expect(r.canProceed).toBe(true);
+    expect(r.decision).toBe(Decision.PASS);
+    expect(r.missing).not.toContain('N6_NO_BL_JUSTIFICATION');
+    expect(r.missing).not.toContain('N6_CUSTOMER_WRITTEN_INSTRUCTION');
   });
 
   it('N6 非 FOB（CIF/CFR）未选提单控制则拒绝', () => {
@@ -899,7 +944,7 @@ describe('闸门引擎 MVP 节点', () => {
     expect(r.canProceed).toBe(true);
   });
 
-  it('N6 无提单仍须书面指示与内部审批', () => {
+  it('N6 无提单不再要求书面指示，仍须内部审批', () => {
     const r = evaluateN6(
       baseSnap({
         contract: { ...baseSnap().contract!, incoterms: 'FOB' },
@@ -908,15 +953,14 @@ describe('闸门引擎 MVP 节点', () => {
           instructionRef: null,
           hasInternalApproval: false,
           blControl: 'NO_BL',
-          noBlReason: 'FOB',
-          noBlRef: 'SA-1',
+          noBlReason: '',
+          noBlRef: '',
         },
       }),
     );
     expect(r.canProceed).toBe(false);
-    expect(r.missing).toEqual(
-      expect.arrayContaining(['N6_CUSTOMER_WRITTEN_INSTRUCTION', 'N6_INTERNAL_APPROVAL']),
-    );
+    expect(r.missing).toContain('N6_INTERNAL_APPROVAL');
+    expect(r.missing).not.toContain('N6_CUSTOMER_WRITTEN_INSTRUCTION');
   });
 
   it('N6 证据齐全可通过', () => {
@@ -997,205 +1041,105 @@ describe('闸门引擎 MVP 节点', () => {
     expect(r.alerts.some((a) => a.includes('FOB'))).toBe(true);
   });
 
-  it('N7 缺终稿合同或单证不一致且无修改记录则拒绝', () => {
-    const missingFinal = evaluateN7(
+  it('N7 六份单证齐即可过闸，不比对提单、装船通知或字段', () => {
+    const r = evaluateN7(
       baseSnap({
+        documents: [],
+        mismatchFixes: [],
         contract: { ...baseSnap().contract!, isFinal: false },
-        documents: baseSnap().documents.map((d) =>
-          d.type === 'CONTRACT' ? { ...d, isFinal: false } : d,
-        ),
-      }),
-    );
-    expect(missingFinal.canProceed).toBe(false);
-    expect(missingFinal.missing).toContain('N7_FINAL_CONTRACT');
-
-    const mismatch = evaluateN7(
-      baseSnap({
-        documents: baseSnap().documents.map((d) =>
-          d.type === 'INVOICE' ? { ...d, fields: { ...d.fields, buyerName: 'OTHER BUYER' } } : d,
-        ),
-      }),
-    );
-    expect(mismatch.canProceed).toBe(false);
-    expect(mismatch.missing.some((m) => m.includes('buyerName'))).toBe(true);
-  });
-
-  it('N7 不符点有修改记录可通过', () => {
-    const r = evaluateN7(
-      baseSnap({
-        documents: baseSnap().documents.map((d) =>
-          d.type === 'INVOICE' ? { ...d, fields: { ...d.fields, buyerName: 'OTHER BUYER' } } : d,
-        ),
-        mismatchFixes: [
-          {
-            field: 'buyerName',
-            fromValue: 'OTHER BUYER',
-            toValue: 'Nordlicht GmbH',
-            reason: '发票笔误已更正',
-          },
-        ],
-      }),
-    );
-    expect(r.canProceed).toBe(true);
-  });
-
-  it('N7 运输术语按 Incoterms 比对，文档里的 T/T 结算不参与、不与 FOB 误判不一致', () => {
-    const r = evaluateN7(
-      baseSnap({
-        contract: { ...baseSnap().contract!, incoterms: 'FOB', ttTiming: 'ADVANCE', paymentTerms: '前 T/T' },
-        documents: baseSnap().documents.map((d) => ({
-          ...d,
-          fields: { ...d.fields, incoterms: d.type === 'INVOICE' ? 'T/T' : 'FOB' },
-        })),
-      }),
-    );
-    expect(r.canProceed).toBe(true);
-    expect(r.missing.some((m) => m.includes('incoterms'))).toBe(false);
-  });
-
-  it('N7 FOB 无提单路径有装船通知/订舱号即可过闸，不要求提单', () => {
-    const snap = fobNoBlSnap();
-    expect(isN7NoBlPath(snap)).toBe(true);
-    const r = evaluateN7(snap);
-    expect(r.canProceed).toBe(true);
-    expect(r.missing).not.toContain('N7_BL');
-    expect(r.missing).not.toContain('N7_SHIPPING_ADVICE');
-  });
-
-  it('N7 FOB_NO_BL 别名同样不要求提单', () => {
-    const r = evaluateN7(
-      fobNoBlSnap({
-        shipment: { ...fobNoBlSnap().shipment!, blControl: 'FOB_NO_BL' },
-      }),
-    );
-    expect(r.canProceed).toBe(true);
-    expect(r.missing).not.toContain('N7_BL');
-  });
-
-  it('N7 FOB 无提单路径缺装船通知/订舱依据则拒绝', () => {
-    const r = evaluateN7(
-      fobNoBlSnap({
         shipment: {
-          hasCustomerWrittenInstruction: true,
-          instructionRef: 'INST-FOB-001',
+          hasCustomerWrittenInstruction: false,
           hasInternalApproval: true,
           blControl: 'NO_BL',
-          blNo: null,
-          noBlReason: '',
           noBlRef: '',
+          noBlReason: '',
           noBlEvidenceStub: '',
         },
       }),
     );
-    expect(r.canProceed).toBe(false);
-    expect(r.missing).toContain('N7_SHIPPING_ADVICE');
+    expect(r.canProceed).toBe(true);
+    expect(r.decision).toBe(Decision.PASS);
     expect(r.missing).not.toContain('N7_BL');
+    expect(r.missing).not.toContain('N7_SHIPPING_ADVICE');
+    expect(r.missing).not.toContain('N7_FINAL_CONTRACT');
+    expect(r.missing.some((m) => m.includes('MISMATCH'))).toBe(false);
   });
 
-  it('N7 FOB 无提单路径即使库里有不一致提单也不硬要比对提单', () => {
+  it('N7 缺任一份上传则硬拦截（推进接口据此返回 409）', () => {
+    const kinds = [
+      'N7_SALES_CONTRACT',
+      'N7_COMMERCIAL_INVOICE',
+      'N7_PACKING',
+      'N7_PURCHASE_CONTRACT',
+      'N7_INVOICE',
+      'N7_CUSTOMS',
+    ];
+    for (const kind of kinds) {
+      const r = evaluateN7(
+        baseSnap({
+          evidences: (baseSnap().evidences || []).filter((e) => e.kind !== kind),
+        }),
+      );
+      expect(r.canProceed).toBe(false);
+      expect(r.decision).toBe(Decision.HARD_BLOCK);
+      expect(r.missing).toContain(kind);
+      expect(r.missing).toHaveLength(1);
+    }
+  });
+
+  it('N7 商业发票与发票分别必填，不能互相顶替', () => {
+    const withoutCommercial = evaluateN7(
+      baseSnap({
+        evidences: (baseSnap().evidences || []).filter((e) => e.kind !== 'N7_COMMERCIAL_INVOICE'),
+      }),
+    );
+    expect(withoutCommercial.missing).toEqual(['N7_COMMERCIAL_INVOICE']);
+    expect(withoutCommercial.missing).not.toContain('N7_INVOICE');
+
+    const withoutInvoice = evaluateN7(
+      baseSnap({
+        evidences: (baseSnap().evidences || []).filter((e) => e.kind !== 'N7_INVOICE'),
+      }),
+    );
+    expect(withoutInvoice.missing).toEqual(['N7_INVOICE']);
+    expect(withoutInvoice.missing).not.toContain('N7_COMMERCIAL_INVOICE');
+  });
+
+  it('N7 六份都缺时一次列出全部缺失项', () => {
+    const r = evaluateN7(baseSnap({ evidences: N6_FILES }));
+    expect(r.canProceed).toBe(false);
+    expect(r.decision).toBe(Decision.HARD_BLOCK);
+    expect(r.missing).toEqual([
+      'N7_SALES_CONTRACT',
+      'N7_COMMERCIAL_INVOICE',
+      'N7_PACKING',
+      'N7_PURCHASE_CONTRACT',
+      'N7_INVOICE',
+      'N7_CUSTOMS',
+    ]);
+  });
+
+  it('N7 未生效变更仍硬拦截，优先于缺上传', () => {
     const r = evaluateN7(
-      fobNoBlSnap({
-        documents: [
-          ...fobNoBlDocs(),
+      baseSnap({
+        evidences: [],
+        changeOrders: [
           {
-            type: 'BL',
-            isFinal: true,
-            fields: {
-              buyerName: 'WRONG BUYER',
-              consigneeName: 'WRONG',
-              goodsDesc: 'other',
-              amountFen: 1,
-              currency: 'EUR',
-              incoterms: 'CIF',
-            },
+            id: 'ch-pending',
+            changeNo: 'CO-PENDING',
+            version: 2,
+            status: 'PENDING_ACK',
+            isSensitive: false,
+            customerAck: false,
+            internalAck: false,
+            approved: false,
+            diffs: [],
           },
         ],
       }),
     );
-    expect(r.canProceed).toBe(true);
-    expect(r.missing).not.toContain('N7_BL');
-    expect(r.missing.some((m) => m.includes('MISMATCH'))).toBe(false);
-  });
-
-  it('N7 CIF/卖方提单路径仍须提单一致', () => {
-    const missingBl = evaluateN7(
-      baseSnap({
-        documents: baseSnap().documents.filter((d) => d.type !== 'BL'),
-      }),
-    );
-    expect(missingBl.canProceed).toBe(false);
-    expect(missingBl.missing).toContain('N7_BL');
-
-    const mismatch = evaluateN7(
-      baseSnap({
-        documents: baseSnap().documents.map((d) =>
-          d.type === 'BL' ? { ...d, fields: { ...d.fields, buyerName: 'OTHER BUYER' } } : d,
-        ),
-      }),
-    );
-    expect(mismatch.canProceed).toBe(false);
-    expect(mismatch.missing.some((m) => m.includes('buyerName'))).toBe(true);
-  });
-
-  it('N7 FOB 若实际仍走正本/电放则仍须提单', () => {
-    const r = evaluateN7(
-      baseSnap({
-        contract: { ...baseSnap().contract!, incoterms: 'FOB' },
-        shipment: {
-          hasCustomerWrittenInstruction: true,
-          instructionRef: 'INST-001',
-          hasInternalApproval: true,
-          blControl: 'ORIGINAL',
-          blNo: 'COSU123',
-        },
-        documents: fobNoBlDocs(),
-      }),
-    );
-    expect(isN7NoBlPath(
-      baseSnap({
-        contract: { ...baseSnap().contract!, incoterms: 'FOB' },
-        shipment: {
-          hasCustomerWrittenInstruction: true,
-          instructionRef: 'INST-001',
-          hasInternalApproval: true,
-          blControl: 'ORIGINAL',
-        },
-      }),
-    )).toBe(false);
     expect(r.canProceed).toBe(false);
-    expect(r.missing).toContain('N7_BL');
-  });
-
-  it('N7 CIF 即使填了装船通知仍须提单（无提单仅适用于买方安排运输）', () => {
-    const r = evaluateN7(
-      baseSnap({
-        shipment: {
-          ...baseSnap().shipment!,
-          blControl: 'NO_BL',
-          noBlRef: 'SA-CIF-SHOULD-NOT-SKIP',
-          noBlReason: '误选无提单',
-        },
-        documents: baseSnap().documents.filter((d) => d.type !== 'BL'),
-      }),
-    );
-    expect(r.canProceed).toBe(false);
-    expect(r.missing).toContain('N7_BL');
-    expect(r.missing).not.toContain('N7_SHIPPING_ADVICE');
-  });
-
-  it('N7 无运输术语回退 FOB 且 NO_BL 时不要求提单', () => {
-    const r = evaluateN7(
-      fobNoBlSnap({
-        contract: {
-          ...baseSnap().contract!,
-          incoterms: 'T/T',
-          ttTiming: 'AFTER',
-          paymentTerms: '后 T/T 30 days',
-        },
-      }),
-    );
-    expect(r.canProceed).toBe(true);
-    expect(r.missing).not.toContain('N7_BL');
+    expect(r.missing).toEqual(['N7_PENDING_CHANGE']);
   });
 
   it('N9 缺少第三方证明/汇款附言/单证证明/放行审批拒绝', () => {
