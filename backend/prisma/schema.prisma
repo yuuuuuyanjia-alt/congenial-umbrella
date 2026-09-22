@@ -233,6 +233,10 @@ model Contract {
   etaDate             DateTime?
   /// 货物状态：到达港口（预计到达哪个港口）
   arrivalPort         String?
+  /// 销售合同装运港（合同条款）。与 CIF/N6 的 shipmentPort 分开，FOB 与 CIF 都保留。
+  loadingPort         String?
+  /// 销售合同装运期限：日期或文本（如 2026-10-31、2026-10-01 至 2026-10-31）。与 N6 装运日期分开。
+  shipmentDeadline    String?
   /// 客户是否提货：true 已提货 / false 未提货 / null 未填
   customerPickedUp    Boolean?
   /// 是否收汇（展示缓存）。已回款只认 N9 Settlement 水单/到账；保存销售合同时不改本字段

@@ -43,6 +43,10 @@ export interface ContractSnap {
   domesticPortArrivalAt?: string | Date | null;
   etaDate?: string | Date | null;
   arrivalPort?: string | null;
+  /** 销售合同装运港，与 CIF/N6 shipmentPort 分开 */
+  loadingPort?: string | null;
+  /** 销售合同装运期限（日期或文本） */
+  shipmentDeadline?: string | null;
   customerPickedUp?: boolean | null;
   hasRemittance?: boolean | null;
   remittedFen?: number | null;

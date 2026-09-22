@@ -1,4 +1,6 @@
 import { BadRequestException, HttpException, HttpStatus, Injectable, NotFoundException } from '@nestjs/common';
+import { access } from 'fs/promises';
+import { randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { ScreeningService } from '../screening/screening.service';
@@ -109,6 +111,15 @@ import { derivePaymentDueAt } from '../customers/remittance';
 import { receivedFenOf } from '../customers/sinosure-exposure';
 import { SuppliersService } from '../suppliers/suppliers.service';
 import { buildInstallmentRecords, PaymentMode, presentPlanPayment, validateStagedInstallments } from '../suppliers/payment-schedule';
+import {
+  absolutePathForKey,
+  contentDisposition,
+  parseStoredFile,
+  resolveSinosureAttachment,
+  SinosureFileError,
+  writeSinosureFile,
+  type StoredFileMeta,
+} from './sinosure-file';
 
 @Injectable()
 export class CasesService {
@@ -443,6 +454,8 @@ export class CasesService {
       unit,
       hasRetentionOfTitle,
       hasDisputeClause,
+      loadingPort,
+      shipmentDeadline,
       ...rest
     } = dto;
     const currency = requireSalesCurrency(dto.currency, '销售合同');
@@ -471,7 +484,12 @@ export class CasesService {
       shipmentDate: cifMerged.shipmentDate,
       etaDate: cifMerged.etaDate,
       arrivalPort: cifMerged.arrivalPort,
-      domesticPortArrivalAt: parseDate(domesticPortArrivalAt),
+      loadingPort: loadingPort === undefined ? existing?.loadingPort ?? null : loadingPort,
+      shipmentDeadline: shipmentDeadline === undefined ? existing?.shipmentDeadline ?? null : shipmentDeadline,
+      domesticPortArrivalAt:
+        domesticPortArrivalAt === undefined
+          ? existing?.domesticPortArrivalAt ?? null
+          : parseDate(domesticPortArrivalAt),
       ttPercentBps: rest.ttPercentBps,
       ttAdvanceFen: rest.ttAdvanceFen,
       ttDaysAfterShipment: rest.ttDaysAfterShipment,
@@ -500,6 +518,8 @@ export class CasesService {
       shipmentDate: mode.shipmentDate ? parseDate(mode.shipmentDate) : null,
       etaDate: mode.etaDate ? parseDate(mode.etaDate) : null,
       domesticPortArrivalAt: mode.domesticPortArrivalAt ? parseDate(mode.domesticPortArrivalAt) : null,
+      loadingPort: mode.loadingPort,
+      shipmentDeadline: mode.shipmentDeadline,
       deliveryMode: deliveryMode || existing?.deliveryMode || null,
       directPortJson: stringifyDirectPort(
         (deliveryMode || existing?.deliveryMode) === 'DIRECT_PORT'
@@ -568,6 +588,8 @@ export class CasesService {
     const currency = requireSinosureLimitCurrency(dto.currency, '中信保限额');
     let confirmedExisting = !!dto.confirmedExisting;
     let sourceId: string | null = null;
+    let stored: StoredFileMeta | null = null;
+    let linkedEvidenceId = dto.evidenceId?.trim() || '';
 
     if (confirmedExisting) {
       const prior = await this.prisma.sinosurePolicy.findFirst({
@@ -579,19 +601,45 @@ export class CasesService {
       evidenceRef = evidenceRef || prior.evidenceRef || '';
       fileName = fileName || prior.fileName || '';
       insuredLimitFen = insuredLimitFen ?? prior.insuredLimitFen;
+      if (!linkedEvidenceId && prior.evidenceId) linkedEvidenceId = prior.evidenceId;
+    }
+
+    if (linkedEvidenceId) {
+      const src = await this.prisma.evidence.findFirst({ where: { id: linkedEvidenceId, caseId } });
+      if (!src) throw new BadRequestException('保单附件不存在或不属于本案');
+      const reusable =
+        src.kind === EvidenceKind.SINOSURE_POLICY || src.kind === EvidenceKind.SINOSURE_CONFIRM;
+      stored = parseStoredFile(src.payload);
+      if (code === 'N3' && !confirmedExisting && !reusable && !stored) {
+        throw new BadRequestException('请上传中信保保单');
+      }
+    } else if (code === 'N3' && !confirmedExisting) {
+      throw new BadRequestException('请上传中信保保单');
     }
 
     if (!insuredLimitFen || insuredLimitFen <= 0) {
       throw new BadRequestException('请填写中信保投保限额');
     }
-    if (!evidenceRef && !fileName) {
-      evidenceRef = `SINOSURE-${Date.now()}`;
-      fileName = fileName || '中信保限额批注-模拟.pdf';
+    let resolved: ReturnType<typeof resolveSinosureAttachment>;
+    try {
+      resolved = resolveSinosureAttachment({
+        confirmedExisting,
+        evidenceRef,
+        fileName,
+        evidenceId: linkedEvidenceId || null,
+        stored,
+      });
+    } catch (e) {
+      if (e instanceof SinosureFileError) throw new BadRequestException(e.message);
+      throw e;
     }
+    evidenceRef = resolved.evidenceRef;
+    fileName = resolved.fileName;
+    stored = resolved.stored;
 
     const kind = confirmedExisting ? EvidenceKind.SINOSURE_CONFIRM : EvidenceKind.SINOSURE_POLICY;
     const ev = await this.addEvidence(caseId, code, kind, {
-      ref: evidenceRef || fileName,
+      ref: evidenceRef || stored?.storageKey || fileName || linkedEvidenceId,
       note: confirmedExisting ? '确认沿用当前中信保保单' : '中信保保单/限额批注',
       payload: {
         fileName,
@@ -600,6 +648,11 @@ export class CasesService {
         confirmedExisting,
         changeOrderId,
         sourcePolicyId: sourceId,
+        sourceEvidenceId: linkedEvidenceId || null,
+        storageKey: stored?.storageKey || null,
+        mime: stored?.mime || null,
+        size: stored?.size || null,
+        sha256: stored?.sha256 || null,
       },
     });
 
@@ -641,6 +694,76 @@ export class CasesService {
       newCurrency: currency,
     });
     return { ...row, sinosureExposure, occupancyGate };
+  }
+
+  async uploadSinosureFile(
+    caseId: string,
+    file: { originalname: string; size: number; buffer: Buffer },
+    actorId?: string,
+    fileNameOverride?: string,
+  ) {
+    await this.ensureCase(caseId);
+    if (!file?.buffer?.length) throw new BadRequestException('请选择保单文件');
+    const originalName = (fileNameOverride || file.originalname || '').trim();
+    let meta: StoredFileMeta;
+    try {
+      meta = await writeSinosureFile({
+        caseId,
+        id: randomUUID(),
+        originalName,
+        buffer: file.buffer,
+      });
+    } catch (e) {
+      if (e instanceof SinosureFileError) throw new BadRequestException(e.message);
+      throw e;
+    }
+    const ev = await this.addEvidence(caseId, 'N3', EvidenceKind.SINOSURE_POLICY, {
+      ref: meta.storageKey,
+      note: '中信保保单文件',
+      payload: { ...meta, uploaded: true },
+    });
+    await this.audit.append({
+      caseId,
+      actorId,
+      action: 'SINOSURE_FILE_UPLOADED',
+      nodeCode: 'N3',
+      detail: {
+        evidenceId: ev.id,
+        fileName: meta.fileName,
+        storageKey: meta.storageKey,
+        sha256: meta.sha256,
+        size: meta.size,
+        mime: meta.mime,
+      },
+    });
+    return {
+      evidenceId: ev.id,
+      evidenceRef: ev.id,
+      fileName: meta.fileName,
+      mime: meta.mime,
+      size: meta.size,
+      sha256: meta.sha256,
+      storageKey: meta.storageKey,
+    };
+  }
+
+  async openEvidenceFile(caseId: string, evidenceId: string) {
+    await this.ensureCase(caseId);
+    const ev = await this.prisma.evidence.findFirst({ where: { id: evidenceId, caseId } });
+    if (!ev) throw new NotFoundException('证据不存在');
+    const meta = parseStoredFile(ev.payload);
+    if (!meta) throw new NotFoundException('该证据没有保单文件');
+    const absolutePath = absolutePathForKey(meta.storageKey);
+    try {
+      await access(absolutePath);
+    } catch {
+      throw new NotFoundException('保单文件已缺失');
+    }
+    return {
+      ...meta,
+      absolutePath,
+      disposition: contentDisposition(meta.mime, meta.fileName),
+    };
   }
 
   async saveQuote(caseId: string, dto: SaveQuoteDto, actorId?: string) {

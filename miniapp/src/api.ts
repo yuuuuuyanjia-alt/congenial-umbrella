@@ -5,17 +5,142 @@ const BASE = import.meta.env.VITE_API_BASE || '/api';
 const BASE = 'http://127.0.0.1:3000/api';
 // #endif
 
+function demoHeaders(json = false): Record<string, string> {
+  const headers: Record<string, string> = {};
+  if (json) headers['Content-Type'] = 'application/json';
+  const actor = uni.getStorageSync('actorId');
+  const role = uni.getStorageSync('demoRole');
+  if (actor) headers['x-actor-id'] = actor;
+  if (role) headers['x-demo-role'] = role;
+  return headers;
+}
+
+export const SINOSURE_UPLOAD_EXTS = ['.pdf', '.png', '.jpg', '.jpeg', '.webp', '.doc', '.docx', '.xls', '.xlsx'];
+export const SINOSURE_UPLOAD_MAX_BYTES = 15 * 1024 * 1024;
+
+export type SinosureUploadResult = {
+  evidenceId: string;
+  evidenceRef: string;
+  fileName: string;
+  mime: string;
+  size: number;
+  sha256: string;
+  storageKey: string;
+};
+
+export function sinosureFileError(name: string, size: number): string | null {
+  const base = String(name || '').split(/[/\\]/).pop() || '';
+  const i = base.lastIndexOf('.');
+  const ext = i >= 0 ? base.slice(i).toLowerCase() : '';
+  if (!SINOSURE_UPLOAD_EXTS.includes(ext)) return '中信保保单仅支持 PDF、Word、Excel 或常见图片';
+  if (!size) return '上传文件为空';
+  if (size > SINOSURE_UPLOAD_MAX_BYTES) return '保单文件不能超过 15MB';
+  return null;
+}
+
+export function evidenceFileUrl(caseId: string, evidenceId: string) {
+  return `${BASE}/cases/${caseId}/evidences/${encodeURIComponent(evidenceId)}/file`;
+}
+
+export function chooseAndUploadSinosure(caseId: string): Promise<SinosureUploadResult> {
+  if (typeof document !== 'undefined' && typeof document.createElement === 'function') {
+    return chooseAndUploadSinosureH5(caseId);
+  }
+  return chooseAndUploadSinosureMini(caseId);
+}
+
+function chooseAndUploadSinosureH5(caseId: string): Promise<SinosureUploadResult> {
+  return new Promise((resolve, reject) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.webp,application/pdf';
+    input.onchange = () => {
+      const file = input.files?.[0];
+      if (!file) {
+        reject({ message: '未选择文件' });
+        return;
+      }
+      const problem = sinosureFileError(file.name, file.size);
+      if (problem) {
+        reject({ message: problem });
+        return;
+      }
+      const fd = new FormData();
+      fd.append('file', file, file.name);
+      fd.append('fileName', file.name);
+      fetch(`${BASE}/cases/${caseId}/nodes/N3/sinosure/upload`, {
+        method: 'POST',
+        headers: demoHeaders(false),
+        body: fd,
+      })
+        .then(async (res) => {
+          const data = await res.json().catch(() => ({ message: '保单上传失败' }));
+          if (!res.ok) reject(data);
+          else resolve(data as SinosureUploadResult);
+        })
+        .catch((err) => reject(err));
+    };
+    input.click();
+  });
+}
+
+function chooseAndUploadSinosureMini(caseId: string): Promise<SinosureUploadResult> {
+  return new Promise((resolve, reject) => {
+    const uniAny = uni as any;
+    const chooser = uniAny.chooseFile || uniAny.chooseMessageFile;
+    if (!chooser) {
+      reject({ message: '当前环境不支持选择文件' });
+      return;
+    }
+    chooser({
+      count: 1,
+      type: 'all',
+      extension: SINOSURE_UPLOAD_EXTS,
+      success: (res: any) => {
+        const f = res.tempFiles?.[0];
+        const filePath = f?.path || f?.tempFilePath || res.tempFilePaths?.[0];
+        const fileName = f?.name || 'sinosure-policy.pdf';
+        const size = Number(f?.size || 0);
+        if (!filePath) {
+          reject({ message: '未选择文件' });
+          return;
+        }
+        const problem = sinosureFileError(fileName, size || 1);
+        if (problem) {
+          reject({ message: problem });
+          return;
+        }
+        uni.uploadFile({
+          url: BASE + `/cases/${caseId}/nodes/N3/sinosure/upload`,
+          filePath,
+          name: 'file',
+          formData: { fileName },
+          header: demoHeaders(false),
+          success: (up) => {
+            let data: any = up.data;
+            try {
+              if (typeof data === 'string') data = JSON.parse(data);
+            } catch {
+              /* 保留原文 */
+            }
+            if (up.statusCode >= 200 && up.statusCode < 300) resolve(data as SinosureUploadResult);
+            else reject(data || { message: '保单上传失败' });
+          },
+          fail: (err) => reject(err),
+        });
+      },
+      fail: (err: any) => reject(err?.errMsg ? { message: '未选择文件' } : err),
+    });
+  });
+}
+
 function request<T = any>(method: string, url: string, data?: unknown): Promise<T> {
   return new Promise((resolve, reject) => {
     uni.request({
       url: BASE + url,
       method: method as any,
       data: data as any,
-      header: {
-        'Content-Type': 'application/json',
-        ...(uni.getStorageSync('actorId') ? { 'x-actor-id': uni.getStorageSync('actorId') } : {}),
-        ...(uni.getStorageSync('demoRole') ? { 'x-demo-role': uni.getStorageSync('demoRole') } : {}),
-      },
+      header: demoHeaders(true),
       success: (res) => {
         if (res.statusCode >= 200 && res.statusCode < 300) resolve(res.data as T);
         else reject(res.data || { message: '请求失败', statusCode: res.statusCode });

@@ -2,10 +2,6 @@
   <view class="wrap" v-if="c">
     <view class="card">
       <view class="h1" style="line-height: 1.35">{{ contractTitle }}</view>
-      <view class="muted" style="margin-top: 8rpx">采购合同 / 国内备货</view>
-      <view class="muted">
-        本页只办理采购合同（N5）。装运、单证、报关、收汇属于出口案，不在本采购合同办理。销售合同与采购合同分开签订。公司惯例先销售后采购：须先从已签订的销售/出口合同中任选一笔关联（不限于本案），否则不得保存或推进。公司无自有产线，向国内供应商采购。须登记供应商、采购合同/PO、计划交付日期与货款支付方式（一次性付清或分期支付），并对供应商做制裁/不可靠实体筛查。计划交付日期或实际交付日期任一晚于关联销售合同交货期，须登记结构化延期并保留客户同意证据。本页展示对照用的关联销售合同交货期。
-      </view>
       <view class="err" v-if="!canWriteBusiness" style="margin-top: 8rpx">当前为{{ roleLabel }}，采购合同只读，不可保存或推进。</view>
       <view class="muted" v-if="c.currentNode && isN6PlusNode(c.currentNode)" style="margin-top: 8rpx">
         出口案当前进度：{{ c.currentNode }} {{ currentNodeName }}（不属于本采购合同）
@@ -37,7 +33,6 @@
           <view class="muted" style="margin-top: 8rpx">
             销售金额 {{ money(selectedSales.amountFen, selectedSales.currency) }}
             <text v-if="salesDeliveryYmd"> · 交货期 {{ salesDeliveryYmd }}</text>
-            <text v-if="selectedSales.deliveryModeLabel"> · 交货方式 {{ selectedSales.deliveryModeLabel }}</text>
             <text v-if="selectedSales.statusLabel"> · {{ selectedSales.statusLabel }}</text>
           </view>
         </view>
@@ -81,15 +76,6 @@
         <text v-if="salesDeliveryYmd"> · 交货期 {{ salesDeliveryYmd }}</text>
       </view>
       <view class="err" v-if="!form.salesCaseId" style="margin-top: 12rpx">尚未选择销售合同，不得保存采购合同。</view>
-    </view>
-
-    <view class="card" v-if="selectedSales">
-      <view class="h2">交货方式（只读，同步自销售合同）</view>
-      <view class="muted">采购侧不改交货方式。港口直出由销售合同登记仓储地点与批次号。</view>
-      <view class="h2" style="margin-top: 12rpx">{{ selectedSales.deliveryModeLabel || '销售合同尚未选择交货方式' }}</view>
-      <view class="muted" v-if="selectedSales.deliveryMode === 'DIRECT_PORT'" style="margin-top: 8rpx">
-        港口直出：购销薄利将进入工作台「退税·融资性审核」。货描须与销售合同匹配。
-      </view>
     </view>
 
     <view class="card">

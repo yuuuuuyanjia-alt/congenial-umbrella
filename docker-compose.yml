@@ -9,6 +9,7 @@ services:
       NODE_ENV: production
       PORT: "3000"
       DATABASE_URL: file:/data/demo.db
+      UPLOAD_DIR: /data/uploads
       DEMO_FORCE_SEED: ${DEMO_FORCE_SEED:-0}
     volumes:
       - sqlite-data:/data

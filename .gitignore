@@ -14,3 +14,4 @@ backend/dist-seed/
 miniapp/dist/
 miniapp/node_modules/
 backend/node_modules/
+backend/uploads/
