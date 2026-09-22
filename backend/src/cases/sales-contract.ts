@@ -114,6 +114,10 @@ export type SalesContractModeFields = {
   ttPercentBps?: number | null;
   ttAdvanceFen?: number | null;
   ttDaysAfterShipment?: number | null;
+  /** 销售合同装运港。不是 CIF/N6 shipmentPort，不随术语切换清空。 */
+  loadingPort?: string | null;
+  /** 销售合同装运期限（日期或文本）。不是 N6 装运日期。 */
+  shipmentDeadline?: string | null;
 };
 
 function blankToNull(v?: string | null): string | null {
@@ -136,6 +140,7 @@ function keepNumber(applies: boolean, value: number | null | undefined): number 
 /**
  * 按当前运输术语 / 电汇时点丢掉上一选项专属字段，避免 CIF↔FOB、前/后 T/T 脏数据串台。
  * 装运日期：CIF 装运块或非 CIF 的电汇节点仍适用则保留。金额、提货、收汇不在此处理。
+ * loadingPort / shipmentDeadline 是销售合同条款（装运港、装运期限），不是 N6 CIF 装运块，两种术语都保留。
  */
 export function sanitizeSalesContractModeFields<T extends SalesContractModeFields>(input: T): T & {
   incoterms: string | null;
@@ -149,6 +154,8 @@ export function sanitizeSalesContractModeFields<T extends SalesContractModeField
   ttPercentBps: number | null;
   ttAdvanceFen: number | null;
   ttDaysAfterShipment: number | null;
+  loadingPort: string | null;
+  shipmentDeadline: string | null;
 } {
   const incoterms = blankToNull(normalizeTransportIncoterms(input.incoterms) || input.incoterms);
   const parsedTerm = resolveTradeTerm(incoterms);
@@ -175,6 +182,8 @@ export function sanitizeSalesContractModeFields<T extends SalesContractModeField
     shipmentDate: keepValue(shipmentDateApplies, input.shipmentDate),
     etaDate: keepValue(cif, input.etaDate),
     arrivalPort: cif ? blankToNull(input.arrivalPort) : null,
+    loadingPort: blankToNull(input.loadingPort),
+    shipmentDeadline: blankToNull(input.shipmentDeadline),
     domesticPortArrivalAt: keepValue(fob, input.domesticPortArrivalAt),
     ttPercentBps: keepNumber(ttTiming === TT_TIMING.ADVANCE, input.ttPercentBps),
     ttAdvanceFen: keepNumber(ttTiming === TT_TIMING.ADVANCE, input.ttAdvanceFen),

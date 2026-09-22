@@ -1,4 +1,7 @@
-import { Body, Controller, Get, Headers, Param, Post, Query } from '@nestjs/common';
+import { createReadStream } from 'fs';
+import { Body, Controller, Get, Headers, Param, Post, Query, Res, StreamableFile, UploadedFile, UseFilters, UseInterceptors } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import type { Response } from 'express';
 import { CasesService } from './cases.service';
 import { AuditService } from '../audit/audit.service';
 import {
@@ -18,6 +21,8 @@ import {
   SaveTaxRebateDto,
   UpsertPartyDto,
 } from './dto';
+import { SINOSURE_UPLOAD_MAX_BYTES } from './sinosure-file';
+import { UploadExceptionFilter } from './upload.filter';
 
 @Controller('cases')
 export class CasesController {
@@ -98,6 +103,36 @@ export class CasesController {
     @Headers('x-actor-id') actorId?: string,
   ) {
     return this.cases.saveContract(id, dto, actorId);
+  }
+
+  @Post(':id/nodes/N3/sinosure/upload')
+  @UseFilters(UploadExceptionFilter)
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: SINOSURE_UPLOAD_MAX_BYTES } }))
+  uploadN3Sinosure(
+    @Param('id') id: string,
+    @UploadedFile()
+    file: { originalname: string; size: number; buffer: Buffer } | undefined,
+    @Body('fileName') fileName?: string,
+    @Headers('x-actor-id') actorId?: string,
+  ) {
+    return this.cases.uploadSinosureFile(
+      id,
+      file || { originalname: '', size: 0, buffer: Buffer.alloc(0) },
+      actorId,
+      fileName,
+    );
+  }
+
+  @Get(':id/evidences/:evidenceId/file')
+  async evidenceFile(
+    @Param('id') id: string,
+    @Param('evidenceId') evidenceId: string,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const file = await this.cases.openEvidenceFile(id, evidenceId);
+    res.setHeader('Content-Type', file.mime);
+    res.setHeader('Content-Disposition', file.disposition);
+    return new StreamableFile(createReadStream(file.absolutePath));
   }
 
   @Post(':id/nodes/N3/sinosure')

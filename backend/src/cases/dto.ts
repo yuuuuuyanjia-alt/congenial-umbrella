@@ -84,6 +84,10 @@ export class SaveContractDto {
   @IsOptional() @IsString() domesticPortArrivalAt?: string | null;
   @IsOptional() @IsString() etaDate?: string | null;
   @IsOptional() @IsString() arrivalPort?: string | null;
+  /** 销售合同装运港。不是 N6 CIF shipmentPort。 */
+  @IsOptional() @IsString() loadingPort?: string | null;
+  /** 销售合同装运期限，日期或文本。 */
+  @IsOptional() @IsString() shipmentDeadline?: string | null;
   @IsOptional() @IsBoolean() customerPickedUp?: boolean | null;
   @IsOptional() @IsBoolean() hasRemittance?: boolean;
   @IsOptional() @IsInt() remittedFen?: number;
@@ -284,6 +288,8 @@ export class SaveCustomsDto {
 export class SaveSinosureDto {
   @IsOptional() @IsString() evidenceRef?: string;
   @IsOptional() @IsString() fileName?: string;
+  /** 已上传保单证据，或沿用本案已有中信保证据 */
+  @IsOptional() @IsString() evidenceId?: string;
   @IsOptional() @IsInt() insuredLimitFen?: number;
   @IsOptional()
   @ToCurrency()

@@ -147,6 +147,36 @@ describe('销售合同 CIF 装运节点与收汇', () => {
 });
 
 describe('切换术语清脏字段', () => {
+  it('销售合同装运港与装运期限不随 CIF 装运港口清空', () => {
+    const fob = sanitizeSalesContractModeFields({
+      incoterms: 'FOB',
+      shipmentPort: 'Shanghai',
+      loadingPort: ' 宁波港 ',
+      shipmentDeadline: '2026-10-01 至 2026-10-31',
+    });
+    expect(fob.shipmentPort).toBeNull();
+    expect(fob.loadingPort).toBe('宁波港');
+    expect(fob.shipmentDeadline).toBe('2026-10-01 至 2026-10-31');
+
+    const cif = sanitizeSalesContractModeFields({
+      incoterms: 'CIF',
+      shipmentPort: 'Shanghai',
+      loadingPort: '上海港',
+      shipmentDeadline: '2026-10-31',
+    });
+    expect(cif.shipmentPort).toBe('Shanghai');
+    expect(cif.loadingPort).toBe('上海港');
+    expect(cif.shipmentDeadline).toBe('2026-10-31');
+
+    const blank = sanitizeSalesContractModeFields({
+      incoterms: 'CIF',
+      loadingPort: '   ',
+      shipmentDeadline: '',
+    });
+    expect(blank.loadingPort).toBeNull();
+    expect(blank.shipmentDeadline).toBeNull();
+  });
+
   it('离开 CIF 清空装运港、装运日、预计到港；不把 FOB 国内到达写回去', () => {
     const out = sanitizeSalesContractModeFields({
       incoterms: 'FOB',

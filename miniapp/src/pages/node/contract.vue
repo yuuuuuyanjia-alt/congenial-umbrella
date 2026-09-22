@@ -66,12 +66,10 @@
         <view class="label">批次号</view>
         <input class="input" v-model="directPort.batchNo" placeholder="批次号" />
       </template>
-    </view>
-
-    <view class="card" v-if="tradeTerm === 'FOB'">
-      <view class="h2">国内段：到达口岸 / 港口时间</view>
-      <view class="label">到达口岸/港口时间</view>
-      <input class="input" v-model="form.domesticPortArrivalAt" placeholder="年-月-日 或 年-月-日 时:分，如 2026-12-08 10:00" />
+      <view class="label">装运港</view>
+      <input class="input" v-model="form.loadingPort" placeholder="如 上海港 / Shanghai" />
+      <view class="label">装运期限</view>
+      <input class="input" v-model="form.shipmentDeadline" placeholder="年-月-日，或期限，如 2026-10-31 前" />
     </view>
 
     <view class="card" v-if="form.ttTiming === 'ADVANCE'">
@@ -107,11 +105,14 @@
       <view class="err" v-if="occupancyRejected" style="margin-top: 12rpx">工作台已驳回该高风险占用，暂不可推进。</view>
       <view class="btn btn-ghost" v-if="canWriteWorkbench && (occupancyNeedsReview || occupancyRejected)" @click="goWorkbench">去审核工作台</view>
       <view class="muted" v-if="sinosureHint" style="margin-top: 8rpx">{{ sinosureHint }}</view>
-      <view class="label">保单编号 / 附件编号</view>
-      <input class="input" v-model="sino.evidenceRef" placeholder="可手填编号，或点下方模拟上传" />
-      <view class="label">附件名称</view>
-      <input class="input" v-model="sino.fileName" placeholder="如 中信保限额批注.pdf" />
-      <view class="btn btn-ghost" v-if="canWriteBusiness" @click="stubUpload">模拟上传保单</view>
+      <view class="label">中信保保单</view>
+      <view class="readonly" v-if="sino.fileName">{{ sino.fileName }}</view>
+      <view class="muted" v-else>请上传 PDF，或 Word / Excel / 图片。</view>
+      <view class="muted" v-if="sino.fileStored" style="margin-top: 8rpx">文件已写入证据链。</view>
+      <view class="btn btn-ghost" v-if="sino.fileStored && sino.evidenceId" @click="openSinosureFile">查看保单文件</view>
+      <view class="btn btn-ghost" v-if="canWriteBusiness" @click="pickSinosureFile">{{ sino.fileName ? '重新上传保单' : '上传保单' }}</view>
+      <view class="label">保单编号（可选）</view>
+      <input class="input" v-model="sino.evidenceRef" placeholder="保单或限额批单编号，可留空" />
       <view class="label">投保限额</view>
       <input class="input" type="digit" v-model="sino.limitYuan" placeholder="须不低于计入占用的美元合同金额" />
       <view class="label">限额币种</view>
@@ -140,6 +141,8 @@ import { computed, reactive, ref } from 'vue';
 import {
   api,
   fenToYuan,
+  chooseAndUploadSinosure,
+  evidenceFileUrl,
   goToNode,
   hasReachedNode,
   latestSinosure,
@@ -209,7 +212,8 @@ const form = reactive({
   unit: 'TON' as 'TON' | 'KG',
   amountYuan: '',
   currency: SALES_CURRENCY,
-  domesticPortArrivalAt: '',
+  loadingPort: '',
+  shipmentDeadline: '',
   deliveryMode: '' as '' | 'OWN_WAREHOUSE' | 'DIRECT_PORT',
 });
 const directPort = reactive({
@@ -217,8 +221,10 @@ const directPort = reactive({
   batchNo: '',
 });
 const sino = reactive({
+  evidenceId: '',
   evidenceRef: '',
   fileName: '',
+  fileStored: false,
   limitYuan: '',
   currency: SALES_CURRENCY,
 });
@@ -310,7 +316,8 @@ function hydrateFromCase(row: any) {
     form.unit = parseContractUnit(ct.unit) || parseContractUnit(activeQuote?.unit) || 'TON';
     form.amountYuan = fenToYuan(ct.amountFen || row.amountFen);
     form.currency = ct.currency === 'CNY' || ct.currency === 'USD' ? ct.currency : SALES_CURRENCY;
-    form.domesticPortArrivalAt = datetimeField(ct.domesticPortArrivalAt);
+    form.loadingPort = ct.loadingPort || '';
+    form.shipmentDeadline = ct.shipmentDeadline || '';
     form.deliveryMode = (ct.deliveryMode === 'OWN_WAREHOUSE' || ct.deliveryMode === 'DIRECT_PORT'
       ? ct.deliveryMode
       : '') as typeof form.deliveryMode;
@@ -326,8 +333,10 @@ function hydrateFromCase(row: any) {
   }
   const p = latestSinosure(row.sinosurePolicies, 'N3');
   if (p) {
-    sino.evidenceRef = p.evidenceRef || '';
+    sino.evidenceId = p.evidenceId || '';
+    sino.evidenceRef = visiblePolicyNo(p.evidenceRef, p.evidenceId, row);
     sino.fileName = p.fileName || '';
+    sino.fileStored = policyFileStored(row, p.evidenceId);
     sino.limitYuan = fenToYuan(p.insuredLimitFen);
   }
   sino.currency = SALES_CURRENCY;
@@ -375,7 +384,6 @@ function isTtPaymentTermsText(raw?: string | null) {
 function clearInapplicableModeFields() {
   const term = resolveTradeTerm(form.incoterms);
   const tt = form.ttTiming;
-  if (term !== 'FOB') form.domesticPortArrivalAt = '';
   if (tt !== 'ADVANCE') {
     form.ttPercent = '';
     form.ttAdvanceYuan = '';
@@ -412,11 +420,21 @@ function syncAdvanceFromPercent() {
   form.ttAdvanceYuan = fenToYuan(Math.round((amt * pct) / 100));
 }
 
-function datetimeField(v: unknown) {
-  if (v == null || v === '') return '';
-  const s = String(v).trim();
-  if (s.length >= 16) return s.slice(0, 16).replace('T', ' ');
-  return s.slice(0, 10);
+function policyFileStored(row: any, evidenceId?: string | null) {
+  if (!evidenceId) return false;
+  const ev = (row?.evidences || []).find((e: any) => e.id === evidenceId);
+  return typeof ev?.payload?.storageKey === 'string' && !!ev.payload.storageKey;
+}
+
+function visiblePolicyNo(ref?: string | null, evidenceId?: string | null, row?: any) {
+  const s = String(ref || '').trim();
+  if (!s) return '';
+  if (evidenceId && s === evidenceId) return '';
+  if (s.startsWith('sinosure/')) return '';
+  const ev = (row?.evidences || []).find((e: any) => e.id === evidenceId);
+  const key = ev?.payload?.storageKey;
+  if (key && s === key) return '';
+  return s;
 }
 
 function applyDirectPort(dp?: any) {
@@ -431,20 +449,33 @@ function stubVoucher() {
   ok.value = '已生成模拟收汇凭证（演示环境，非真实上传）';
 }
 
-function stubUpload() {
-  sino.evidenceRef = `SINOSURE-${Date.now()}`;
-  sino.fileName = '中信保限额批注-模拟.pdf';
-  ok.value = '已生成模拟保单附件编号（演示环境，非真实上传）';
+function pickSinosureFile() {
+  if (!id.value) return;
+  err.value = '';
+  ok.value = '';
+  chooseAndUploadSinosure(id.value)
+    .then((uploaded) => {
+      sino.evidenceId = uploaded.evidenceId;
+      sino.fileName = uploaded.fileName;
+      sino.fileStored = true;
+      ok.value = `已上传保单 ${uploaded.fileName}`;
+    })
+    .catch((e: any) => {
+      const msg = e?.message || e?.errMsg || '';
+      if (!msg || /cancel|取消|未选择/.test(String(msg))) return;
+      err.value = Array.isArray(e?.message) ? e.message.join('；') : msg || '保单上传失败';
+    });
+}
+
+function openSinosureFile() {
+  if (!id.value || !sino.evidenceId) return;
+  const url = evidenceFileUrl(id.value, sino.evidenceId);
+  if (typeof window !== 'undefined') window.open(url, '_blank');
 }
 
 function gateMessage(e: any) {
   if (Array.isArray(e?.reasons) && e.reasons.length) return e.reasons.join('；');
   return e?.message || '闸门拒绝';
-}
-
-function ymdOrNull(v: string) {
-  const s = (v || '').trim();
-  return s || null;
 }
 
 function intOrNull(v: string) {
@@ -457,7 +488,6 @@ async function save() {
   ok.value = '';
   try {
     const term = tradeTerm.value || (isTtOnly(form.incoterms) ? 'FOB' : form.incoterms);
-    const fob = term === 'FOB';
     const ttTiming = form.ttTiming || null;
     const paymentTerms =
       ttTiming || !isTtPaymentTermsText(form.paymentTerms) ? form.paymentTerms : null;
@@ -476,7 +506,8 @@ async function save() {
       unit: form.unit,
       amountFen: yuanToFen(form.amountYuan),
       currency: form.currency,
-      domesticPortArrivalAt: fob ? ymdOrNull(form.domesticPortArrivalAt) : null,
+      loadingPort: form.loadingPort || null,
+      shipmentDeadline: form.shipmentDeadline || null,
       deliveryMode: form.deliveryMode || null,
       directPort:
         form.deliveryMode === 'DIRECT_PORT'
@@ -499,23 +530,37 @@ async function save() {
 
 async function saveSino() {
   err.value = '';
-  if (!sino.evidenceRef && !sino.fileName) stubUpload();
-  await api.saveSinosureN3(id.value, {
-    evidenceRef: sino.evidenceRef,
-    fileName: sino.fileName,
-    insuredLimitFen: yuanToFen(sino.limitYuan),
-    currency: SALES_CURRENCY,
-  });
-  c.value = await api.case(id.value);
-  savedSession.value = true;
-  ok.value = '中信保信息已保存';
+  if (!sino.evidenceId) {
+    ok.value = '';
+    err.value = '请上传中信保保单（PDF 或常见文档）';
+    return false;
+  }
+  try {
+    await api.saveSinosureN3(id.value, {
+      evidenceId: sino.evidenceId,
+      evidenceRef: sino.evidenceRef || undefined,
+      fileName: sino.fileName || undefined,
+      insuredLimitFen: yuanToFen(sino.limitYuan),
+      currency: SALES_CURRENCY,
+    });
+    c.value = await api.case(id.value);
+    hydrateFromCase(c.value);
+    savedSession.value = true;
+    ok.value = '中信保信息已保存';
+    return true;
+  } catch (e: any) {
+    ok.value = '';
+    err.value = gateMessage(e);
+    return false;
+  }
 }
 
 async function tryAdvance() {
   err.value = '';
   ok.value = '';
   try {
-    await saveSino();
+    const sinoOk = await saveSino();
+    if (!sinoOk) return;
     const saved = await save();
     if (!saved) return;
     const r = await api.advance(id.value, 'N3');
@@ -548,5 +593,14 @@ function goNext() {
   font-weight: 600;
   margin-left: 8rpx;
   font-size: var(--font-xs);
+}
+.readonly {
+  margin-top: 8rpx;
+  border: 2rpx solid #e8eef3;
+  border-radius: 12rpx;
+  padding: 18rpx;
+  background: #f7f5f0;
+  font-weight: 650;
+  color: #0f3d2e;
 }
 </style>
