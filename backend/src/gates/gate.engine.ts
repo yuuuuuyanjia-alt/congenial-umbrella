@@ -11,7 +11,6 @@ import {
   Decision,
   DelayTrigger,
   Disposition,
-  EportStatus,
   HISTORY_DEV_MEDIUM_PCT,
   HISTORY_DEV_SOFT_PCT,
   NodeStatus,
@@ -21,6 +20,7 @@ import {
   N5_SALES_LINK_REQUIRED_REASON,
   N5_SALES_NOT_SIGNED_REASON,
   N6_PLUS_PENDING_CHANGE_REASON,
+  n7OriginCertRequired,
   SINOSURE_EXPOSURE_HIGH_REJECTED_REASON,
   SINOSURE_EXPOSURE_HIGH_REVIEW_REASON,
   PartyRole,
@@ -88,9 +88,6 @@ export function evaluateNode(nodeCode: string, snap: CaseSnapshot): GateResult {
       break;
     case 'N7':
       result = evaluateN7(snap);
-      break;
-    case 'N8':
-      result = evaluateN8(snap);
       break;
     case 'N9':
       result = evaluateN9(snap);
@@ -654,82 +651,23 @@ export function evaluateN7(snap: CaseSnapshot): GateResult {
   const r = emptyResult('N7');
   const pending = refusePendingChangeAtShipment(r, snap);
   if (pending) return pending;
+  const transport = effectiveN6Incoterms(snap);
+  const originRequired = n7OriginCertRequired(transport);
   for (const slot of N7_UPLOADS) {
+    if (slot.kind === 'N7_ORIGIN_CERT' && !originRequired) continue;
     if (!hasStoredEvidence(snap, slot.kind)) {
       r.missing.push(slot.missing);
       r.reasons.push(`硬闸门：缺少${slot.label}上传`);
     }
   }
   if (!r.missing.length) {
-    r.reasons.push('硬闸门证据齐全：销售合同、商业发票、箱单、采购合同、发票、报关单均已上传');
+    r.reasons.push(
+      originRequired
+        ? '硬闸门证据齐全：销售合同、商业发票、箱单、采购合同、发票、报关单、原产地证均已上传'
+        : '硬闸门证据齐全：销售合同、商业发票、箱单、采购合同、发票、报关单均已上传（FOB 原产地证可不传）',
+    );
   }
   return finalizeHard(r);
-}
-
-export function evaluateN8(snap: CaseSnapshot): GateResult {
-  const r = emptyResult('N8');
-  const pending = refusePendingChangeAtShipment(r, snap);
-  if (pending) return pending;
-  const c = snap.customs;
-  if (!c) {
-    r.missing.push('N8_CUSTOMS');
-    r.reasons.push('尚未录入报关信息');
-    return blockMissing(r);
-  }
-  if (!c.hsCode?.trim()) {
-    r.missing.push('N8_HS_CODE');
-    r.reasons.push('未填写 HS 编码');
-  }
-  if (!c.productName?.trim()) {
-    r.missing.push('N8_PRODUCT_NAME');
-    r.reasons.push('未填写报关品名');
-  }
-  const tpl = snap.hsTemplate;
-  if (c.hsCode?.trim() && !tpl) {
-    r.missing.push('N8_HS_TEMPLATE');
-    r.reasons.push(`HS ${c.hsCode} 无申报要素模板，禁止申报`);
-  }
-  if (tpl) {
-    const elements = c.declareElements || {};
-    const missingEls = tpl.requiredElements.filter((el) => !String(elements[el] ?? '').trim());
-    if (missingEls.length) {
-      r.missing.push('N8_DECLARE_ELEMENTS');
-      r.reasons.push(`申报要素不完整，缺：${missingEls.join('、')}`);
-    }
-    if (c.productName?.trim() && !namesLooseMatch(c.productName, tpl.productName)) {
-      r.missing.push('N8_HS_PRODUCT_MISMATCH');
-      r.reasons.push(`品名「${c.productName}」与 HS 模板「${tpl.productName}」严重不符，禁止申报`);
-    }
-    if (c.unit?.trim() && normalize(c.unit) !== normalize(tpl.unit)) {
-      r.alerts.push(`计量单位「${c.unit}」与税则单位「${tpl.unit}」不一致，软提示`);
-    }
-    if (c.exportTaxName?.trim() && normalize(c.exportTaxName) !== normalize(tpl.exportTaxName)) {
-      r.alerts.push(`出口税则品名「${c.exportTaxName}」与模板「${tpl.exportTaxName}」不一致，软提示`);
-    }
-  }
-  if (!c.originEvidenceType || !c.originEvidenceRef) {
-    r.missing.push('N8_ORIGIN_EVIDENCE');
-    r.reasons.push('缺少原产地证据（类型 + 编号）');
-  }
-  if (c.eportStatus === EportStatus.HELD) {
-    r.missing.push('N8_EPORT_HELD');
-    r.reasons.push('电子口岸状态为扣留/退单，禁止放行');
-  }
-
-  if (r.missing.length) return blockMissing(r);
-
-  if (!c.eportStatus || c.eportStatus === EportStatus.NOT_SYNCED) {
-    r.alerts.push('电子口岸尚未同步，可先模拟同步后再推进');
-  }
-
-  if (r.alerts.length) {
-    r.decision = Decision.SOFT_ALERT;
-    r.canProceed = true;
-    r.reasons.push('HS 与申报要素齐全，存在税则品名/单位或口岸状态软提示');
-    return r;
-  }
-  r.reasons.push('HS 编码、申报要素与原产地证据齐全，允许报关放行');
-  return r;
 }
 
 export function evaluateN9(snap: CaseSnapshot): GateResult {
@@ -858,16 +796,6 @@ function ymdLocal(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
-function normalize(s: string) {
-  return s.replace(/\s+/g, '').toLowerCase();
-}
-
-function namesLooseMatch(a: string, b: string) {
-  const na = normalize(a);
-  const nb = normalize(b);
-  return na.includes(nb) || nb.includes(na);
-}
-
 function retriggerRelated(snap: CaseSnapshot, co: ChangeOrderSnap): GateResult | null {
   const fields = new Set(co.diffs.map((d) => d.field));
   const hypothetical = applyDiffsToSnap(snap, co.diffs);
@@ -942,9 +870,10 @@ function refusePendingChangeAtShipment(r: GateResult, snap: CaseSnapshot): GateR
   return HARD_GATES.has(r.nodeCode) ? finalizeHard(r) : blockMissing(r);
 }
 
-/** 流程从报价起：2→3→4(按需)→5→6→7→8→9。N3 之后若无变更单则跳过 N4。历史 N1 直接进入报价。 */
+/** 流程从报价起：2→3→4(按需)→5→6→7→9。N3 之后若无变更单则跳过 N4。历史 N1 进入报价；已退出的 N8 下一步为收汇。 */
 export function nextNode(current: string, snap?: CaseSnapshot): string | null {
   if (current === 'N1') return 'N2';
+  if (current === 'N8') return 'N9';
   const order = NODE_FLOW as readonly string[];
   const i = order.indexOf(current);
   if (i < 0 || i === order.length - 1) return null;

@@ -6,7 +6,7 @@ import { assertSafeStorageKey } from './sinosure-file';
 import { writeTradeDocFile } from './trade-doc-file';
 
 describe('装运/单证上传', () => {
-  it('N6 只有发票和箱单，N7 六份且商业发票与发票分开', () => {
+  it('N6 只有发票和箱单，N7 七个槽位且商业发票与发票分开', () => {
     expect(tradeDocUpload('N6', 'invoice')?.kind).toBe('N6_INVOICE');
     expect(tradeDocUpload('N6', 'packing')?.kind).toBe('N6_PACKING');
     expect(tradeDocUpload('N6', 'sales-contract')).toBeNull();
@@ -20,6 +20,7 @@ describe('装运/单证上传', () => {
       'purchase-contract',
       'invoice',
       'customs',
+      'origin-cert',
     ];
     expect(n7.map((slot) => tradeDocUpload('N7', slot)?.label)).toEqual([
       '销售合同',
@@ -28,7 +29,9 @@ describe('装运/单证上传', () => {
       '采购合同',
       '发票',
       '报关单',
+      '原产地证',
     ]);
+    expect(tradeDocUpload('N7', 'origin-cert')?.missing).toBe('N7_ORIGIN_CERT');
   });
 
   it('单证文件写入 trade-docs 并可按存储键读回', async () => {

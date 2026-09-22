@@ -109,6 +109,7 @@ export type TradeDocSlot = {
   kind: string;
   label: string;
   demoName: string;
+  hint?: string;
 };
 
 /** N6：上传发票、上传箱单。与 N7 的商业发票/发票/箱单不是同一份证据。 */
@@ -117,7 +118,7 @@ export const N6_DOC_SLOTS: TradeDocSlot[] = [
   { slot: 'packing', kind: 'N6_PACKING', label: '箱单', demoName: '演示箱单.pdf' },
 ];
 
-/** N7 只保留这六份。商业发票与发票分别必填。 */
+/** N7：前六份必填；原产地证在非 FOB 时必填。商业发票与发票分别必填。 */
 export const N7_DOC_SLOTS: TradeDocSlot[] = [
   { slot: 'sales-contract', kind: 'N7_SALES_CONTRACT', label: '销售合同', demoName: '演示销售合同.pdf' },
   { slot: 'commercial-invoice', kind: 'N7_COMMERCIAL_INVOICE', label: '商业发票', demoName: '演示商业发票.pdf' },
@@ -125,6 +126,13 @@ export const N7_DOC_SLOTS: TradeDocSlot[] = [
   { slot: 'purchase-contract', kind: 'N7_PURCHASE_CONTRACT', label: '采购合同', demoName: '演示采购合同.pdf' },
   { slot: 'invoice', kind: 'N7_INVOICE', label: '发票', demoName: '演示发票.pdf' },
   { slot: 'customs', kind: 'N7_CUSTOMS', label: '报关单', demoName: '演示报关单.pdf' },
+  {
+    slot: 'origin-cert',
+    kind: 'N7_ORIGIN_CERT',
+    label: '原产地证',
+    demoName: '演示原产地证.pdf',
+    hint: '运输术语为 FOB 时可以不传；CIF 等非 FOB 必须上传，否则不能进入收汇。',
+  },
 ];
 
 export type TradeDocUploadResult = SinosureUploadResult & {
@@ -379,8 +387,6 @@ export const api = {
   saveShipment: (id: string, body: unknown) => request('POST', `/cases/${id}/nodes/N6/shipment`, body),
   saveDocument: (id: string, body: unknown) => request('POST', `/cases/${id}/nodes/N7/documents`, body),
   saveFix: (id: string, body: unknown) => request('POST', `/cases/${id}/nodes/N7/fixes`, body),
-  saveCustoms: (id: string, body: unknown) => request('POST', `/cases/${id}/nodes/N8/customs`, body),
-  syncEport: (id: string) => request('POST', `/cases/${id}/nodes/N8/eport-sync`),
   saveSettlement: (id: string, body: unknown) => request('POST', `/cases/${id}/nodes/N9/settlement`, body),
   saveTaxRebate: (id: string, body: unknown) => request('POST', `/cases/${id}/tax-rebate`, body),
   declareTaxRebate: (id: string) => request('POST', `/cases/${id}/tax-rebate/declare`),
@@ -450,7 +456,23 @@ export function decisionText(d?: string | null) {
   return (d && map[d]) || d || '-';
 }
 
-const NODE_FLOW = ['N2', 'N3', 'N4', 'N5', 'N6', 'N7', 'N8', 'N9'];
+const NODE_FLOW = ['N2', 'N3', 'N4', 'N5', 'N6', 'N7', 'N9'];
+
+/** 已退出的 N8 排在 N7 与 N9 之间，避免历史 currentNode 从列表和跳转里消失。 */
+function flowIndex(code?: string | null): number {
+  const c = String(code || '').toUpperCase();
+  if (c === 'N8') {
+    const n7 = NODE_FLOW.indexOf('N7');
+    return n7 < 0 ? -1 : n7 + 0.5;
+  }
+  return NODE_FLOW.indexOf(c);
+}
+
+/** 历史报关放行改指向收汇。 */
+export function activePipelineNode(code?: string | null): string {
+  const c = String(code || '').toUpperCase();
+  return c === 'N8' ? 'N9' : c;
+}
 
 /** 与后端 N6_PLUS_PENDING_CHANGE_REASON 一致 */
 export const N6_PLUS_PENDING_CHANGE_REASON =
@@ -470,19 +492,21 @@ export const NODE_LABELS: Record<string, string> = {
   N5: '采购合同/国内备货',
   N6: '装运/提单指示',
   N7: '单证一致性',
-  N8: '报关放行',
   N9: '收汇对账',
 };
 
 export function pipelineNodeName(code?: string | null) {
-  return (code && NODE_LABELS[code]) || code || '';
+  const active = activePipelineNode(code);
+  return (active && NODE_LABELS[active]) || active || '';
 }
 
-/** 与闸门 nextNode 一致：N3 无变更单则跳过 N4。 */
+/** 与闸门 nextNode 一致：N3 无变更单则跳过 N4；N7 下一步是 N9。 */
 export function nextPipelineNode(current: string, hasChangeOrders = false): string | null {
-  const i = NODE_FLOW.indexOf(current);
+  const code = String(current || '').toUpperCase();
+  if (code === 'N8') return 'N9';
+  const i = NODE_FLOW.indexOf(code);
   if (i < 0 || i === NODE_FLOW.length - 1) return null;
-  if (current === 'N3' && !hasChangeOrders) return 'N5';
+  if (code === 'N3' && !hasChangeOrders) return 'N5';
   return NODE_FLOW[i + 1];
 }
 
@@ -505,9 +529,10 @@ export function nextWorkNodeFromForm(
   if (override) return { code: override, name: pipelineNodeName(override) };
 
   const current = input.currentNode || '';
-  const fi = NODE_FLOW.indexOf(formNode);
-  const ci = NODE_FLOW.indexOf(current);
-  if (fi >= 0 && ci > fi) return { code: current, name: pipelineNodeName(current) };
+  const shown = activePipelineNode(current);
+  const fi = flowIndex(formNode);
+  const ci = flowIndex(current);
+  if (fi >= 0 && ci > fi) return { code: shown, name: pipelineNodeName(shown) };
 
   const hasChangeOrders = (input.changeOrderCount ?? input.changeOrders?.length ?? 0) > 0;
   const next = nextPipelineNode(formNode, hasChangeOrders);
@@ -517,21 +542,20 @@ export function nextWorkNodeFromForm(
 
 /** 列表卡片：本案已离开本表单节点时才给出跳转按钮。 */
 export function listShowsNextNodeButton(formNode: string, currentNode?: string | null) {
-  const fi = NODE_FLOW.indexOf(formNode);
-  const ci = NODE_FLOW.indexOf(currentNode || '');
+  const fi = flowIndex(formNode);
+  const ci = flowIndex(currentNode);
   return fi >= 0 && ci > fi;
 }
 
 /** 装运及后续（N6–N9）属于出口案，不在采购合同入口办理。 */
 export function isN6PlusNode(code?: string | null) {
-  const i = NODE_FLOW.indexOf(code || '');
-  return i >= 0 && i >= NODE_FLOW.indexOf('N6');
+  const i = flowIndex(code);
+  return i >= 0 && i >= flowIndex('N6');
 }
 
 const N6_PLUS_SHORT: Record<string, string> = {
   N6: '装运',
   N7: '单证',
-  N8: '报关',
   N9: '收汇',
 };
 
@@ -561,12 +585,13 @@ export function formNextNodeHeading(formNode: string) {
 }
 
 export function goToNode(caseId: string, code: string) {
-  uni.navigateTo({ url: `${nodePage(code)}?id=${caseId}&code=${code}` });
+  const active = activePipelineNode(code);
+  uni.navigateTo({ url: `${nodePage(active)}?id=${caseId}&code=${active}` });
 }
 
 export function hasReachedNode(currentNode?: string | null, target = 'N3') {
-  const i = NODE_FLOW.indexOf(currentNode || '');
-  const t = NODE_FLOW.indexOf(target);
+  const i = flowIndex(currentNode);
+  const t = flowIndex(target);
   return i >= 0 && t >= 0 && i >= t;
 }
 
@@ -696,8 +721,7 @@ export function nodePage(code: string) {
   if (code === 'N5') return '/pages/node/procurement';
   if (code === 'N6') return '/pages/node/shipment';
   if (code === 'N7') return '/pages/node/docs';
-  if (code === 'N8') return '/pages/node/customs';
-  if (code === 'N9') return '/pages/node/settlement';
+  if (code === 'N8' || code === 'N9') return '/pages/node/settlement';
   return '/pages/node/stub';
 }
 

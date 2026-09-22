@@ -71,6 +71,7 @@ describe('是否到达 N3', () => {
     expect(hasReachedN3('N3')).toBe(true);
     expect(hasReachedN3('N5')).toBe(true);
     expect(hasReachedN3('N9')).toBe(true);
+    expect(hasReachedN3('N8')).toBe(true);
   });
 
   it('N3 节点已开始（即使 currentNode 仍为 N2）视为到达', () => {

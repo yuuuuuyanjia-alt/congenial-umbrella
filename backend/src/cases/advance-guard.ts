@@ -1,9 +1,8 @@
 import {
   ADVANCE_IDEMPOTENT_REASON,
   ADVANCE_NOT_CURRENT_REASON,
-  NODE_FLOW,
-  NodeCode,
   NodeStatus,
+  pipelineIndex,
 } from '../common/constants';
 
 export type AdvanceGuardInput = {
@@ -18,7 +17,7 @@ export type AdvanceGuardDecision =
   | { kind: 'reject'; code: 'NODE_NOT_CURRENT'; message: string };
 
 export function nodeFlowIndex(code?: string | null): number {
-  return NODE_FLOW.indexOf(String(code || '').toUpperCase() as NodeCode);
+  return pipelineIndex(code);
 }
 
 /** 取流程上较后的节点，禁止 currentNode 回退。 */

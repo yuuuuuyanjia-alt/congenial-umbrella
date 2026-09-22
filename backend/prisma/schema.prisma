@@ -615,7 +615,7 @@ model HsTemplate {
   exportTaxName        String
 }
 
-/// N8 报关放行
+/// 历史报关记录（原 N8 报关放行）。业务流已取消该页；不删表，避免清空已有演示库。FT4 仍可读电子口岸状态。
 model CustomsDeclaration {
   id                 String    @id @default(cuid())
   caseId             String    @unique

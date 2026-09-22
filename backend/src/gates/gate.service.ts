@@ -6,7 +6,7 @@ import { evaluateNode } from './gate.engine';
 import { CustomersService } from '../customers/customers.service';
 import { isSalesContractSigned, n3StatusOf } from '../cases/sales-link';
 import { OccupancyReviewStatus, occupancyFingerprint, planOccupancyReviewSync } from '../workbench/occupancy-review';
-import { parseDirectPort, planTaxFinanceReviewSync, TaxFinanceReviewStatus } from '../tax-finance/tax-finance';
+import { parseDirectPort, planTaxFinanceReviewSync, TAX_FINANCE_NODES, TaxFinanceReviewStatus } from '../tax-finance/tax-finance';
 
 @Injectable()
 export class GateService {
@@ -247,7 +247,7 @@ export class GateService {
     result: GateResult,
     reviews: CaseSnapshot['taxFinanceReviews'],
   ) {
-    if (!['N3', 'N5', 'N6', 'N7', 'N8'].includes(result.nodeCode)) return;
+    if (!TAX_FINANCE_NODES.has(result.nodeCode)) return;
     const view = result.taxFinance;
     const plan = planTaxFinanceReviewSync(reviews, result.nodeCode, view?.band ? view : null);
     if (plan.supersedeIds.length) {

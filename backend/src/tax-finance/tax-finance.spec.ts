@@ -294,7 +294,7 @@ describe('FT2 港口直出仓储/批次', () => {
 describe('FT3 装运报关与直出单证', () => {
   it('报关品名与合同货描严重不符为红线', () => {
     const r = evaluateNode(
-      'N8',
+      'N7',
       base({
         customs: {
           ...base().customs!,
@@ -312,7 +312,7 @@ describe('FT3 装运报关与直出单证', () => {
       base({
         procurementPlan: { ...base().procurementPlan!, amountFen: 4_000_000 },
       }),
-      'N8',
+      'N7',
     );
     expect(r.decision).toBe(Decision.PASS);
     expect(r.missing).not.toContain('FT3_GOODS_MISMATCH');

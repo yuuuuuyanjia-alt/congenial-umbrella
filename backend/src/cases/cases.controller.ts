@@ -9,7 +9,6 @@ import {
   CreateCaseDto,
   CreateChangeDto,
   SaveContractDto,
-  SaveCustomsDto,
   SaveDocumentDto,
   SaveFixDto,
   SavePlanDto,
@@ -257,20 +256,6 @@ export class CasesController {
     @Headers('x-actor-id') actorId?: string,
   ) {
     return this.cases.saveFix(id, dto, actorId);
-  }
-
-  @Post(':id/nodes/N8/customs')
-  customs(
-    @Param('id') id: string,
-    @Body() dto: SaveCustomsDto,
-    @Headers('x-actor-id') actorId?: string,
-  ) {
-    return this.cases.saveCustoms(id, dto, actorId);
-  }
-
-  @Post(':id/nodes/N8/eport-sync')
-  eport(@Param('id') id: string, @Headers('x-actor-id') actorId?: string) {
-    return this.cases.syncEport(id, actorId);
   }
 
   @Post(':id/nodes/N9/settlement')

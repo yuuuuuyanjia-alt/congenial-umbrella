@@ -125,14 +125,14 @@ export class CatalogController {
         defaultCurrency: SALES_CURRENCY,
         procurementCurrency: PROCUREMENT_CURRENCY,
         n6n7:
-          'N6 须上传发票与箱单并完成内部审批。装运规则跟随所选运输术语：FOB/EXW/FAS/FCA 买方安排运输（可无提单）；CIF/CFR 等卖方出单（须正本或电放）。不再要求客户书面指示或订舱编号。N7 只要求六份上传：销售合同、商业发票、箱单、采购合同、发票、报关单；商业发票与发票分别必填，缺任一份 409。T/T 不是 Incoterm。无有效运输术语时明确回退为 FOB。存在未生效变更单时 N6/N7/N8/N9 硬拦截，须先生效变更。',
+          'N6 须上传发票与箱单并完成内部审批。装运规则跟随所选运输术语：FOB/EXW/FAS/FCA 买方安排运输（可无提单）；CIF/CFR 等卖方出单（须正本或电放）。不再要求客户书面指示或订舱编号。N7 六份必填：销售合同、商业发票、箱单、采购合同、发票、报关单；另有原产地证，运输术语为 FOB 时可不传，CIF 等非 FOB 必填，缺则 409。过闸后进入收汇 N9，不再经过报关放行。T/T 不是 Incoterm。无有效运输术语时明确回退为 FOB。存在未生效变更单时 N6/N7/N9 硬拦截，须先生效变更。',
       },
       taxFinance: {
         label: '出口退税与融资性贸易审查',
         note: '公司是出口方不是过桥。不强制自有仓。港口直出须货物流+报关+发票+收汇闭环。红线硬拦截；黄灯（薄利+直出）进工作台第三页领取/通过/驳回。FT4 退税就绪清单在收汇后、申报前勾选。',
         ft1: 'N3/N5 签订前须交货方式；购销货描匹配；薄利+直出黄灯',
         ft2: '选择港口直出须填写货物仓储地点、批次号，否则 409',
-        ft3: 'N6–N8 装运/报关与直出单证严重不符红线',
+        ft3: 'N6–N7 装运与直出单证货描/收货人严重不符红线',
         ft4: 'N9 之后申报退税前：报关放行、N9 收汇、进项发票号、四流勾选',
       },
       hsTemplates: hsTemplates.map((h) => ({
@@ -140,7 +140,7 @@ export class CatalogController {
         requiredElements: JSON.parse(h.requiredElementsJson),
       })),
       costFloors,
-      note: '筛查接口仅为本地模拟，不含真实制裁 API Key。电子口岸同步为模拟状态。',
+      note: '筛查接口仅为本地模拟，不含真实制裁 API Key。报关放行页已取消，不再提供电子口岸同步；已有报关记录仍可供退税清单读取。',
     };
   }
 

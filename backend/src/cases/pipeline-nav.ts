@@ -1,4 +1,4 @@
-import { NODE_CATALOG, NODE_FLOW, NodeCode } from '../common/constants';
+import { activePipelineNode, NODE_CATALOG, NODE_FLOW, NodeCode, pipelineIndex } from '../common/constants';
 
 export type PipelineNodeTarget = { code: string; name: string };
 
@@ -6,11 +6,13 @@ export function pipelineNodeName(code?: string | null) {
   return NODE_CATALOG.find((n) => n.code === code)?.name || code || '';
 }
 
-/** 与闸门 nextNode 一致：N3 无变更单则跳过 N4。 */
+/** 与闸门 nextNode 一致：N3 无变更单则跳过 N4；N7 的下一步是 N9。历史 N8 也进入 N9。 */
 export function nextPipelineNode(current: string, hasChangeOrders = false): string | null {
-  const i = NODE_FLOW.indexOf(current as NodeCode);
+  const code = String(current || '').toUpperCase();
+  if (code === 'N8') return 'N9';
+  const i = NODE_FLOW.indexOf(code as NodeCode);
   if (i < 0 || i === NODE_FLOW.length - 1) return null;
-  if (current === 'N3' && !hasChangeOrders) return 'N5';
+  if (code === 'N3' && !hasChangeOrders) return 'N5';
   return NODE_FLOW[i + 1];
 }
 
@@ -31,9 +33,10 @@ export function nextWorkNodeFromForm(
   if (override) return { code: override, name: pipelineNodeName(override) };
 
   const current = input.currentNode || '';
-  const fi = NODE_FLOW.indexOf(formNode as NodeCode);
-  const ci = NODE_FLOW.indexOf(current as NodeCode);
-  if (fi >= 0 && ci > fi) return { code: current, name: pipelineNodeName(current) };
+  const shown = activePipelineNode(current);
+  const fi = pipelineIndex(formNode);
+  const ci = pipelineIndex(current);
+  if (fi >= 0 && ci > fi) return { code: shown, name: pipelineNodeName(shown) };
 
   const hasChangeOrders = (input.changeOrderCount ?? input.changeOrders?.length ?? 0) > 0;
   const next = nextPipelineNode(formNode, hasChangeOrders);
@@ -43,7 +46,7 @@ export function nextWorkNodeFromForm(
 
 /** 列表卡片：本案已离开本表单节点时才给出「进入下一节点」。 */
 export function listShowsNextNodeButton(formNode: string, currentNode?: string | null) {
-  const fi = NODE_FLOW.indexOf(formNode as NodeCode);
-  const ci = NODE_FLOW.indexOf((currentNode || '') as NodeCode);
+  const fi = pipelineIndex(formNode);
+  const ci = pipelineIndex(currentNode);
   return fi >= 0 && ci > fi;
 }

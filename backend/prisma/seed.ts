@@ -495,11 +495,11 @@ async function seedPassCase(salesId: string, approverId: string, complianceId: s
   await prisma.evidence.create({
     data: {
       caseId: c.id,
-      nodeCode: 'N8',
-      kind: 'ORIGIN_CERT',
+      nodeCode: 'N7',
+      kind: 'N7_ORIGIN_CERT',
       ref: 'CO-2026-011',
-      note: 'CO',
-      payload: JSON.stringify({ originCountry: 'CN' }),
+      note: '原产地证（CIF 必填；报关放行页已取消）',
+      payload: JSON.stringify({ originCountry: 'CN', fileName: '演示原产地证.pdf' }),
     },
   });
   const evSinosureN3 = await prisma.evidence.create({
@@ -606,8 +606,7 @@ function passNodes() {
     N4: { status: 'PASSED', decision: 'PASS', summary: 'CO-001 数量 8→10，客户与内部确认后生效；变更后再次核对中信保限额' },
     N5: { status: 'PASSED', decision: 'PASS', summary: '已关联本案件销售合同；苏州精工机械供应商实际交付日期不晚于合同交期；供应商筛查未命中' },
     N6: { status: 'PASSED', decision: 'PASS', summary: '书面指示、内部审批、正本提单（与电放二选一）齐全' },
-    N7: { status: 'PASSED', decision: 'PASS', summary: '终稿合同与单证字段一致' },
-    N8: { status: 'PASSED', decision: 'PASS', summary: 'HS 8458.11.00 申报要素与原产地证齐全，电子口岸已放行' },
+    N7: { status: 'PASSED', decision: 'PASS', summary: '六份单证与原产地证已齐，进入收汇' },
     N9: { status: 'PASSED', decision: 'PASS', summary: '收汇硬闸门证据齐全并已放行' },
   };
 }
@@ -1669,8 +1668,7 @@ async function seedNordlichtOpenCase(salesId: string, approverId: string) {
           N4: { status: 'PASSED', decision: 'PASS', summary: '无待确认变更' },
           N5: { status: 'PASSED', decision: 'PASS', summary: '已关联销售合同 DEMO-NORD-OPEN；采购交付不晚于合同交期' },
           N6: { status: 'PASSED', decision: 'PASS', summary: '书面指示与正本提单齐全' },
-          N7: { status: 'PASSED', decision: 'PASS', summary: '单证一致' },
-          N8: { status: 'PASSED', decision: 'PASS', summary: '已报关放行，待收汇' },
+          N7: { status: 'PASSED', decision: 'PASS', summary: '单证已齐（含原产地证），进入收汇' },
           N9: { status: 'IN_PROGRESS', decision: null, summary: '约定收汇到期日未到，尚无到账记录' },
         }),
       },
@@ -1998,7 +1996,7 @@ async function seedHeliosMediumBundle(salesId: string, approverId: string) {
     deliveryDate: new Date('2026-06-01T00:00:00.000Z'),
     nodeOverrides: {
       ...Object.fromEntries(
-        ['N1', 'N2', 'N3', 'N4', 'N5', 'N6', 'N7', 'N8', 'N9'].map((code) => [
+        ['N1', 'N2', 'N3', 'N4', 'N5', 'N6', 'N7', 'N9'].map((code) => [
           code,
           { status: 'PASSED', decision: 'PASS', summary: '已履行完毕，部分收汇' },
         ]),
