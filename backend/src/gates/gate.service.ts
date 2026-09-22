@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { CaseSnapshot, CustomsSnap, DocSnap, GateResult, HsTemplateSnap } from '../common/types';
+import { CaseSnapshot, CustomsSnap, DocSnap, EvidenceFileSnap, GateResult, HsTemplateSnap } from '../common/types';
+import { parseStoredFile } from '../cases/sinosure-file';
 import { evaluateNode } from './gate.engine';
 import { CustomersService } from '../customers/customers.service';
 import { isSalesContractSigned, n3StatusOf } from '../cases/sales-link';
@@ -35,6 +36,7 @@ export class GateService {
         occupancyReviews: { orderBy: { createdAt: 'asc' } },
         taxFinanceReviews: { orderBy: { createdAt: 'asc' } },
         taxRebateChecklist: true,
+        evidences: { orderBy: { createdAt: 'asc' } },
       },
     });
     const goodsKey = normGoods(c.goodsDesc);
@@ -162,6 +164,16 @@ export class GateService {
         : null,
       caseGoodsDesc: c.goodsDesc,
       salesContract: salesSideOf(c),
+      evidences: c.evidences.map((row): EvidenceFileSnap => {
+        const meta = parseStoredFile(row.payload);
+        return {
+          id: row.id,
+          nodeCode: row.nodeCode,
+          kind: row.kind,
+          fileName: meta?.fileName || null,
+          storageKey: meta?.storageKey || null,
+        };
+      }),
     };
   }
 

@@ -3,14 +3,12 @@
     <view class="card">
       <view class="h2">装运 / 提单指示 · 硬闸门</view>
       <view class="muted">
-        须同时具备客户书面指示与内部审批。CIF / CFR 等卖方出单：点选「正本提单」或「电放提单」其一即可（不必两样都有）。FOB / EXW / FAS / FCA 等买方安排运输：可不控提单，走「无提单」路径并留下依据。T/T 是结算方式不是运输术语；装运规则跟随所选 Incoterm，未填运输术语时按 FOB 回退。存在未生效变更单时禁止装运。
+        须上传发票与箱单（写入证据链），并完成内部审批。CIF / CFR 等卖方出单：点选「正本提单」或「电放提单」其一即可（不必两样都有）。FOB / EXW / FAS / FCA 等买方安排运输：可不控提单，走「无提单」路径。T/T 是结算方式不是运输术语；装运规则跟随所选 Incoterm，未填运输术语时按 FOB 回退。存在未生效变更单时禁止装运。
       </view>
       <view class="err" v-if="!canWriteBusiness" style="margin-top: 8rpx">当前为{{ roleLabel }}，本页只读，不可保存或推进。</view>
     </view>
     <PendingChangeBlock :case-id="id" :case-data="c" />
     <view class="card">
-      <view class="label">合同运输术语（N3）</view>
-      <view class="muted">{{ contractIncoterms || '尚未从合同读取，可在下方手工填写' }}</view>
       <view class="label">本节点用于闸门的运输术语（可改）</view>
       <input
         class="input"
@@ -35,13 +33,21 @@
         <input class="input" v-model="form.arrivalPort" placeholder="预计到达的港口，如 Hamburg" />
       </template>
 
-      <view class="label">客户书面指示编号</view>
-      <input class="input" v-model="form.instructionRef" placeholder="例如 INST-2026-001" />
-      <view class="label">已收到客户书面指示</view>
-      <switch
-        :checked="form.hasCustomerWrittenInstruction"
-        @change="(e: any) => (form.hasCustomerWrittenInstruction = e.detail.value)"
-      />
+      <view class="h2" style="margin-top: 24rpx">发票与箱单</view>
+      <view class="muted">两份都要上传后才能过闸。没有文件时可用演示示例，无需打开本机文件选择器。</view>
+      <view v-for="slot in docSlots" :key="slot.slot" style="margin-top: 16rpx">
+        <view class="label">{{ slot.label }}</view>
+        <view class="readonly" v-if="fileOf(slot.kind)">{{ fileOf(slot.kind).fileName }}</view>
+        <view class="muted" v-if="fileOf(slot.kind)" style="margin-top: 8rpx">文件已写入证据链。</view>
+        <view class="btn btn-ghost" v-if="fileOf(slot.kind)" @click="openFile(slot.kind)">查看{{ slot.label }}</view>
+        <view class="doc-actions" v-if="canWriteBusiness">
+          <view class="btn btn-ghost" @click="pickFile(slot)">{{ fileOf(slot.kind) ? '重新' : '' }}上传{{ slot.label }}</view>
+          <view class="btn btn-ghost" @click="useDemo(slot)">
+            {{ uploading === slot.slot ? '正在上传示例…' : '使用演示示例' }}
+          </view>
+        </view>
+      </view>
+
       <view class="label">内部审批已完成</view>
       <switch
         :checked="form.hasInternalApproval"
@@ -78,15 +84,11 @@
       <view class="choice-row">
         <view class="choice-btn" :class="{ 'choice-btn-on': isNoBl }" @click="selectBl('NO_BL')">无提单</view>
       </view>
-      <view class="muted">买方指定货代、卖方不签发或不控提单时使用。须填写原因或装船通知 / 订舱编号。</view>
+      <view class="muted">买方指定货代、卖方不签发或不控提单时使用。</view>
 
       <view v-if="isNoBl">
-        <view class="label">无提单原因说明</view>
+        <view class="label">无提单原因说明（可选）</view>
         <input class="input" v-model="form.noBlReason" placeholder="如：FOB 买方自行订舱，卖方不控提单" />
-        <view class="label">依据编号（装船通知 / 订舱 / 买方运输安排）</view>
-        <input class="input" v-model="form.noBlRef" placeholder="例如 SA-2026-001 或 BK-FOB-88" />
-        <view class="btn btn-ghost" v-if="canWriteBusiness" @click="stubUpload">演示上传装船通知 / 订舱记录</view>
-        <view class="muted" v-if="form.noBlEvidenceStub">已挂演示附件：{{ form.noBlEvidenceStub }}</view>
       </view>
 
       <view class="btn" v-if="canWriteBusiness" @click="save">保存指示</view>
@@ -94,24 +96,49 @@
     </view>
     <view class="err" v-if="err">{{ err }}</view>
     <view class="ok" v-if="ok">{{ ok }}</view>
+    <NextNodeCta
+      v-if="nextReady"
+      :target="nextTarget"
+      :ready="nextReady"
+      :hint="nextHint"
+      button-label="进入下一步"
+      @go="goNext"
+    />
   </view>
 </template>
 
 <script setup lang="ts">
 import { onLoad } from '@dcloudio/uni-app';
 import { computed, reactive, ref } from 'vue';
-import { api } from '../../api';
+import {
+  api,
+  chooseAndUploadTradeDoc,
+  evidenceFileUrl,
+  goToNode,
+  latestTradeDoc,
+  N6_DOC_SLOTS,
+  nextWorkNodeFromForm,
+  pipelineNodeName,
+  uploadDemoTradeDoc,
+  type TradeDocSlot,
+} from '../../api';
+import NextNodeCta from '../../components/NextNodeCta.vue';
 import PendingChangeBlock from '../../components/PendingChangeBlock.vue';
 import { useDemoRole } from '../../role';
 
 const BUYER_FREIGHT = ['FOB', 'EXW', 'FAS', 'FCA'];
+const FORM_NODE = 'N6';
+const docSlots = N6_DOC_SLOTS;
 
 const id = ref('');
 const { canWriteBusiness, roleLabel } = useDemoRole();
 const err = ref('');
 const ok = ref('');
+const uploading = ref('');
 const c = ref<any>(null);
+const advancedTo = ref<string | null>(null);
 const contractIncoterms = ref('');
+const files = reactive<Record<string, { evidenceId: string; fileName: string }>>({});
 const form = reactive({
   hasCustomerWrittenInstruction: false,
   instructionRef: '',
@@ -143,12 +170,43 @@ const blLabel = computed(() => {
   if (isNoBl.value) return '无提单';
   return '未选择';
 });
+const nextTarget = computed(() =>
+  c.value
+    ? nextWorkNodeFromForm(FORM_NODE, {
+        currentNode: c.value.currentNode,
+        changeOrders: c.value.changeOrders,
+        overrideNext: advancedTo.value,
+      })
+    : null,
+);
+const nextReady = computed(() => {
+  if (!nextTarget.value || !c.value) return false;
+  if (advancedTo.value) return true;
+  const cur = c.value.currentNode || '';
+  return !!cur && cur !== FORM_NODE;
+});
+const nextHint = computed(() => {
+  const t = nextTarget.value;
+  if (!t) return '';
+  if (advancedTo.value) return `已过闸。下一步为 ${t.code} ${t.name}。`;
+  const cur = c.value?.currentNode;
+  if (cur && cur !== FORM_NODE) return `本案已在 ${cur} ${pipelineNodeName(cur)}。可直接进入该节点。`;
+  return '';
+});
 
 onLoad(async (q) => {
   id.value = q?.id || '';
-  c.value = await api.case(id.value);
-  contractIncoterms.value = displayTransport(c.value.contract?.incoterms || '');
-  const s = c.value.shipment;
+  await reload();
+});
+
+function fileOf(kind: string) {
+  return files[kind] || null;
+}
+
+function hydrate(row: any) {
+  c.value = row;
+  contractIncoterms.value = displayTransport(row.contract?.incoterms || '');
+  const s = row.shipment;
   if (s) {
     form.hasCustomerWrittenInstruction = !!s.hasCustomerWrittenInstruction;
     form.instructionRef = s.instructionRef || '';
@@ -162,12 +220,21 @@ onLoad(async (q) => {
   } else {
     form.n6Incoterms = contractIncoterms.value;
   }
-  const ct = c.value.contract || {};
+  const ct = row.contract || {};
   form.shipmentPort = ct.shipmentPort || '';
   form.shipmentDate = ct.shipmentDate ? String(ct.shipmentDate).slice(0, 10) : '';
   form.etaDate = ct.etaDate ? String(ct.etaDate).slice(0, 10) : '';
   form.arrivalPort = ct.arrivalPort || '';
-});
+  for (const slot of docSlots) {
+    const ev = latestTradeDoc(row.evidences, slot.kind);
+    if (ev) files[slot.kind] = { evidenceId: ev.id, fileName: ev.payload?.fileName || slot.demoName };
+    else delete files[slot.kind];
+  }
+}
+
+async function reload() {
+  hydrate(await api.case(id.value));
+}
 
 function incotermsCode(raw: string) {
   const s = (raw || '').trim().toUpperCase().replace(/^INCOTERMS(?:\s*20\d{2})?\s+/, '');
@@ -202,11 +269,44 @@ function selectBl(v: string) {
   else form.blControl = v;
 }
 
-function stubUpload() {
-  form.noBlEvidenceStub = `DEMO-SA-${id.value.slice(-6) || 'FOB'}.pdf`;
-  if (!form.noBlRef) form.noBlRef = 'SA-DEMO-UPLOAD';
-  if (!form.noBlReason) form.noBlReason = '买方安排运输，附装船通知/订舱记录（演示）';
-  ok.value = `已挂演示附件 ${form.noBlEvidenceStub}`;
+function uploadError(e: any, ignoreCancel = false) {
+  const msg = e?.message || e?.errMsg || '';
+  if (ignoreCancel && (!msg || /cancel|取消|未选择/.test(String(msg)))) return;
+  err.value = Array.isArray(e?.message) ? e.message.join('；') : msg || '单证上传失败';
+}
+
+function rememberUpload(slot: TradeDocSlot, uploaded: { evidenceId: string; fileName: string }) {
+  files[slot.kind] = { evidenceId: uploaded.evidenceId, fileName: uploaded.fileName };
+  ok.value = `已上传${slot.label} ${uploaded.fileName}`;
+}
+
+function pickFile(slot: TradeDocSlot) {
+  if (!id.value || uploading.value) return;
+  err.value = '';
+  ok.value = '';
+  chooseAndUploadTradeDoc(id.value, 'N6', slot.slot)
+    .then((uploaded) => rememberUpload(slot, uploaded))
+    .catch((e: any) => uploadError(e, true));
+}
+
+function useDemo(slot: TradeDocSlot) {
+  if (!id.value || uploading.value) return;
+  err.value = '';
+  ok.value = '';
+  uploading.value = slot.slot;
+  uploadDemoTradeDoc(id.value, 'N6', slot)
+    .then((uploaded) => rememberUpload(slot, uploaded))
+    .catch((e: any) => uploadError(e))
+    .finally(() => {
+      uploading.value = '';
+    });
+}
+
+function openFile(kind: string) {
+  const row = files[kind];
+  if (!id.value || !row) return;
+  const url = evidenceFileUrl(id.value, row.evidenceId);
+  if (typeof window !== 'undefined') window.open(url, '_blank');
 }
 
 function payload() {
@@ -243,13 +343,41 @@ async function tryAdvance() {
   err.value = '';
   ok.value = '';
   try {
-    await save();
+    await api.saveShipment(id.value, payload());
     const r = await api.advance(id.value, 'N6');
-    ok.value = `硬闸门通过，下一节点 ${r.nextNode}`;
+    advancedTo.value = r.nextNode || null;
+    await reload();
+    const title = r.nextNode ? pipelineNodeName(r.nextNode) : '';
+    ok.value = r.nextNode ? `已推进至 ${r.nextNode} ${title}` : '已推进';
   } catch (e: any) {
     err.value = ['硬闸门拒绝推进', ...(e?.reasons || []), e?.missing ? `缺失项 ${e.missing.join(', ')}` : '']
       .filter(Boolean)
       .join('\n');
   }
 }
+
+function goNext() {
+  const t = nextTarget.value;
+  if (t && id.value) goToNode(id.value, t.code);
+}
 </script>
+
+<style scoped>
+.readonly {
+  margin-top: 8rpx;
+  border: 2rpx solid #e8eef3;
+  border-radius: 12rpx;
+  padding: 18rpx;
+  background: #f7f5f0;
+  font-weight: 650;
+  color: #0f3d2e;
+}
+.doc-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12rpx;
+}
+.doc-actions .btn {
+  flex: 1 1 280rpx;
+}
+</style>

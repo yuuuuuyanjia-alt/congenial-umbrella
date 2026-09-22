@@ -5,14 +5,13 @@ import {
   CIF_FAMILY_INCOTERMS,
   INCOTERMS_CODES,
   N6_MISSING_TRANSPORT_FALLBACK,
-  COMPARE_FIELDS,
+  N6_UPLOADS,
+  N7_UPLOADS,
   ChangeStatus,
   Decision,
   DelayTrigger,
   Disposition,
-  DocType,
   EportStatus,
-  FieldLabel,
   HISTORY_DEV_MEDIUM_PCT,
   HISTORY_DEV_SOFT_PCT,
   NodeStatus,
@@ -36,8 +35,8 @@ import {
   ChangeOrderSnap,
   GateResult,
   HitSnap,
+  EvidenceFileSnap,
   QuoteSnap,
-  ShipmentSnap,
   SinosurePolicySnap,
 } from '../common/types';
 import {
@@ -581,13 +580,11 @@ export function isNoBlControl(blControl?: string | null): boolean {
   return blControl === BlControl.NO_BL || blControl === BlControl.FOB_NO_BL;
 }
 
-export function hasNoBlJustification(s: Pick<ShipmentSnap, 'noBlReason' | 'noBlRef' | 'noBlEvidenceStub'>): boolean {
-  return !!(s.noBlReason?.trim() || s.noBlRef?.trim() || s.noBlEvidenceStub?.trim());
-}
-
-/** N7 跟随 N6：买方安排运输且已选无提单时，不硬要提单，改核装船通知 / 订舱号。 */
-export function isN7NoBlPath(snap: CaseSnapshot): boolean {
-  return isNoBlControl(snap.shipment?.blControl) && isBuyerArrangedFreight(effectiveN6Incoterms(snap));
+/** 真实上传：证据链里该 kind 有落盘 storageKey。文件名占位不算。 */
+export function hasStoredEvidence(snap: CaseSnapshot, kind: string): boolean {
+  return (snap.evidences || []).some(
+    (row: EvidenceFileSnap) => row.kind === kind && !!String(row.storageKey || '').trim(),
+  );
 }
 
 export function evaluateN6(snap: CaseSnapshot): GateResult {
@@ -601,9 +598,11 @@ export function evaluateN6(snap: CaseSnapshot): GateResult {
     return finalizeHard(r);
   }
 
-  if (!s.hasCustomerWrittenInstruction || !s.instructionRef?.trim()) {
-    r.missing.push('N6_CUSTOMER_WRITTEN_INSTRUCTION');
-    r.reasons.push('硬闸门：缺少客户书面提单指示');
+  for (const slot of N6_UPLOADS) {
+    if (!hasStoredEvidence(snap, slot.kind)) {
+      r.missing.push(slot.missing);
+      r.reasons.push(`硬闸门：缺少${slot.label}上传`);
+    }
   }
   if (!s.hasInternalApproval) {
     r.missing.push('N6_INTERNAL_APPROVAL');
@@ -628,15 +627,11 @@ export function evaluateN6(snap: CaseSnapshot): GateResult {
         '硬闸门：无提单路径仅适用于 FOB/EXW/FAS/FCA（买方安排运输）；CIF/CFR 等须改本节点贸易术语或改选正本/电放',
       );
     }
-    if (!hasNoBlJustification(s)) {
-      r.missing.push('N6_NO_BL_JUSTIFICATION');
-      r.reasons.push('硬闸门：无提单路径须记录依据（装船通知 / 订舱 / 买方自行安排运输说明）');
-    }
   } else if (blType) {
     // 正本或电放任一即可，不必同时具备；FOB 交易若实际仍有提单亦可走此路径。
   } else if (buyerFreight) {
     r.missing.push('N6_NO_BL_PATH');
-    r.reasons.push('硬闸门：FOB 等买方安排运输须选择「无提单」路径并记录依据，或仍选择正本/电放其一');
+    r.reasons.push('硬闸门：FOB 等买方安排运输须选择「无提单」路径，或仍选择正本/电放其一');
   } else {
     r.missing.push('N6_BL_CONTROL');
     r.reasons.push('硬闸门：未明确提单控制方式（正本或电放，二选一即可）');
@@ -644,11 +639,11 @@ export function evaluateN6(snap: CaseSnapshot): GateResult {
 
   if (!r.missing.length) {
     if (noBl) {
-      r.reasons.push(`硬闸门证据齐全：书面指示、内部审批、无提单路径（${incoterms || '买方安排运输'}）`);
+      r.reasons.push(`硬闸门证据齐全：发票、箱单、内部审批、无提单路径（${incoterms || '买方安排运输'}）`);
     } else if (s.blControl === BlControl.TELEX_RELEASE) {
-      r.reasons.push('硬闸门证据齐全：书面指示、内部审批、电放提单');
+      r.reasons.push('硬闸门证据齐全：发票、箱单、内部审批、电放提单');
     } else {
-      r.reasons.push('硬闸门证据齐全：书面指示、内部审批、正本提单');
+      r.reasons.push('硬闸门证据齐全：发票、箱单、内部审批、正本提单');
     }
   }
 
@@ -659,66 +654,16 @@ export function evaluateN7(snap: CaseSnapshot): GateResult {
   const r = emptyResult('N7');
   const pending = refusePendingChangeAtShipment(r, snap);
   if (pending) return pending;
-  const byType = Object.fromEntries(snap.documents.map((d) => [d.type, d]));
-  const contractDoc = byType[DocType.CONTRACT];
-  const invoice = byType[DocType.INVOICE];
-  const packing = byType[DocType.PACKING];
-  const bl = byType[DocType.BL];
-  const finalContract = snap.contract?.isFinal || contractDoc?.isFinal;
-
-  if (!finalContract) {
-    r.missing.push('N7_FINAL_CONTRACT');
-    r.reasons.push('硬闸门：缺少终稿合同');
-  }
-  if (!invoice) {
-    r.missing.push('N7_INVOICE');
-    r.reasons.push('硬闸门：缺少发票');
-  }
-  if (!packing) {
-    r.missing.push('N7_PACKING');
-    r.reasons.push('硬闸门：缺少装箱单');
-  }
-
-  const noBlPath = isN7NoBlPath(snap);
-  if (noBlPath) {
-    if (!snap.shipment || !hasNoBlJustification(snap.shipment)) {
-      r.missing.push('N7_SHIPPING_ADVICE');
-      r.reasons.push('硬闸门：无提单路径须核验装船通知 / 订舱号等依据（与 N6 NO_BL 一致），不要求提单');
+  for (const slot of N7_UPLOADS) {
+    if (!hasStoredEvidence(snap, slot.kind)) {
+      r.missing.push(slot.missing);
+      r.reasons.push(`硬闸门：缺少${slot.label}上传`);
     }
-  } else if (!bl) {
-    r.missing.push('N7_BL');
-    r.reasons.push('硬闸门：缺少提单');
   }
-
-  const docs = (noBlPath ? [contractDoc, invoice, packing] : [contractDoc, invoice, packing, bl]).filter(Boolean);
-  const setLabel = noBlPath ? '合同/发票/装箱单' : '合同/发票/装箱单/提单';
-  const fixed = new Set(snap.mismatchFixes.map((f) => f.field));
-  for (const field of COMPARE_FIELDS) {
-    const values = docs
-      .map((d) => d!.fields[field])
-      .filter((v) => v !== undefined && v !== null && String(v).trim() !== '')
-      .map((v) => comparableDocField(field, v))
-      .filter((v): v is string => !!v);
-    if (values.length < 2) continue;
-    const unique = new Set(values);
-    if (unique.size > 1 && !fixed.has(field)) {
-      r.missing.push(`N7_FIELD_MISMATCH_${field}`);
-      r.reasons.push(
-        `硬闸门：${FieldLabel[field] || field} 在${setLabel}间不一致，且无不符点修改记录`,
-      );
-    }
+  if (!r.missing.length) {
+    r.reasons.push('硬闸门证据齐全：销售合同、商业发票、箱单、采购合同、发票、报关单均已上传');
   }
   return finalizeHard(r);
-}
-
-function comparableDocField(field: string, v: unknown): string | null {
-  const s = String(v).trim();
-  if (!s) return null;
-  if (field !== 'incoterms') return s.toUpperCase();
-  const code = parseIncotermsCode(s);
-  if (code) return code;
-  if (isSettlementOnlyIncoterms(s)) return null;
-  return s.toUpperCase();
 }
 
 export function evaluateN8(snap: CaseSnapshot): GateResult {

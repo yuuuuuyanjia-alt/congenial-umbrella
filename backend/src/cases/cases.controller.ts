@@ -190,6 +190,48 @@ export class CasesController {
     return this.cases.screenSupplier(id, actorId);
   }
 
+  @Post(':id/nodes/N6/docs/:slot/upload')
+  @UseFilters(UploadExceptionFilter)
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: SINOSURE_UPLOAD_MAX_BYTES } }))
+  uploadN6Doc(
+    @Param('id') id: string,
+    @Param('slot') slot: string,
+    @UploadedFile()
+    file: { originalname: string; size: number; buffer: Buffer } | undefined,
+    @Body('fileName') fileName?: string,
+    @Headers('x-actor-id') actorId?: string,
+  ) {
+    return this.cases.uploadNodeDocument(
+      id,
+      'N6',
+      slot,
+      file || { originalname: '', size: 0, buffer: Buffer.alloc(0) },
+      actorId,
+      fileName,
+    );
+  }
+
+  @Post(':id/nodes/N7/docs/:slot/upload')
+  @UseFilters(UploadExceptionFilter)
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: SINOSURE_UPLOAD_MAX_BYTES } }))
+  uploadN7Doc(
+    @Param('id') id: string,
+    @Param('slot') slot: string,
+    @UploadedFile()
+    file: { originalname: string; size: number; buffer: Buffer } | undefined,
+    @Body('fileName') fileName?: string,
+    @Headers('x-actor-id') actorId?: string,
+  ) {
+    return this.cases.uploadNodeDocument(
+      id,
+      'N7',
+      slot,
+      file || { originalname: '', size: 0, buffer: Buffer.alloc(0) },
+      actorId,
+      fileName,
+    );
+  }
+
   @Post(':id/nodes/N6/shipment')
   shipment(
     @Param('id') id: string,

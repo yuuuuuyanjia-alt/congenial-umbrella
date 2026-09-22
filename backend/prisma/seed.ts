@@ -822,7 +822,7 @@ async function seedGateDemoCase(salesId: string) {
           N3: { status: 'PASSED', decision: 'PASS', summary: '销售合同条款齐全，中信保限额覆盖合同金额' },
           N4: { status: 'PASSED', decision: 'PASS', summary: '无待确认变更，已跳过变更管理' },
           N5: { status: 'PASSED', decision: 'PASS', summary: '已关联销售合同 DEMO-GATE；采购供应商实际交付日期不晚于合同交期；供应商筛查未命中' },
-          N6: { status: 'IN_PROGRESS', decision: null, summary: '待补客户书面指示、内部审批；FOB 须走无提单路径或仍选正本/电放' },
+          N6: { status: 'IN_PROGRESS', decision: null, summary: '待上传发票与箱单、内部审批；FOB 须走无提单路径或仍选正本/电放' },
         }),
       },
       contract: {

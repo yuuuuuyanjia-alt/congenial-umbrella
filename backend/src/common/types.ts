@@ -252,6 +252,15 @@ export interface CustomsSnap {
   eportStatus?: string | null;
 }
 
+/** 已落盘的证据文件。闸门只认带 storageKey 的真实上传。 */
+export interface EvidenceFileSnap {
+  id: string;
+  nodeCode: string;
+  kind: string;
+  fileName?: string | null;
+  storageKey?: string | null;
+}
+
 export interface CaseSnapshot {
   parties: PartySnap[];
   hits: HitSnap[];
@@ -284,6 +293,8 @@ export interface CaseSnapshot {
   caseGoodsDesc?: string | null;
   taxFinanceReviews?: TaxFinanceReviewSnap[] | null;
   taxRebate?: TaxRebateSnap | null;
+  /** N6 发票/箱单与 N7 六份单证。缺省视为均未上传。 */
+  evidences?: EvidenceFileSnap[] | null;
 }
 
 export interface SalesContractSideSnap {
