@@ -269,6 +269,33 @@ async function attachClearSupplierScreen(caseId: string, supplierName: string) {
   });
 }
 
+async function attachN6TradeDocs(caseId: string) {
+  const invoice = await prisma.evidence.create({
+    data: {
+      caseId,
+      nodeCode: 'N6',
+      kind: 'N6_INVOICE',
+      ref: 'N6-INVOICE',
+      note: '发票',
+      payload: JSON.stringify({ fileName: '演示发票.pdf', kind: 'INVOICE' }),
+    },
+  });
+  const packing = await prisma.evidence.create({
+    data: {
+      caseId,
+      nodeCode: 'N6',
+      kind: 'N6_PACKING',
+      ref: 'N6-PACKING',
+      note: '箱单',
+      payload: JSON.stringify({ fileName: '演示箱单.pdf', kind: 'PACKING' }),
+    },
+  });
+  await prisma.shipment.update({
+    where: { caseId },
+    data: { invoiceEvidenceId: invoice.id, packingEvidenceId: packing.id },
+  });
+}
+
 async function seedPassCase(salesId: string, approverId: string, complianceId: string) {
   const fields = {
     buyerName: 'Nordlicht GmbH',
@@ -595,6 +622,7 @@ async function seedPassCase(salesId: string, approverId: string, complianceId: s
       { caseId: c.id, actorId: salesId, action: 'NODE_ADVANCED', nodeCode: 'N9', detail: JSON.stringify({ decision: 'PASS' }) },
     ],
   });
+  await attachN6TradeDocs(c.id);
   return c;
 }
 
@@ -605,7 +633,7 @@ function passNodes() {
     N3: { status: 'PASSED', decision: 'PASS', summary: '销售合同条款齐全，中信保限额覆盖合同金额' },
     N4: { status: 'PASSED', decision: 'PASS', summary: 'CO-001 数量 8→10，客户与内部确认后生效；变更后再次核对中信保限额' },
     N5: { status: 'PASSED', decision: 'PASS', summary: '已关联本案件销售合同；苏州精工机械供应商实际交付日期不晚于合同交期；供应商筛查未命中' },
-    N6: { status: 'PASSED', decision: 'PASS', summary: '书面指示、内部审批、正本提单（与电放二选一）齐全' },
+    N6: { status: 'PASSED', decision: 'PASS', summary: '发票、箱单、内部审批、正本提单（与电放二选一）齐全' },
     N7: { status: 'PASSED', decision: 'PASS', summary: '终稿合同与单证字段一致' },
     N8: { status: 'PASSED', decision: 'PASS', summary: 'HS 8458.11.00 申报要素与原产地证齐全，电子口岸已放行' },
     N9: { status: 'PASSED', decision: 'PASS', summary: '收汇硬闸门证据齐全并已放行' },
@@ -822,7 +850,7 @@ async function seedGateDemoCase(salesId: string) {
           N3: { status: 'PASSED', decision: 'PASS', summary: '销售合同条款齐全，中信保限额覆盖合同金额' },
           N4: { status: 'PASSED', decision: 'PASS', summary: '无待确认变更，已跳过变更管理' },
           N5: { status: 'PASSED', decision: 'PASS', summary: '已关联销售合同 DEMO-GATE；采购供应商实际交付日期不晚于合同交期；供应商筛查未命中' },
-          N6: { status: 'IN_PROGRESS', decision: null, summary: '待补客户书面指示、内部审批；FOB 须走无提单路径或仍选正本/电放' },
+          N6: { status: 'IN_PROGRESS', decision: null, summary: '待上传发票与箱单、内部审批；FOB 须走无提单路径或仍选正本/电放' },
         }),
       },
       contract: {
@@ -966,7 +994,7 @@ async function seedFobNoBlCase(salesId: string, approverId: string) {
           N6: {
             status: 'PASSED',
             decision: 'PASS',
-            summary: '书面指示、内部审批、无提单路径（FOB 买方订舱）依据齐全',
+            summary: '发票、箱单、内部审批、无提单路径（FOB 买方订舱）依据齐全',
           },
         }),
       },
@@ -1087,6 +1115,7 @@ async function seedFobNoBlCase(salesId: string, approverId: string) {
       { caseId: c.id, actorId: salesId, action: 'NODE_ADVANCED', nodeCode: 'N6', detail: JSON.stringify({ decision: 'PASS', nextNode: 'N7' }) },
     ],
   });
+  await attachN6TradeDocs(c.id);
   return c;
 }
 
@@ -1623,6 +1652,7 @@ async function seedNordlichtLateCase(salesId: string, approverId: string) {
       { caseId: c.id, actorId: salesId, action: 'NODE_ADVANCED', nodeCode: 'N9', detail: JSON.stringify({ decision: 'PASS', remittance: 'OVERDUE' }) },
     ],
   });
+  await attachN6TradeDocs(c.id);
   return c;
 }
 
@@ -1668,7 +1698,7 @@ async function seedNordlichtOpenCase(salesId: string, approverId: string) {
           N3: { status: 'PASSED', decision: 'PASS', summary: '销售合同条款齐全，中信保限额覆盖合同金额' },
           N4: { status: 'PASSED', decision: 'PASS', summary: '无待确认变更' },
           N5: { status: 'PASSED', decision: 'PASS', summary: '已关联销售合同 DEMO-NORD-OPEN；采购交付不晚于合同交期' },
-          N6: { status: 'PASSED', decision: 'PASS', summary: '书面指示与正本提单齐全' },
+          N6: { status: 'PASSED', decision: 'PASS', summary: '发票、箱单与正本提单齐全' },
           N7: { status: 'PASSED', decision: 'PASS', summary: '单证一致' },
           N8: { status: 'PASSED', decision: 'PASS', summary: '已报关放行，待收汇' },
           N9: { status: 'IN_PROGRESS', decision: null, summary: '约定收汇到期日未到，尚无到账记录' },
@@ -1771,6 +1801,7 @@ async function seedNordlichtOpenCase(salesId: string, approverId: string) {
       detail: JSON.stringify({ scenario: 'OPEN_SETTLEMENT' }),
     },
   });
+  await attachN6TradeDocs(c.id);
   return c;
 }
 
@@ -1889,6 +1920,7 @@ async function seedBareExport(opts: {
         consigneeOnBl: opts.buyer,
       },
     });
+    await attachN6TradeDocs(c.id);
   }
   if (opts.receivedFen != null || opts.receivedAt) {
     await prisma.settlement.create({

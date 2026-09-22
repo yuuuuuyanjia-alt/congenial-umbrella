@@ -38,7 +38,7 @@ export const NODE_CATALOG = [
     mvp: true,
     isHardGate: true,
     isStub: false,
-    summary: '硬闸门：客户书面指示 + 内部审批。存在未生效变更单时硬拦截，禁止装运。CIF 填装运港、装运日期、预计到港与到达港口。装运规则跟随所选运输术语：CIF/CFR 等须正本或电放其一；FOB/EXW/FAS/FCA 可走无提单路径。T/T 是结算方式不是 Incoterm；无有效运输术语时回退按 FOB（买方安排运输）执行。',
+    summary: '硬闸门：上传发票 + 上传箱单 + 内部审批。不再要求客户书面指示。存在未生效变更单时硬拦截，禁止装运。CIF 填装运港、装运日期、预计到港与到达港口。装运规则跟随所选运输术语：CIF/CFR 等须正本或电放其一；FOB/EXW/FAS/FCA 可走无提单路径。T/T 是结算方式不是 Incoterm；无有效运输术语时回退按 FOB（买方安排运输）执行。',
   },
   {
     code: 'N7',
@@ -470,6 +470,8 @@ export const EvidenceKind = {
   EPORT_SYNC: 'EPORT_SYNC',
   SINOSURE_POLICY: 'SINOSURE_POLICY',
   SINOSURE_CONFIRM: 'SINOSURE_CONFIRM',
+  N6_INVOICE: 'N6_INVOICE',
+  N6_PACKING: 'N6_PACKING',
   DIRECT_PORT_GOODS: 'DIRECT_PORT_GOODS',
   DIRECT_PORT_CUSTOMS_PARTY: 'DIRECT_PORT_CUSTOMS_PARTY',
   DIRECT_PORT_REMITTANCE: 'DIRECT_PORT_REMITTANCE',

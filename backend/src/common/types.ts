@@ -73,7 +73,8 @@ export interface DirectPortSnap {
 }
 
 export interface ShipmentSnap {
-  hasCustomerWrittenInstruction: boolean;
+  /** 历史字段。N6 闸门已改为发票 + 箱单，不再读取。 */
+  hasCustomerWrittenInstruction?: boolean;
   instructionRef?: string | null;
   hasInternalApproval: boolean;
   blControl?: string | null;
@@ -81,12 +82,16 @@ export interface ShipmentSnap {
   consigneeOnBl?: string | null;
   /** 无提单路径的原因说明 */
   noBlReason?: string | null;
-  /** 装船通知 / 订舱 / 买方运输安排编号 */
+  /** 装船通知 / 订舱 / 买方运输安排编号（历史字段；页面已不再采集） */
   noBlRef?: string | null;
   /** 演示上传占位（文件名或附件编号） */
   noBlEvidenceStub?: string | null;
   /** N6 手工覆盖合同运输术语；空则沿用 N3 contract.incoterms。不得写入 T/T */
   incotermsOverride?: string | null;
+  /** 发票上传写入证据链后的 Evidence.id */
+  invoiceEvidenceId?: string | null;
+  /** 箱单上传写入证据链后的 Evidence.id */
+  packingEvidenceId?: string | null;
 }
 
 export interface DocSnap {

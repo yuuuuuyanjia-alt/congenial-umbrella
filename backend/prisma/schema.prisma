@@ -268,6 +268,10 @@ model Shipment {
   noBlRef                       String?
   noBlEvidenceStub              String?
   incotermsOverride             String?
+  /// N6 发票证据（证据链 Evidence.id）
+  invoiceEvidenceId             String?
+  /// N6 箱单证据（证据链 Evidence.id）
+  packingEvidenceId             String?
   updatedAt                     DateTime  @updatedAt
   case                          TradeCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
   approver                      User?     @relation("ShipmentApprover", fields: [approverId], references: [id])

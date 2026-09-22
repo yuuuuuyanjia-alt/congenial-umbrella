@@ -601,9 +601,13 @@ export function evaluateN6(snap: CaseSnapshot): GateResult {
     return finalizeHard(r);
   }
 
-  if (!s.hasCustomerWrittenInstruction || !s.instructionRef?.trim()) {
-    r.missing.push('N6_CUSTOMER_WRITTEN_INSTRUCTION');
-    r.reasons.push('硬闸门：缺少客户书面提单指示');
+  if (!s.invoiceEvidenceId?.trim()) {
+    r.missing.push('N6_INVOICE');
+    r.reasons.push('硬闸门：缺少发票（须上传）');
+  }
+  if (!s.packingEvidenceId?.trim()) {
+    r.missing.push('N6_PACKING');
+    r.reasons.push('硬闸门：缺少箱单（须上传）');
   }
   if (!s.hasInternalApproval) {
     r.missing.push('N6_INTERNAL_APPROVAL');
@@ -644,11 +648,11 @@ export function evaluateN6(snap: CaseSnapshot): GateResult {
 
   if (!r.missing.length) {
     if (noBl) {
-      r.reasons.push(`硬闸门证据齐全：书面指示、内部审批、无提单路径（${incoterms || '买方安排运输'}）`);
+      r.reasons.push(`硬闸门证据齐全：发票、箱单、内部审批、无提单路径（${incoterms || '买方安排运输'}）`);
     } else if (s.blControl === BlControl.TELEX_RELEASE) {
-      r.reasons.push('硬闸门证据齐全：书面指示、内部审批、电放提单');
+      r.reasons.push('硬闸门证据齐全：发票、箱单、内部审批、电放提单');
     } else {
-      r.reasons.push('硬闸门证据齐全：书面指示、内部审批、正本提单');
+      r.reasons.push('硬闸门证据齐全：发票、箱单、内部审批、正本提单');
     }
   }
 

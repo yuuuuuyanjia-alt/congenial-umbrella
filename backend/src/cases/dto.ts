@@ -103,7 +103,7 @@ export class SaveContractDto {
 }
 
 export class SaveShipmentDto {
-  @IsBoolean() hasCustomerWrittenInstruction: boolean;
+  @IsOptional() @IsBoolean() hasCustomerWrittenInstruction?: boolean;
   @IsOptional() @IsString() instructionRef?: string;
   @IsBoolean() hasInternalApproval: boolean;
   @IsOptional() @IsString() approverId?: string;
@@ -115,6 +115,8 @@ export class SaveShipmentDto {
   @IsOptional() @IsString() noBlRef?: string;
   @IsOptional() @IsString() noBlEvidenceStub?: string;
   @IsOptional() @IsString() incotermsOverride?: string;
+  @IsOptional() @IsString() invoiceEvidenceId?: string | null;
+  @IsOptional() @IsString() packingEvidenceId?: string | null;
   @IsOptional() @IsString() shipmentPort?: string | null;
   @IsOptional() @IsString() shipmentDate?: string | null;
   @IsOptional() @IsString() etaDate?: string | null;

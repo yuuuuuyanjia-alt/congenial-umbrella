@@ -1290,11 +1290,84 @@ export class CasesService {
     return { ...row, declareElements: safeJson(row.declareElementsJson), mock: true, gate, evidenceId: ev.id };
   }
 
+  async uploadShipmentDoc(
+    caseId: string,
+    rawKind: string | undefined,
+    file: { originalname: string; size: number; buffer: Buffer },
+    actorId?: string,
+    fileNameOverride?: string,
+  ) {
+    await this.ensureCase(caseId);
+    const kind = String(rawKind || '').trim().toUpperCase();
+    if (kind !== 'INVOICE' && kind !== 'PACKING') {
+      throw new BadRequestException('请指定上传发票或箱单');
+    }
+    if (!file?.buffer?.length) throw new BadRequestException(kind === 'INVOICE' ? '请选择发票文件' : '请选择箱单文件');
+    const label = kind === 'INVOICE' ? '发票' : '箱单';
+    const originalName = (fileNameOverride || file.originalname || '').trim();
+    let meta: StoredFileMeta;
+    try {
+      meta = await writeSinosureFile({
+        caseId,
+        id: randomUUID(),
+        originalName,
+        buffer: file.buffer,
+        folder: 'shipment',
+        label,
+      });
+    } catch (e) {
+      if (e instanceof SinosureFileError) throw new BadRequestException(e.message);
+      throw e;
+    }
+    const evidenceKind = kind === 'INVOICE' ? EvidenceKind.N6_INVOICE : EvidenceKind.N6_PACKING;
+    const ev = await this.addEvidence(caseId, 'N6', evidenceKind, {
+      ref: meta.storageKey,
+      note: label,
+      payload: { ...meta, uploaded: true, kind },
+    });
+    const link =
+      kind === 'INVOICE' ? { invoiceEvidenceId: ev.id } : { packingEvidenceId: ev.id };
+    await this.prisma.shipment.upsert({
+      where: { caseId },
+      create: { caseId, ...link },
+      update: link,
+    });
+    await this.touchNode(caseId, 'N6', NodeStatus.IN_PROGRESS);
+    await this.audit.append({
+      caseId,
+      actorId,
+      action: 'SHIPMENT_DOC_UPLOADED',
+      nodeCode: 'N6',
+      detail: {
+        kind,
+        evidenceId: ev.id,
+        fileName: meta.fileName,
+        storageKey: meta.storageKey,
+        sha256: meta.sha256,
+        size: meta.size,
+        mime: meta.mime,
+      },
+    });
+    return {
+      kind,
+      evidenceId: ev.id,
+      evidenceRef: ev.id,
+      fileName: meta.fileName,
+      mime: meta.mime,
+      size: meta.size,
+      sha256: meta.sha256,
+      storageKey: meta.storageKey,
+    };
+  }
+
   async saveShipment(caseId: string, dto: SaveShipmentDto, actorId?: string) {
     await this.ensureCase(caseId);
+    const prev = await this.prisma.shipment.findUnique({ where: { caseId } });
     const data = {
-      hasCustomerWrittenInstruction: dto.hasCustomerWrittenInstruction,
-      instructionRef: dto.instructionRef || null,
+      hasCustomerWrittenInstruction:
+        dto.hasCustomerWrittenInstruction ?? prev?.hasCustomerWrittenInstruction ?? false,
+      instructionRef:
+        dto.instructionRef !== undefined ? dto.instructionRef || null : prev?.instructionRef ?? null,
       hasInternalApproval: dto.hasInternalApproval,
       approverId: dto.approverId || undefined,
       blControl: dto.blControl || null,
@@ -1302,9 +1375,13 @@ export class CasesService {
       vessel: dto.vessel || null,
       consigneeOnBl: dto.consigneeOnBl || null,
       noBlReason: dto.noBlReason || null,
-      noBlRef: dto.noBlRef || null,
+      noBlRef: dto.noBlRef !== undefined ? dto.noBlRef || null : prev?.noBlRef ?? null,
       noBlEvidenceStub: dto.noBlEvidenceStub || null,
       incotermsOverride: normalizeTransportIncoterms(dto.incotermsOverride) || null,
+      invoiceEvidenceId:
+        dto.invoiceEvidenceId !== undefined ? dto.invoiceEvidenceId || null : prev?.invoiceEvidenceId ?? null,
+      packingEvidenceId:
+        dto.packingEvidenceId !== undefined ? dto.packingEvidenceId || null : prev?.packingEvidenceId ?? null,
     };
     const row = await this.prisma.shipment.upsert({
       where: { caseId },

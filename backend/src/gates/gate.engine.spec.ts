@@ -53,6 +53,8 @@ function baseSnap(over: Partial<CaseSnapshot> = {}): CaseSnapshot {
       hasInternalApproval: true,
       blControl: 'ORIGINAL',
       blNo: 'COSU123',
+      invoiceEvidenceId: 'ev-n6-invoice',
+      packingEvidenceId: 'ev-n6-packing',
     },
     documents: [
       {
@@ -211,6 +213,8 @@ function fobNoBlSnap(over: Partial<CaseSnapshot> = {}): CaseSnapshot {
       noBlReason: 'FOB 买方指定货代，卖方不控提单',
       noBlRef: 'SA-FOB-2026-001',
       noBlEvidenceStub: 'DEMO-SA-FOB.pdf',
+      invoiceEvidenceId: 'ev-n6-invoice',
+      packingEvidenceId: 'ev-n6-packing',
     },
     documents: fobNoBlDocs(),
     ...over,
@@ -692,7 +696,7 @@ describe('闸门引擎 MVP 节点', () => {
     expect(r.canProceed).toBe(true);
   });
 
-  it('N6 缺少书面指示/审批/提单控制拒绝推进', () => {
+  it('N6 缺少发票/箱单/审批/提单控制拒绝推进', () => {
     const r = evaluateN6(baseSnap({ shipment: null }));
     expect(r.canProceed).toBe(false);
     expect(r.decision).toBe(Decision.HARD_BLOCK);
@@ -700,7 +704,8 @@ describe('闸门引擎 MVP 节点', () => {
     const r2 = evaluateN6(
       baseSnap({
         shipment: {
-          hasCustomerWrittenInstruction: false,
+          hasCustomerWrittenInstruction: true,
+          instructionRef: 'INST-LEGACY',
           hasInternalApproval: false,
           blControl: null,
         },
@@ -708,20 +713,17 @@ describe('闸门引擎 MVP 节点', () => {
     );
     expect(r2.canProceed).toBe(false);
     expect(r2.missing).toEqual(
-      expect.arrayContaining([
-        'N6_CUSTOMER_WRITTEN_INSTRUCTION',
-        'N6_INTERNAL_APPROVAL',
-        'N6_BL_CONTROL',
-      ]),
+      expect.arrayContaining(['N6_INVOICE', 'N6_PACKING', 'N6_INTERNAL_APPROVAL', 'N6_BL_CONTROL']),
     );
+    expect(r2.missing).not.toContain('N6_CUSTOMER_WRITTEN_INSTRUCTION');
   });
 
   it('N6 正本或电放任一即可过闸（不必同时具备）', () => {
     const baseShip = {
-      hasCustomerWrittenInstruction: true,
-      instructionRef: 'INST-001',
       hasInternalApproval: true,
       blNo: 'COSU123',
+      invoiceEvidenceId: 'ev-n6-invoice',
+      packingEvidenceId: 'ev-n6-packing',
     };
     expect(
       evaluateN6(baseSnap({ shipment: { ...baseShip, blControl: 'ORIGINAL' } })).canProceed,
@@ -737,10 +739,10 @@ describe('闸门引擎 MVP 节点', () => {
       baseSnap({
         contract: { ...baseSnap().contract!, incoterms: 'CIF' },
         shipment: {
-          hasCustomerWrittenInstruction: true,
-          instructionRef: 'INST-001',
           hasInternalApproval: true,
           blControl: null,
+          invoiceEvidenceId: 'ev-n6-invoice',
+          packingEvidenceId: 'ev-n6-packing',
         },
       }),
     );
@@ -751,9 +753,9 @@ describe('闸门引擎 MVP 节点', () => {
 
   it('N6 FOB 交易仍可只选正本或电放过闸', () => {
     const ship = {
-      hasCustomerWrittenInstruction: true,
-      instructionRef: 'INST-001',
       hasInternalApproval: true,
+      invoiceEvidenceId: 'ev-n6-invoice',
+      packingEvidenceId: 'ev-n6-packing',
     };
     expect(
       evaluateN6(
@@ -778,13 +780,13 @@ describe('闸门引擎 MVP 节点', () => {
       baseSnap({
         contract: { ...baseSnap().contract!, incoterms: 'FOB Shanghai' },
         shipment: {
-          hasCustomerWrittenInstruction: true,
-          instructionRef: 'INST-FOB-001',
           hasInternalApproval: true,
           blControl: 'NO_BL',
           blNo: null,
           noBlReason: 'FOB 买方指定货代，卖方不控提单',
           noBlRef: 'SA-FOB-2026-001',
+          invoiceEvidenceId: 'ev-n6-invoice',
+          packingEvidenceId: 'ev-n6-packing',
         },
       }),
     );
@@ -799,11 +801,11 @@ describe('闸门引擎 MVP 节点', () => {
         baseSnap({
           contract: { ...baseSnap().contract!, incoterms: term },
           shipment: {
-            hasCustomerWrittenInstruction: true,
-            instructionRef: 'INST-X',
             hasInternalApproval: true,
             blControl: 'FOB_NO_BL',
             noBlEvidenceStub: 'DEMO-SA.pdf',
+            invoiceEvidenceId: 'ev-n6-invoice',
+            packingEvidenceId: 'ev-n6-packing',
           },
         }),
       );
@@ -816,10 +818,10 @@ describe('闸门引擎 MVP 节点', () => {
       baseSnap({
         contract: { ...baseSnap().contract!, incoterms: 'FOB' },
         shipment: {
-          hasCustomerWrittenInstruction: true,
-          instructionRef: 'INST-001',
           hasInternalApproval: true,
           blControl: null,
+          invoiceEvidenceId: 'ev-n6-invoice',
+          packingEvidenceId: 'ev-n6-packing',
         },
       }),
     );
@@ -833,10 +835,10 @@ describe('闸门引擎 MVP 节点', () => {
       baseSnap({
         contract: { ...baseSnap().contract!, incoterms: 'FOB' },
         shipment: {
-          hasCustomerWrittenInstruction: true,
-          instructionRef: 'INST-001',
           hasInternalApproval: true,
           blControl: 'NO_BL',
+          invoiceEvidenceId: 'ev-n6-invoice',
+          packingEvidenceId: 'ev-n6-packing',
         },
       }),
     );
@@ -850,11 +852,11 @@ describe('闸门引擎 MVP 节点', () => {
         baseSnap({
           contract: { ...baseSnap().contract!, incoterms: term },
           shipment: {
-            hasCustomerWrittenInstruction: true,
-            instructionRef: 'INST-001',
             hasInternalApproval: true,
             blControl: null,
             blNo: null,
+            invoiceEvidenceId: 'ev-n6-invoice',
+            packingEvidenceId: 'ev-n6-packing',
           },
         }),
       );
@@ -868,12 +870,12 @@ describe('闸门引擎 MVP 节点', () => {
       baseSnap({
         contract: { ...baseSnap().contract!, incoterms: 'CIF' },
         shipment: {
-          hasCustomerWrittenInstruction: true,
-          instructionRef: 'INST-001',
           hasInternalApproval: true,
           blControl: 'NO_BL',
           noBlReason: '误操作',
           noBlRef: 'X-1',
+          invoiceEvidenceId: 'ev-n6-invoice',
+          packingEvidenceId: 'ev-n6-packing',
         },
       }),
     );
@@ -886,20 +888,20 @@ describe('闸门引擎 MVP 节点', () => {
       baseSnap({
         contract: { ...baseSnap().contract!, incoterms: 'CIF' },
         shipment: {
-          hasCustomerWrittenInstruction: true,
-          instructionRef: 'INST-001',
           hasInternalApproval: true,
           blControl: 'NO_BL',
           incotermsOverride: 'FOB',
           noBlReason: '合同实际按 FOB 执行，买方自行订舱',
           noBlRef: 'BK-OV-01',
+          invoiceEvidenceId: 'ev-n6-invoice',
+          packingEvidenceId: 'ev-n6-packing',
         },
       }),
     );
     expect(r.canProceed).toBe(true);
   });
 
-  it('N6 无提单仍须书面指示与内部审批', () => {
+  it('N6 无提单不要求书面指示，仍须发票、箱单与内部审批', () => {
     const r = evaluateN6(
       baseSnap({
         contract: { ...baseSnap().contract!, incoterms: 'FOB' },
@@ -915,8 +917,26 @@ describe('闸门引擎 MVP 节点', () => {
     );
     expect(r.canProceed).toBe(false);
     expect(r.missing).toEqual(
-      expect.arrayContaining(['N6_CUSTOMER_WRITTEN_INSTRUCTION', 'N6_INTERNAL_APPROVAL']),
+      expect.arrayContaining(['N6_INVOICE', 'N6_PACKING', 'N6_INTERNAL_APPROVAL']),
     );
+    expect(r.missing).not.toContain('N6_CUSTOMER_WRITTEN_INSTRUCTION');
+
+    const passed = evaluateN6(
+      baseSnap({
+        contract: { ...baseSnap().contract!, incoterms: 'FOB' },
+        shipment: {
+          hasCustomerWrittenInstruction: false,
+          instructionRef: null,
+          hasInternalApproval: true,
+          blControl: 'NO_BL',
+          noBlReason: 'FOB',
+          invoiceEvidenceId: 'ev-n6-invoice',
+          packingEvidenceId: 'ev-n6-packing',
+        },
+      }),
+    );
+    expect(passed.canProceed).toBe(true);
+    expect(passed.missing).not.toContain('N6_CUSTOMER_WRITTEN_INSTRUCTION');
   });
 
   it('N6 证据齐全可通过', () => {
@@ -941,10 +961,10 @@ describe('闸门引擎 MVP 节点', () => {
           ttTiming: 'ADVANCE',
         },
         shipment: {
-          hasCustomerWrittenInstruction: true,
-          instructionRef: 'INST-TT-FOB',
           hasInternalApproval: true,
           blControl: null,
+          invoiceEvidenceId: 'ev-n6-invoice',
+          packingEvidenceId: 'ev-n6-packing',
         },
       }),
     );
@@ -963,10 +983,10 @@ describe('闸门引擎 MVP 节点', () => {
           ttTiming: 'AFTER',
         },
         shipment: {
-          hasCustomerWrittenInstruction: true,
-          instructionRef: 'INST-CIF-TT',
           hasInternalApproval: true,
           blControl: null,
+          invoiceEvidenceId: 'ev-n6-invoice',
+          packingEvidenceId: 'ev-n6-packing',
         },
       }),
     );
@@ -983,10 +1003,10 @@ describe('闸门引擎 MVP 节点', () => {
         ttTiming: 'AFTER',
       },
       shipment: {
-        hasCustomerWrittenInstruction: true,
-        instructionRef: 'INST-TT-LEGACY',
         hasInternalApproval: true,
         blControl: null,
+        invoiceEvidenceId: 'ev-n6-invoice',
+        packingEvidenceId: 'ev-n6-packing',
       },
     });
     expect(parseIncotermsCode('T/T')).toBe('');

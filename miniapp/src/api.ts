@@ -102,6 +102,123 @@ export async function uploadDemoSinosure(caseId: string): Promise<SinosureUpload
   return postSinosureUpload(caseId, blob, DEMO_SINOSURE_FILE_NAME);
 }
 
+export type ShipmentDocKind = 'INVOICE' | 'PACKING';
+
+export function shipmentDocFileError(name: string, size: number): string | null {
+  const base = String(name || '').split(/[/\\]/).pop() || '';
+  const i = base.lastIndexOf('.');
+  const ext = i >= 0 ? base.slice(i).toLowerCase() : '';
+  if (!SINOSURE_UPLOAD_EXTS.includes(ext)) return '发票或箱单仅支持 PDF、Word、Excel 或常见图片';
+  if (!size) return '上传文件为空';
+  if (size > SINOSURE_UPLOAD_MAX_BYTES) return '文件不能超过 15MB';
+  return null;
+}
+
+export async function postShipmentDocUpload(
+  caseId: string,
+  kind: ShipmentDocKind,
+  file: Blob,
+  fileName: string,
+): Promise<SinosureUploadResult> {
+  const problem = shipmentDocFileError(fileName, file.size);
+  if (problem) return Promise.reject({ message: problem });
+  if (typeof fetch !== 'function' || typeof FormData !== 'function') {
+    return Promise.reject({ message: '当前环境不支持上传文件' });
+  }
+  const fd = new FormData();
+  fd.append('file', file, fileName);
+  fd.append('fileName', fileName);
+  fd.append('kind', kind);
+  const res = await fetch(`${BASE}/cases/${caseId}/nodes/N6/shipment/upload`, {
+    method: 'POST',
+    headers: demoHeaders(false),
+    body: fd,
+  });
+  const data = await res.json().catch(() => ({ message: kind === 'INVOICE' ? '发票上传失败' : '箱单上传失败' }));
+  if (!res.ok) throw data;
+  return data as SinosureUploadResult;
+}
+
+export function chooseAndUploadShipmentDoc(caseId: string, kind: ShipmentDocKind): Promise<SinosureUploadResult> {
+  if (typeof document !== 'undefined' && typeof document.createElement === 'function') {
+    return chooseShipmentDocH5(caseId, kind);
+  }
+  return chooseShipmentDocMini(caseId, kind);
+}
+
+export async function uploadDemoShipmentDoc(caseId: string, kind: ShipmentDocKind): Promise<SinosureUploadResult> {
+  const blob = await loadDemoSinosurePdf();
+  const fileName = kind === 'INVOICE' ? '演示发票.pdf' : '演示箱单.pdf';
+  return postShipmentDocUpload(caseId, kind, blob, fileName);
+}
+
+function chooseShipmentDocH5(caseId: string, kind: ShipmentDocKind): Promise<SinosureUploadResult> {
+  return new Promise((resolve, reject) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.webp,application/pdf';
+    input.onchange = () => {
+      const file = input.files?.[0];
+      if (!file) {
+        reject({ message: '未选择文件' });
+        return;
+      }
+      postShipmentDocUpload(caseId, kind, file, file.name).then(resolve, reject);
+    };
+    input.click();
+  });
+}
+
+function chooseShipmentDocMini(caseId: string, kind: ShipmentDocKind): Promise<SinosureUploadResult> {
+  return new Promise((resolve, reject) => {
+    const uniAny = uni as any;
+    const chooser = uniAny.chooseFile || uniAny.chooseMessageFile;
+    if (!chooser) {
+      reject({ message: '当前环境不支持选择文件' });
+      return;
+    }
+    chooser({
+      count: 1,
+      type: 'all',
+      extension: SINOSURE_UPLOAD_EXTS,
+      success: (res: any) => {
+        const f = res.tempFiles?.[0];
+        const filePath = f?.path || f?.tempFilePath || res.tempFilePaths?.[0];
+        const fileName = f?.name || (kind === 'INVOICE' ? 'invoice.pdf' : 'packing-list.pdf');
+        const size = Number(f?.size || 0);
+        if (!filePath) {
+          reject({ message: '未选择文件' });
+          return;
+        }
+        const problem = shipmentDocFileError(fileName, size || 1);
+        if (problem) {
+          reject({ message: problem });
+          return;
+        }
+        uni.uploadFile({
+          url: BASE + `/cases/${caseId}/nodes/N6/shipment/upload`,
+          filePath,
+          name: 'file',
+          formData: { fileName, kind },
+          header: demoHeaders(false),
+          success: (up) => {
+            let data: any = up.data;
+            try {
+              if (typeof data === 'string') data = JSON.parse(data);
+            } catch {
+              /* 保留原文 */
+            }
+            if (up.statusCode >= 200 && up.statusCode < 300) resolve(data as SinosureUploadResult);
+            else reject(data || { message: kind === 'INVOICE' ? '发票上传失败' : '箱单上传失败' });
+          },
+          fail: (err) => reject(err),
+        });
+      },
+      fail: (err: any) => reject(err?.errMsg ? { message: '未选择文件' } : err),
+    });
+  });
+}
+
 function chooseAndUploadSinosureH5(caseId: string): Promise<SinosureUploadResult> {
   return new Promise((resolve, reject) => {
     const input = document.createElement('input');

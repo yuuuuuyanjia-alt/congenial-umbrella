@@ -61,26 +61,38 @@ export function basenameOnly(name: string): string {
   return (base || 'sinosure-policy').slice(0, 180);
 }
 
-export function assertSinosureUpload(file: { originalname: string; size: number }): void {
+export type UploadFolder = 'sinosure' | 'shipment';
+
+export function assertSinosureUpload(
+  file: { originalname: string; size: number },
+  label = '中信保保单',
+): void {
   const ext = sinosureFileExtension(file.originalname);
   if (!SINOSURE_UPLOAD_EXTENSIONS.includes(ext as (typeof SINOSURE_UPLOAD_EXTENSIONS)[number])) {
-    throw new SinosureFileError('中信保保单仅支持 PDF、Word、Excel 或常见图片');
+    throw new SinosureFileError(`${label}仅支持 PDF、Word、Excel 或常见图片`);
   }
   if (!file.size || file.size <= 0) throw new SinosureFileError('上传文件为空');
-  if (file.size > SINOSURE_UPLOAD_MAX_BYTES) throw new SinosureFileError('保单文件不能超过 15MB');
+  if (file.size > SINOSURE_UPLOAD_MAX_BYTES) throw new SinosureFileError(`${label}文件不能超过 15MB`);
 }
 
-export function safeStorageKey(caseId: string, fileId: string, originalName: string): string {
+export function safeStorageKey(
+  caseId: string,
+  fileId: string,
+  originalName: string,
+  folder: UploadFolder = 'sinosure',
+): string {
   const ext = sinosureFileExtension(originalName);
   const safeCase = String(caseId || '').replace(/[^a-zA-Z0-9_-]/g, '');
   const safeId = String(fileId || '').replace(/[^a-zA-Z0-9_-]/g, '');
-  if (!safeCase || !safeId || !ext) throw new SinosureFileError('无法保存保单文件');
-  return `sinosure/${safeCase}/${safeId}${ext}`;
+  if (!safeCase || !safeId || !ext) throw new SinosureFileError('无法保存文件');
+  if (folder !== 'sinosure' && folder !== 'shipment') throw new SinosureFileError('非法文件引用');
+  return `${folder}/${safeCase}/${safeId}${ext}`;
 }
 
 export function assertSafeStorageKey(key: string): string {
   const norm = String(key || '').replace(/\\/g, '/').trim();
-  if (!norm.startsWith('sinosure/') || norm.includes('..') || norm.includes('\0')) {
+  const allowed = norm.startsWith('sinosure/') || norm.startsWith('shipment/');
+  if (!allowed || norm.includes('..') || norm.includes('\0')) {
     throw new SinosureFileError('非法文件引用');
   }
   return norm;
@@ -133,11 +145,13 @@ export async function writeSinosureFile(input: {
   originalName: string;
   buffer: Buffer;
   root?: string;
+  folder?: UploadFolder;
+  label?: string;
 }): Promise<StoredFileMeta> {
   const fileName = basenameOnly(input.originalName);
-  assertSinosureUpload({ originalname: fileName, size: input.buffer?.length || 0 });
+  assertSinosureUpload({ originalname: fileName, size: input.buffer?.length || 0 }, input.label);
   const id = input.id || randomUUID();
-  const storageKey = safeStorageKey(input.caseId, id, fileName);
+  const storageKey = safeStorageKey(input.caseId, id, fileName, input.folder);
   const abs = absolutePathForKey(storageKey, input.root);
   await mkdir(path.dirname(abs), { recursive: true });
   await writeFile(abs, input.buffer);
