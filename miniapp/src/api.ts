@@ -1,3 +1,10 @@
+import {
+  DEMO_SINOSURE_FILE_NAME,
+  DEMO_SINOSURE_SAMPLE_URL,
+  demoSinosurePdfBytes,
+  isPdfBytes,
+} from './demo-sinosure-sample';
+
 // #ifdef H5
 const BASE = import.meta.env.VITE_API_BASE || '/api';
 // #endif
@@ -42,11 +49,57 @@ export function evidenceFileUrl(caseId: string, evidenceId: string) {
   return `${BASE}/cases/${caseId}/evidences/${encodeURIComponent(evidenceId)}/file`;
 }
 
+export { DEMO_SINOSURE_FILE_NAME };
+
 export function chooseAndUploadSinosure(caseId: string): Promise<SinosureUploadResult> {
   if (typeof document !== 'undefined' && typeof document.createElement === 'function') {
     return chooseAndUploadSinosureH5(caseId);
   }
   return chooseAndUploadSinosureMini(caseId);
+}
+
+/** Same multipart POST as the file picker. Does not open a picker. */
+export async function postSinosureUpload(
+  caseId: string,
+  file: Blob,
+  fileName: string,
+): Promise<SinosureUploadResult> {
+  const problem = sinosureFileError(fileName, file.size);
+  if (problem) return Promise.reject({ message: problem });
+  if (typeof fetch !== 'function' || typeof FormData !== 'function') {
+    return Promise.reject({ message: '当前环境不支持上传保单' });
+  }
+  const fd = new FormData();
+  fd.append('file', file, fileName);
+  fd.append('fileName', fileName);
+  const res = await fetch(`${BASE}/cases/${caseId}/nodes/N3/sinosure/upload`, {
+    method: 'POST',
+    headers: demoHeaders(false),
+    body: fd,
+  });
+  const data = await res.json().catch(() => ({ message: '保单上传失败' }));
+  if (!res.ok) throw data;
+  return data as SinosureUploadResult;
+}
+
+async function loadDemoSinosurePdf(): Promise<Blob> {
+  const fallback = () => new Blob([demoSinosurePdfBytes()], { type: 'application/pdf' });
+  if (typeof fetch !== 'function') return fallback();
+  try {
+    const res = await fetch(DEMO_SINOSURE_SAMPLE_URL);
+    if (!res.ok) return fallback();
+    const buf = new Uint8Array(await res.arrayBuffer());
+    if (!isPdfBytes(buf)) return fallback();
+    return new Blob([buf], { type: 'application/pdf' });
+  } catch {
+    return fallback();
+  }
+}
+
+/** One-click demo policy: built-in PDF, existing N3 upload API, no file picker. */
+export async function uploadDemoSinosure(caseId: string): Promise<SinosureUploadResult> {
+  const blob = await loadDemoSinosurePdf();
+  return postSinosureUpload(caseId, blob, DEMO_SINOSURE_FILE_NAME);
 }
 
 function chooseAndUploadSinosureH5(caseId: string): Promise<SinosureUploadResult> {
@@ -60,25 +113,7 @@ function chooseAndUploadSinosureH5(caseId: string): Promise<SinosureUploadResult
         reject({ message: '未选择文件' });
         return;
       }
-      const problem = sinosureFileError(file.name, file.size);
-      if (problem) {
-        reject({ message: problem });
-        return;
-      }
-      const fd = new FormData();
-      fd.append('file', file, file.name);
-      fd.append('fileName', file.name);
-      fetch(`${BASE}/cases/${caseId}/nodes/N3/sinosure/upload`, {
-        method: 'POST',
-        headers: demoHeaders(false),
-        body: fd,
-      })
-        .then(async (res) => {
-          const data = await res.json().catch(() => ({ message: '保单上传失败' }));
-          if (!res.ok) reject(data);
-          else resolve(data as SinosureUploadResult);
-        })
-        .catch((err) => reject(err));
+      postSinosureUpload(caseId, file, file.name).then(resolve, reject);
     };
     input.click();
   });
