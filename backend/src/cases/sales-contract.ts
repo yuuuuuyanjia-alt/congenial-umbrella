@@ -1,4 +1,4 @@
-import { CaseStatus, N6_MISSING_TRANSPORT_FALLBACK, NODE_FLOW, NodeCode, NodeStatus } from '../common/constants';
+import { CaseStatus, N6_MISSING_TRANSPORT_FALLBACK, NodeStatus, pipelineIndex } from '../common/constants';
 import {
   isBuyerArrangedFreight,
   isCifFamilyIncoterms,
@@ -428,8 +428,8 @@ export function isSalesShipped(input: SalesShipmentInput): boolean {
   if (String(input.status || '').toUpperCase() === CaseStatus.COMPLETED) return true;
   const n6 = (input.nodes || []).find((n) => n.code === 'N6');
   if (n6?.status === NodeStatus.PASSED) return true;
-  const i = NODE_FLOW.indexOf((input.currentNode || '') as NodeCode);
-  const n6i = NODE_FLOW.indexOf('N6');
+  const i = pipelineIndex(input.currentNode);
+  const n6i = pipelineIndex('N6');
   if (i > n6i) return true;
   const sh = input.shipment;
   if (filledText(sh?.blNo)) return true;

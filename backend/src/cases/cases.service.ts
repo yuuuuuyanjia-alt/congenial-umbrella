@@ -13,8 +13,8 @@ import {
   ChangeStatus,
   Decision,
   Disposition,
-  EportStatus,
   EvidenceKind,
+  isRetiredPipelineNode,
   ADVANCE_IDEMPOTENT_REASON,
   ADVANCE_NOT_CURRENT_REASON,
   N3_SINOSURE_UNREGISTERED_REASON,
@@ -89,7 +89,6 @@ import {
   CreateCaseDto,
   CreateChangeDto,
   SaveContractDto,
-  SaveCustomsDto,
   SaveDocumentDto,
   SaveFixDto,
   SavePlanDto,
@@ -172,6 +171,7 @@ export class CasesService {
       });
       return {
         ...c,
+        nodes: c.nodes.filter((n) => !isRetiredPipelineNode(n.code)),
         customer: salesCustomerOf(c),
         signed: isEligibleSalesCase(c),
         currentNodeLabel: nodeLabel(c.currentNode),
@@ -265,6 +265,7 @@ export class CasesService {
     });
     return {
       ...c,
+      nodes: c.nodes.filter((n) => !isRetiredPipelineNode(n.code)),
       customer: salesCustomerOf(c),
       supplierName,
       procurementTitle: procurementContractTitle({
@@ -1284,75 +1285,6 @@ export class CasesService {
       }),
       taxFinanceGate: taxGate,
     };
-  }
-
-  async saveCustoms(caseId: string, dto: SaveCustomsDto, actorId?: string) {
-    await this.ensureCase(caseId);
-    let originEvidenceId: string | undefined;
-    if (dto.originEvidenceType && dto.originEvidenceRef) {
-      const ev = await this.addEvidence(caseId, 'N8', EvidenceKind.ORIGIN_CERT, {
-        ref: dto.originEvidenceRef,
-        note: dto.originEvidenceType,
-        payload: { originCountry: dto.originCountry },
-      });
-      originEvidenceId = ev.id;
-    }
-    const data = {
-      hsCode: dto.hsCode,
-      productName: dto.productName,
-      declareElementsJson: JSON.stringify(dto.declareElements ?? {}),
-      originCountry: dto.originCountry,
-      originEvidenceType: dto.originEvidenceType,
-      originEvidenceRef: dto.originEvidenceRef,
-      originEvidenceId,
-      unit: dto.unit,
-      exportTaxName: dto.exportTaxName,
-    };
-    const row = await this.prisma.customsDeclaration.upsert({
-      where: { caseId },
-      create: { caseId, ...data },
-      update: data,
-    });
-    await this.touchNode(caseId, 'N8', NodeStatus.IN_PROGRESS);
-    await this.audit.append({
-      caseId,
-      actorId,
-      action: 'CUSTOMS_SAVED',
-      nodeCode: 'N8',
-      detail: { ...dto, originEvidenceId },
-    });
-    return { ...row, declareElements: dto.declareElements ?? {}, originEvidenceId };
-  }
-
-  async syncEport(caseId: string, actorId?: string) {
-    await this.ensureCase(caseId);
-    const gate = await this.gates.evaluateAndPersist(caseId, 'N8');
-    const held = !gate.canProceed;
-    const status = held ? EportStatus.HELD : EportStatus.RELEASED;
-    const ref = held ? `EPORT-HOLD-${Date.now()}` : `EPORT-RLS-${Date.now()}`;
-    const existing = await this.prisma.customsDeclaration.findUnique({ where: { caseId } });
-    if (!existing) throw new BadRequestException('请先保存报关信息再同步电子口岸');
-    const ev = await this.addEvidence(caseId, 'N8', EvidenceKind.EPORT_SYNC, {
-      ref,
-      note: held ? '模拟电子口岸退单（申报要素/HS 缺口）' : '模拟电子口岸放行',
-      payload: { status, gate },
-    });
-    const row = await this.prisma.customsDeclaration.update({
-      where: { caseId },
-      data: {
-        eportStatus: status,
-        eportSyncRef: ref,
-        eportSyncedAt: new Date(),
-      },
-    });
-    await this.audit.append({
-      caseId,
-      actorId,
-      action: 'EPORT_SYNCED',
-      nodeCode: 'N8',
-      detail: { status, ref, evidenceId: ev.id, canProceed: gate.canProceed },
-    });
-    return { ...row, declareElements: safeJson(row.declareElementsJson), mock: true, gate, evidenceId: ev.id };
   }
 
   async saveShipment(caseId: string, dto: SaveShipmentDto, actorId?: string) {

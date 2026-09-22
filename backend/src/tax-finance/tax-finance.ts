@@ -21,7 +21,7 @@ export const DeliveryModeLabel: Record<string, string> = {
   DIRECT_PORT: '港口直出',
 };
 
-export const TAX_FINANCE_NODES = new Set(['N3', 'N5', 'N6', 'N7', 'N8']);
+export const TAX_FINANCE_NODES = new Set(['N3', 'N5', 'N6', 'N7']);
 
 /** 毛利率低于 3%（300 bps）视为薄利，直出时黄灯。 */
 export const THIN_MARGIN_BPS = 300;
@@ -481,7 +481,7 @@ export function evaluateTaxFinance(snap: CaseSnapshot, nodeCode: string): TaxFin
   const docsMissing = direct ? directPortGaps(dp) : [];
   r.view.directPortComplete = !direct || docsMissing.length === 0;
 
-  if (direct && (isSignNode || nodeCode === 'N6' || nodeCode === 'N7' || nodeCode === 'N8')) {
+  if (direct && (isSignNode || nodeCode === 'N6' || nodeCode === 'N7')) {
     if (docsMissing.length) {
       r.missing.push('FT2_DIRECT_PORT_DOCS', ...docsMissing);
       r.reasons.push(TAX_FINANCE_DIRECT_DOCS_REASON);
@@ -494,7 +494,7 @@ export function evaluateTaxFinance(snap: CaseSnapshot, nodeCode: string): TaxFin
     }
   }
 
-  if (direct && (nodeCode === 'N6' || nodeCode === 'N7' || nodeCode === 'N8')) {
+  if (direct && (nodeCode === 'N6' || nodeCode === 'N7')) {
     applyFt3(r, snap, sales, contract);
   }
 

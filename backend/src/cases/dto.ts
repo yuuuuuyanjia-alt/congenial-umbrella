@@ -270,20 +270,6 @@ export class SavePlanDto {
   @IsOptional() @IsString() goodsSpec?: string | null;
 }
 
-export class SaveCustomsDto {
-  @IsOptional() @IsString() hsCode?: string;
-  @IsOptional() @IsString() productName?: string;
-  @Allow()
-  @IsOptional()
-  @IsObject()
-  declareElements?: Record<string, string>;
-  @IsOptional() @IsString() originCountry?: string;
-  @IsOptional() @IsString() originEvidenceType?: string;
-  @IsOptional() @IsString() originEvidenceRef?: string;
-  @IsOptional() @IsString() unit?: string;
-  @IsOptional() @IsString() exportTaxName?: string;
-}
-
 export class SaveSinosureDto {
   @IsOptional() @IsString() evidenceRef?: string;
   @IsOptional() @IsString() fileName?: string;

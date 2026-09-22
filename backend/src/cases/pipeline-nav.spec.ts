@@ -18,6 +18,9 @@ describe('合同管理接到九节点下一步', () => {
     expect(nextPipelineNode('N3', true)).toBe('N4');
     expect(nextNode('N3', snap(1))).toBe('N4');
     expect(nextPipelineNode('N5')).toBe('N6');
+    expect(nextPipelineNode('N7')).toBe('N9');
+    expect(nextNode('N7')).toBe('N9');
+    expect(nextPipelineNode('N8')).toBe('N9');
     expect(nextPipelineNode('N9')).toBeNull();
   });
 
@@ -47,7 +50,14 @@ describe('合同管理接到九节点下一步', () => {
       code: 'N6',
       name: '装运/提单指示',
     });
-    expect(nextWorkNodeFromForm('N5', { currentNode: 'N8' })?.code).toBe('N8');
+    expect(nextWorkNodeFromForm('N5', { currentNode: 'N8' })).toEqual({
+      code: 'N9',
+      name: '收汇对账',
+    });
+    expect(nextWorkNodeFromForm('N7', { currentNode: 'N7' })).toEqual({
+      code: 'N9',
+      name: '收汇对账',
+    });
   });
 
   it('过闸返回的 nextNode 优先', () => {

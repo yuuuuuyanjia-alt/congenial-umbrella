@@ -1,4 +1,4 @@
-/** 节点目录：询盘 → 收汇 九节点全量。N4 无待确认变更时可直接过闸。 */
+/** 节点目录：报价 → 收汇。N4 无待确认变更时可直接过闸。N8 报关放行已退出，N7 通过后进入 N9。 */
 export const NODE_CATALOG = [
   {
     code: 'N2',
@@ -46,15 +46,7 @@ export const NODE_CATALOG = [
     mvp: true,
     isHardGate: true,
     isStub: false,
-    summary: '硬闸门：销售合同、商业发票、箱单、采购合同、发票、报关单六份均须上传并写入证据链；商业发票与发票分别必填，缺任一份拒绝推进。不再核验提单一致、装船通知或字段勾选。存在未生效变更单时硬拦截。',
-  },
-  {
-    code: 'N8',
-    name: '报关放行',
-    mvp: true,
-    isHardGate: false,
-    isStub: false,
-    summary: 'HS 编码与申报要素模板核对、原产地证据；税则品名/计量单位不符软提示；严重缺项禁止申报。存在未生效变更单时硬拦截。港口直出须与直出单证货描/收货人一致，严重不符红线硬拦截。',
+    summary: '硬闸门：销售合同、商业发票、箱单、采购合同、发票、报关单六份均须上传；原产地证在运输术语不是 FOB 时必填（FOB 可不传），缺则拒绝推进。商业发票与发票分别必填。不再核验提单一致、装船通知或字段勾选，也不再单设报关放行页。存在未生效变更单时硬拦截。过闸后进入收汇（N9）。',
   },
   {
     code: 'N9',
@@ -69,6 +61,32 @@ export const NODE_CATALOG = [
 export type NodeCode = (typeof NODE_CATALOG)[number]['code'];
 
 export const NODE_FLOW: NodeCode[] = NODE_CATALOG.map((n) => n.code);
+
+/** 已退出业务流的节点。历史 currentNode / 节点行可以留下，导航与过闸不再停在这里。 */
+export const RETIRED_PIPELINE_NODES = ['N8'] as const;
+
+export function isRetiredPipelineNode(code?: string | null): boolean {
+  return (RETIRED_PIPELINE_NODES as readonly string[]).includes(String(code || '').toUpperCase());
+}
+
+/**
+ * 流程序号。已退出的 N8 排在 N7 与 N9 之间：
+ * 未迁移的 currentNode=N8 仍视为已过 N7，且不会把当前节点从 N9 拉回 N8。
+ */
+export function pipelineIndex(code?: string | null): number {
+  const c = String(code || '').toUpperCase();
+  if (c === 'N8') {
+    const n7 = NODE_FLOW.indexOf('N7');
+    return n7 < 0 ? -1 : n7 + 0.5;
+  }
+  return NODE_FLOW.indexOf(c as NodeCode);
+}
+
+/** 导航与文案用的现行节点。历史 N8 报关放行改指向收汇 N9。 */
+export function activePipelineNode(code?: string | null): string {
+  const c = String(code || '').toUpperCase();
+  return c === 'N8' ? 'N9' : c;
+}
 
 export const PartyRole = {
   BUYER: 'BUYER',
@@ -482,6 +500,7 @@ export const EvidenceKind = {
   N7_PURCHASE_CONTRACT: 'N7_PURCHASE_CONTRACT',
   N7_INVOICE: 'N7_INVOICE',
   N7_CUSTOMS: 'N7_CUSTOMS',
+  N7_ORIGIN_CERT: 'N7_ORIGIN_CERT',
 } as const;
 
 /** N6 装运证据：发票与箱单，须真实上传（证据链 storageKey）。 */
@@ -491,7 +510,8 @@ export const N6_UPLOADS = [
 ] as const;
 
 /**
- * N7 单证：六份各自必填。商业发票与发票是两项，不能互相顶替。
+ * N7 单证。前六份各自必填，商业发票与发票是两项，不能互相顶替。
+ * 第七份原产地证：运输术语为 FOB 时可不传，其余（如 CIF）必填。
  */
 export const N7_UPLOADS = [
   { slot: 'sales-contract', kind: EvidenceKind.N7_SALES_CONTRACT, label: '销售合同', missing: 'N7_SALES_CONTRACT' },
@@ -500,7 +520,13 @@ export const N7_UPLOADS = [
   { slot: 'purchase-contract', kind: EvidenceKind.N7_PURCHASE_CONTRACT, label: '采购合同', missing: 'N7_PURCHASE_CONTRACT' },
   { slot: 'invoice', kind: EvidenceKind.N7_INVOICE, label: '发票', missing: 'N7_INVOICE' },
   { slot: 'customs', kind: EvidenceKind.N7_CUSTOMS, label: '报关单', missing: 'N7_CUSTOMS' },
+  { slot: 'origin-cert', kind: EvidenceKind.N7_ORIGIN_CERT, label: '原产地证', missing: 'N7_ORIGIN_CERT' },
 ] as const;
+
+/** 传入已解析的运输术语。仅 FOB 可不传原产地证；空字符串视为必填。无术语回退由 effectiveN6Incoterms 负责。 */
+export function n7OriginCertRequired(transportIncoterm?: string | null): boolean {
+  return String(transportIncoterm || '').trim().toUpperCase() !== 'FOB';
+}
 
 export type TradeDocUpload = (typeof N6_UPLOADS)[number] | (typeof N7_UPLOADS)[number];
 

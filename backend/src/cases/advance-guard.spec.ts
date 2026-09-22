@@ -45,6 +45,8 @@ describe('advance 状态机守门', () => {
     expect(laterNode('N5', 'N3')).toBe('N5');
     expect(laterNode('N3', 'N5')).toBe('N5');
     expect(laterNode('N8', 'N9')).toBe('N9');
+    expect(laterNode('N9', 'N8')).toBe('N9');
+    expect(laterNode('N7', 'N9')).toBe('N9');
     expect(laterNode('N9', 'N9')).toBe('N9');
     expect(laterNode('N5', null)).toBe('N5');
   });

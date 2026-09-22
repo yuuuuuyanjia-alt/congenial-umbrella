@@ -8,7 +8,6 @@ import {
   evaluateN5,
   evaluateN6,
   evaluateN7,
-  evaluateN8,
   evaluateN9,
   effectiveN6Incoterms,
   isCifFamilyIncoterms,
@@ -29,14 +28,17 @@ function storedFile(kind: string, nodeCode: string): EvidenceFileSnap {
 }
 
 const N6_FILES: EvidenceFileSnap[] = ['N6_INVOICE', 'N6_PACKING'].map((kind) => storedFile(kind, 'N6'));
-const N7_FILES: EvidenceFileSnap[] = [
+const N7_CORE_KINDS = [
   'N7_SALES_CONTRACT',
   'N7_COMMERCIAL_INVOICE',
   'N7_PACKING',
   'N7_PURCHASE_CONTRACT',
   'N7_INVOICE',
   'N7_CUSTOMS',
-].map((kind) => storedFile(kind, 'N7'));
+];
+const N7_CORE: EvidenceFileSnap[] = N7_CORE_KINDS.map((kind) => storedFile(kind, 'N7'));
+const N7_ORIGIN = storedFile('N7_ORIGIN_CERT', 'N7');
+const N7_FILES: EvidenceFileSnap[] = [...N7_CORE, N7_ORIGIN];
 
 function baseSnap(over: Partial<CaseSnapshot> = {}): CaseSnapshot {
   return {
@@ -1041,7 +1043,7 @@ describe('闸门引擎 MVP 节点', () => {
     expect(r.alerts.some((a) => a.includes('FOB'))).toBe(true);
   });
 
-  it('N7 六份单证齐即可过闸，不比对提单、装船通知或字段', () => {
+  it('N7 六份齐且非 FOB 已有原产地证即可过闸，不比对提单、装船通知或字段', () => {
     const r = evaluateN7(
       baseSnap({
         documents: [],
@@ -1066,14 +1068,7 @@ describe('闸门引擎 MVP 节点', () => {
   });
 
   it('N7 缺任一份上传则硬拦截（推进接口据此返回 409）', () => {
-    const kinds = [
-      'N7_SALES_CONTRACT',
-      'N7_COMMERCIAL_INVOICE',
-      'N7_PACKING',
-      'N7_PURCHASE_CONTRACT',
-      'N7_INVOICE',
-      'N7_CUSTOMS',
-    ];
+    const kinds = [...N7_CORE_KINDS, 'N7_ORIGIN_CERT'];
     for (const kind of kinds) {
       const r = evaluateN7(
         baseSnap({
@@ -1105,7 +1100,7 @@ describe('闸门引擎 MVP 节点', () => {
     expect(withoutInvoice.missing).not.toContain('N7_COMMERCIAL_INVOICE');
   });
 
-  it('N7 六份都缺时一次列出全部缺失项', () => {
+  it('N7 CIF 必填单证都缺时一次列出六份加原产地证', () => {
     const r = evaluateN7(baseSnap({ evidences: N6_FILES }));
     expect(r.canProceed).toBe(false);
     expect(r.decision).toBe(Decision.HARD_BLOCK);
@@ -1116,7 +1111,47 @@ describe('闸门引擎 MVP 节点', () => {
       'N7_PURCHASE_CONTRACT',
       'N7_INVOICE',
       'N7_CUSTOMS',
+      'N7_ORIGIN_CERT',
     ]);
+  });
+
+  it('N7 FOB 六份齐即可过闸，原产地证可不传', () => {
+    const r = evaluateN7(
+      baseSnap({
+        contract: { ...baseSnap().contract!, incoterms: 'FOB' },
+        evidences: [...N6_FILES, ...N7_CORE],
+      }),
+    );
+    expect(r.canProceed).toBe(true);
+    expect(r.decision).toBe(Decision.PASS);
+    expect(r.missing).not.toContain('N7_ORIGIN_CERT');
+    expect(r.reasons.some((x) => x.includes('FOB'))).toBe(true);
+  });
+
+  it('N7 CIF 缺原产地证则硬拦截（推进 409）', () => {
+    const r = evaluateN7(baseSnap({ evidences: [...N6_FILES, ...N7_CORE] }));
+    expect(r.canProceed).toBe(false);
+    expect(r.decision).toBe(Decision.HARD_BLOCK);
+    expect(r.missing).toEqual(['N7_ORIGIN_CERT']);
+  });
+
+  it('N7 装运覆盖为 FOB 时，合同虽为 CIF 也可不传原产地证', () => {
+    const r = evaluateN7(
+      baseSnap({
+        shipment: { ...baseSnap().shipment!, incotermsOverride: 'FOB' },
+        evidences: [...N6_FILES, ...N7_CORE],
+      }),
+    );
+    expect(effectiveN6Incoterms(baseSnap({ shipment: { ...baseSnap().shipment!, incotermsOverride: 'FOB' } }))).toBe('FOB');
+    expect(r.canProceed).toBe(true);
+    expect(r.missing).not.toContain('N7_ORIGIN_CERT');
+  });
+
+  it('N7 过闸下一步是收汇 N9，不再进入报关放行', () => {
+    expect(nextNode('N7')).toBe('N9');
+    expect(nextNode('N7', baseSnap())).toBe('N9');
+    expect(nextNode('N8')).toBe('N9');
+    expect(nextNode('N9')).toBeNull();
   });
 
   it('N7 未生效变更仍硬拦截，优先于缺上传', () => {
@@ -1872,61 +1907,6 @@ describe('采购交付对照关联销售合同交货期', () => {
   });
 });
 
-describe('闸门引擎 N8 报关放行', () => {
-  it('HS 与申报要素严重缺项禁止申报', () => {
-    const r = evaluateN8(
-      baseSnap({
-        customs: {
-          hsCode: '8458.11.00',
-          productName: '数控机床配件',
-          declareElements: { 品牌: 'Beihai' },
-          originEvidenceType: null,
-          originEvidenceRef: null,
-        },
-        hsTemplate: baseSnap().hsTemplate,
-      }),
-    );
-    expect(r.canProceed).toBe(false);
-    expect(r.missing).toEqual(expect.arrayContaining(['N8_DECLARE_ELEMENTS', 'N8_ORIGIN_EVIDENCE']));
-  });
-
-  it('无 HS 模板禁止申报', () => {
-    const r = evaluateN8(
-      baseSnap({
-        customs: { ...baseSnap().customs!, hsCode: '9999.99.99' },
-        hsTemplate: null,
-      }),
-    );
-    expect(r.canProceed).toBe(false);
-    expect(r.missing).toContain('N8_HS_TEMPLATE');
-  });
-
-  it('品名与 HS 模板严重不符禁止申报', () => {
-    const r = evaluateN8(
-      baseSnap({
-        customs: { ...baseSnap().customs!, productName: '新鲜苹果' },
-      }),
-    );
-    expect(r.canProceed).toBe(false);
-    expect(r.missing).toContain('N8_HS_PRODUCT_MISMATCH');
-  });
-
-  it('税则品名/计量单位不符仅软提示', () => {
-    const r = evaluateN8(
-      baseSnap({
-        customs: { ...baseSnap().customs!, unit: '台', exportTaxName: '其他零件' },
-      }),
-    );
-    expect(r.canProceed).toBe(true);
-    expect(r.decision).toBe(Decision.SOFT_ALERT);
-    expect(r.alerts.length).toBeGreaterThan(0);
-  });
-
-  it('要素齐全可通过', () => {
-    expect(evaluateN8(baseSnap()).canProceed).toBe(true);
-  });
-});
-
 describe('闸门引擎 N6+ 未生效变更硬拦截', () => {
   const pending = {
     id: 'ch-pending',
@@ -1953,7 +1933,6 @@ describe('闸门引擎 N6+ 未生效变更硬拦截', () => {
   const evaluators: Array<[string, (snap: CaseSnapshot) => ReturnType<typeof evaluateN6>]> = [
     ['N6', evaluateN6],
     ['N7', evaluateN7],
-    ['N8', evaluateN8],
     ['N9', evaluateN9],
   ];
 
@@ -2025,12 +2004,13 @@ describe('节点流转', () => {
     ).toBe('N4');
   });
 
-  it('全流程顺序 1→2→3→4→5→6→7→8→9', () => {
+  it('全流程顺序 2→3→4→5→6→7→9，N8 已退出', () => {
     expect(nextNode('N1')).toBe('N2');
     expect(nextNode('N2')).toBe('N3');
     expect(nextNode('N4')).toBe('N5');
     expect(nextNode('N5')).toBe('N6');
-    expect(nextNode('N7')).toBe('N8');
+    expect(nextNode('N6')).toBe('N7');
+    expect(nextNode('N7')).toBe('N9');
     expect(nextNode('N8')).toBe('N9');
     expect(nextNode('N9')).toBeNull();
   });

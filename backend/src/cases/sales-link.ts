@@ -1,4 +1,4 @@
-import { CaseStatusLabel, NODE_CATALOG, NODE_FLOW, NodeCode, NodeStatus } from '../common/constants';
+import { activePipelineNode, CaseStatusLabel, NODE_CATALOG, NodeCode, NodeStatus, pipelineIndex } from '../common/constants';
 
 export type SalesLinkCaseInput = {
   id: string;
@@ -79,8 +79,8 @@ export function isSalesContractSigned(input: {
 }): boolean {
   if (!input.hasContract) return false;
   if (input.n3Status === NodeStatus.PASSED) return true;
-  const i = NODE_FLOW.indexOf((input.currentNode || '') as NodeCode);
-  const n3 = NODE_FLOW.indexOf('N3');
+  const i = pipelineIndex(input.currentNode);
+  const n3 = pipelineIndex('N3');
   return i > n3;
 }
 
@@ -100,7 +100,8 @@ export function salesCustomerOf(row: SalesLinkCaseInput): string {
 }
 
 export function nodeLabel(code?: string | null): string {
-  return NODE_CATALOG.find((n) => n.code === code)?.name || code || '—';
+  const active = activePipelineNode(code);
+  return NODE_CATALOG.find((n) => n.code === active)?.name || active || '—';
 }
 
 export function presentSalesLink(row: SalesLinkCaseInput): SalesLinkView {
@@ -186,8 +187,8 @@ export function parseContractListKind(raw?: string | null): ContractListKind | u
 
 /** 案件当前节点是否已到达（含）目标节点。 */
 export function hasReachedNode(currentNode: string | null | undefined, target: NodeCode): boolean {
-  const i = NODE_FLOW.indexOf((currentNode || '') as NodeCode);
-  const t = NODE_FLOW.indexOf(target);
+  const i = pipelineIndex(currentNode);
+  const t = pipelineIndex(target);
   return i >= 0 && t >= 0 && i >= t;
 }
 

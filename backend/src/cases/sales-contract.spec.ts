@@ -381,6 +381,7 @@ describe('销售合同出运/履约分组', () => {
     );
     expect(isSalesShipped({ currentNode: 'N6', nodes: [{ code: 'N6', status: 'PASSED' }] })).toBe(true);
     expect(isSalesShipped({ currentNode: 'N7', nodes: [{ code: 'N6', status: 'IN_PROGRESS' }] })).toBe(true);
+    expect(isSalesShipped({ currentNode: 'N8', nodes: [{ code: 'N6', status: 'IN_PROGRESS' }] })).toBe(true);
     expect(isSalesShipped({ currentNode: 'N6', shipment: { blNo: 'COSU8899001' } })).toBe(true);
     expect(
       isSalesShipped({

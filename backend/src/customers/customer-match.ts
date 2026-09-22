@@ -1,4 +1,4 @@
-import { NODE_FLOW, NodeStatus } from '../common/constants';
+import { NodeStatus, pipelineIndex } from '../common/constants';
 import { normalizeName } from '../screening/matcher';
 
 export type CustomerMatchInput = {
@@ -98,8 +98,8 @@ function registrationConflict(row: CustomerMatchRow, incomingReg: string | null)
 
 /** 案件是否已到达合同/订单确认（N3）或之后。 */
 export function hasReachedN3(currentNode?: string | null, n3Status?: string | null): boolean {
-  const i = NODE_FLOW.indexOf((currentNode || '') as (typeof NODE_FLOW)[number]);
-  const n3 = NODE_FLOW.indexOf('N3');
+  const i = pipelineIndex(currentNode);
+  const n3 = pipelineIndex('N3');
   if (i >= n3 && n3 >= 0) return true;
   return !!n3Status && n3Status !== NodeStatus.NOT_STARTED && n3Status !== NodeStatus.STUB_TODO;
 }

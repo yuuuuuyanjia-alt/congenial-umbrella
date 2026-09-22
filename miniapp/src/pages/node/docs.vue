@@ -3,13 +3,14 @@
     <view class="card">
       <view class="h2">单证一致性 · 硬闸门</view>
       <view class="muted">
-        须上传销售合同、商业发票、箱单、采购合同、发票、报关单共六份。商业发票与发票是两项，都要有。缺任一份不得推进。存在未生效变更单时禁止推进。
+        须上传销售合同、商业发票、箱单、采购合同、发票、报关单共六份，缺任一份不得推进。原产地证：运输术语为 FOB 时可以不传；CIF 等非 FOB 必须上传。商业发票与发票是两项，都要有。过闸后进入收汇（N9）。存在未生效变更单时禁止推进。
       </view>
       <view class="err" v-if="!canWriteBusiness" style="margin-top: 8rpx">当前为{{ roleLabel }}，本页只读，不可上传或推进。</view>
     </view>
     <PendingChangeBlock :case-id="id" :case-data="c" />
     <view class="card" v-for="slot in docSlots" :key="slot.slot">
       <view class="h2">{{ slot.label }}</view>
+      <view class="muted" v-if="slot.hint">{{ slot.hint }}</view>
       <view class="readonly" v-if="fileOf(slot.kind)">{{ fileOf(slot.kind).fileName }}</view>
       <view class="muted" v-else>尚未上传</view>
       <view class="muted" v-if="fileOf(slot.kind)" style="margin-top: 8rpx">文件已写入证据链。</view>

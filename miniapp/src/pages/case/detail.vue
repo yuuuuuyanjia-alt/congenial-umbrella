@@ -60,7 +60,7 @@
       </view>
     </view>
 
-    <view class="card" v-for="n in c.nodes" :key="n.code" @click="openNode(n)">
+    <view class="card" v-for="n in pipelineNodes" :key="n.code" @click="openNode(n)">
       <view class="row">
         <view>
           <view class="h2" style="margin: 0">{{ n.code }} {{ n.name }}</view>
@@ -100,6 +100,7 @@ const rebate = reactive({
   flowInvoice: false,
   flowRemittance: false,
 });
+const pipelineNodes = computed(() => (c.value?.nodes || []).filter((n: any) => n?.code !== 'N8'));
 const salesDeliveryYmd = computed(() => {
   const p = c.value?.procurementPlan;
   const d = p?.salesContractDeliveryDate || p?.salesLink?.deliveryDate || p?.contractDelivery;

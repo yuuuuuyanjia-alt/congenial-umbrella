@@ -41,10 +41,6 @@
       "style": { "navigationBarTitleText": "单证一致性" }
     },
     {
-      "path": "pages/node/customs",
-      "style": { "navigationBarTitleText": "报关放行" }
-    },
-    {
       "path": "pages/node/settlement",
       "style": { "navigationBarTitleText": "收汇对账" }
     },
