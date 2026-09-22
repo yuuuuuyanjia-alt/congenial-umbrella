@@ -6,21 +6,25 @@
     <template v-else>
     <view class="card">
       <view class="h2">销售合同 / 订单确认</view>
-      <view class="muted">销售合同与采购合同分开签订。须先登记中信保限额（美元）再保存合同。运输术语仅 FOB / CIF，结算方式为前 T/T / 后 T/T，可组合。</view>
+      <view class="muted">销售合同与采购合同分开签订。买方与收货人在本页填写并完成筛查，通过后才能推进。须先登记中信保限额（美元）再保存合同。运输术语仅 FOB / CIF，结算方式为前 T/T / 后 T/T，可组合。</view>
       <view class="muted" v-if="c.currentNode" style="margin-top: 8rpx">本案当前节点：{{ c.currentNode }} {{ currentNodeName }}</view>
-      <view class="err" v-if="needsKycFirst" style="margin-top: 12rpx">
-        本案尚未到达销售合同节点。请先完成询盘/客户 KYC 与报价，再确认签订。
+      <view class="err" v-if="needsQuoteFirst" style="margin-top: 12rpx">
+        本案尚未到达销售合同节点。请先完成报价，再确认买方、收货人并筛查。
       </view>
-      <view class="btn" v-if="needsKycFirst && canWriteBusiness" @click="goEarliest">去办询盘 / 客户 KYC</view>
+      <view class="btn" v-if="needsQuoteFirst && canWriteBusiness" @click="goQuote">去办报价</view>
       <view class="err" v-if="!hasLimit" style="margin-top: 12rpx">尚未登记中信保限额，不得签订销售合同。</view>
       <view class="err" v-if="!canWriteBusiness" style="margin-top: 12rpx">当前为{{ roleLabel }}，合同只读，不可保存或推进。</view>
     </view>
 
     <view class="card">
-      <view class="label">相对方</view>
-      <view class="readonly">{{ form.counterparty || '（询盘买方未填）' }}</view>
+      <view class="label">买方</view>
+      <input class="input" v-model="parties.BUYER.name" placeholder="买方名称" />
+      <input class="input" v-model="parties.BUYER.country" placeholder="国家/地区" />
+      <view class="label">收货人</view>
+      <input class="input" v-model="parties.CONSIGNEE.name" placeholder="收货人名称，可与买方不同" />
+      <input class="input" v-model="parties.CONSIGNEE.country" placeholder="国家/地区" />
       <view class="label">货物名称</view>
-      <input class="input" v-model="form.goodsDesc" placeholder="与询盘/报价相同，可改" />
+      <input class="input" v-model="form.goodsDesc" placeholder="默认可从报价带入，修改不影响采购合同" />
       <view class="label">规格</view>
       <input class="input" v-model="form.goodsSpec" placeholder="如型号、尺寸" />
       <view class="label">运输术语（Incoterms）<text class="req">必填</text></view>
@@ -95,6 +99,22 @@
     </view>
 
     <view class="card">
+      <view class="h2">买方 / 收货人筛查</view>
+      <view class="muted">须确认买方、收货人，并对 OFAC / UN / EU / UK 与中国不可靠实体清单做模拟筛查。高置信命中不得推进销售合同。付款人不是必填项。改名后请重新筛查。</view>
+      <view class="btn" v-if="canWriteBusiness" @click="runScreen">执行模拟筛查并生成 KYC 报告</view>
+      <view class="card" v-if="kycReport" style="box-shadow: none; margin-top: 16rpx">
+        <view class="row">
+          <view>风险评分 {{ kycReport.score }}</view>
+          <view class="badge" :class="decisionClass(kycReport.riskLevel)">{{ decisionText(kycReport.riskLevel) }}</view>
+        </view>
+        <view class="muted" style="margin-top: 8rpx">{{ kycReport.summary }}</view>
+      </view>
+      <view class="muted" v-for="h in customerHits" :key="h.id" style="margin-top: 12rpx">
+        {{ h.listCode }} · {{ h.listedName }}（{{ h.confidence }} / {{ decisionText(h.disposition) }}，匹配 {{ h.matchedName }}）
+      </view>
+    </view>
+
+    <view class="card">
       <view class="h2">中信保</view>
       <view class="muted">须先登记投保限额（美元），否则不得保存或推进合同。占用不换汇，仅美元销售计入美元占用。</view>
       <SinosureExposure :exposure="exposureView" :show-new="true" />
@@ -140,6 +160,8 @@ import { onLoad, onShow } from '@dcloudio/uni-app';
 import { computed, reactive, ref } from 'vue';
 import {
   api,
+  decisionClass,
+  decisionText,
   fenToYuan,
   chooseAndUploadSinosure,
   evidenceFileUrl,
@@ -170,10 +192,22 @@ const savedSession = ref(false);
 const advancedTo = ref<string | null>(null);
 
 const currentNodeName = computed(() => pipelineNodeName(c.value?.currentNode));
-const needsKycFirst = computed(() => !!c.value && !hasReachedNode(c.value.currentNode, FORM_NODE));
-function goEarliest() {
-  if (id.value) goToNode(id.value, 'N1');
+const needsQuoteFirst = computed(() => !!c.value && !hasReachedNode(c.value.currentNode, FORM_NODE));
+function goQuote() {
+  if (id.value) goToNode(id.value, 'N2');
 }
+const parties = reactive({
+  BUYER: { name: '', country: '' },
+  CONSIGNEE: { name: '', country: '' },
+});
+const kycReport = computed(
+  () =>
+    (c.value?.kycReports || []).find((r: any) => r.nodeCode === 'N3') ||
+    (c.value?.kycReports || []).find((r: any) => r.nodeCode === 'N1' || !r.nodeCode),
+);
+const customerHits = computed(() =>
+  (c.value?.hits || []).filter((h: any) => h.nodeCode !== 'N5' && h.party?.role !== 'SUPPLIER'),
+);
 const nextTarget = computed(() =>
   c.value
     ? nextWorkNodeFromForm(FORM_NODE, {
@@ -292,7 +326,12 @@ onShow(async () => {
 
 function hydrateFromCase(row: any) {
   if (!row) return;
-  const buyer = (row.parties || []).find((p: any) => p.role === 'BUYER') || row.parties?.[0];
+  const buyer = (row.parties || []).find((p: any) => p.role === 'BUYER');
+  const consignee = (row.parties || []).find((p: any) => p.role === 'CONSIGNEE');
+  parties.BUYER.name = buyer?.name || row.contract?.buyerName || row.contract?.counterparty || '';
+  parties.BUYER.country = buyer?.country || '';
+  parties.CONSIGNEE.name = consignee?.name || row.contract?.consigneeName || parties.BUYER.name;
+  parties.CONSIGNEE.country = consignee?.country || buyer?.country || '';
   const activeQuote = (row.quotes || []).find((x: any) => x.status === 'ACTIVE') || row.quotes?.[0];
   const goods = resolveCarriedGoods({
     contract: row.contract,
@@ -304,7 +343,7 @@ function hydrateFromCase(row: any) {
   form.goodsSpec = goods.goodsSpec;
   const ct = row.contract;
   if (ct) {
-    form.counterparty = buyer?.name || ct.counterparty || '';
+    form.counterparty = parties.BUYER.name || ct.counterparty || '';
     form.incoterms = isTtOnly(ct.incoterms) ? 'FOB' : ct.incoterms || form.incoterms;
     form.paymentTerms = ct.paymentTerms || form.paymentTerms;
     form.ttTiming = (ct.ttTiming === 'ADVANCE' || ct.ttTiming === 'AFTER' ? ct.ttTiming : resolveTtTiming(ct.paymentTerms || ct.incoterms)) || '';
@@ -325,7 +364,7 @@ function hydrateFromCase(row: any) {
     if (isTtOnly(ct.incoterms) && !form.ttTiming) form.ttTiming = 'ADVANCE';
     if (form.ttTiming === 'ADVANCE' && !form.ttAdvanceYuan) syncAdvanceFromPercent();
   } else {
-    form.counterparty = buyer?.name || '';
+    form.counterparty = parties.BUYER.name || '';
     form.amountYuan = fenToYuan(row.amountFen);
     form.currency = row.currency === 'CNY' || row.currency === 'USD' ? row.currency : SALES_CURRENCY;
     form.unit = parseContractUnit(activeQuote?.unit) || 'TON';
@@ -483,16 +522,56 @@ function intOrNull(v: string) {
   return Number.isFinite(n) ? Math.round(n) : null;
 }
 
+async function saveParties() {
+  const buyerName = parties.BUYER.name.trim();
+  const consigneeName = parties.CONSIGNEE.name.trim();
+  if (buyerName) {
+    await api.upsertParty(id.value, {
+      role: 'BUYER',
+      name: buyerName,
+      country: parties.BUYER.country.trim() || undefined,
+      isSameAsBuyer: false,
+    });
+  }
+  if (consigneeName) {
+    await api.upsertParty(id.value, {
+      role: 'CONSIGNEE',
+      name: consigneeName,
+      country: parties.CONSIGNEE.country.trim() || undefined,
+      isSameAsBuyer: consigneeName === buyerName,
+    });
+  }
+}
+
+async function runScreen() {
+  err.value = '';
+  ok.value = '';
+  try {
+    await saveParties();
+    await api.screen(id.value);
+    c.value = await api.case(id.value);
+    hydrateFromCase(c.value);
+    ok.value = '买方与收货人筛查完成（模拟黑名单，无真实 API Key）';
+  } catch (e: any) {
+    err.value = gateMessage(e);
+  }
+}
+
 async function save() {
   err.value = '';
   ok.value = '';
   try {
+    await saveParties();
     const term = tradeTerm.value || (isTtOnly(form.incoterms) ? 'FOB' : form.incoterms);
     const ttTiming = form.ttTiming || null;
     const paymentTerms =
       ttTiming || !isTtPaymentTermsText(form.paymentTerms) ? form.paymentTerms : null;
+    const buyerName = parties.BUYER.name.trim();
+    const consigneeName = parties.CONSIGNEE.name.trim();
     await api.saveContract(id.value, {
-      counterparty: form.counterparty,
+      counterparty: buyerName,
+      buyerName,
+      consigneeName,
       goodsDesc: form.goodsDesc,
       goodsSpec: form.goodsSpec,
       incoterms: term || 'FOB',

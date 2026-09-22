@@ -159,8 +159,7 @@ export const api = {
   audit: (id: string) => request('GET', `/cases/${id}/audit`),
   createCase: (body: unknown) => request('POST', '/cases', body),
   upsertParty: (id: string, body: unknown) => request('POST', `/cases/${id}/parties`, body),
-  saveInquiry: (id: string, body: unknown) => request('POST', `/cases/${id}/nodes/N1/inquiry`, body),
-  screen: (id: string) => request('POST', `/cases/${id}/nodes/N1/screen`),
+  screen: (id: string) => request('POST', `/cases/${id}/nodes/N3/screen`),
   screenSupplier: (id: string) => request('POST', `/cases/${id}/nodes/N5/screen`),
   saveContract: (id: string, body: unknown) => request('POST', `/cases/${id}/nodes/N3/contract`, body),
   saveSinosureN3: (id: string, body: unknown) => request('POST', `/cases/${id}/nodes/N3/sinosure`, body),
@@ -247,7 +246,7 @@ export function decisionText(d?: string | null) {
   return (d && map[d]) || d || '-';
 }
 
-const NODE_FLOW = ['N1', 'N2', 'N3', 'N4', 'N5', 'N6', 'N7', 'N8', 'N9'];
+const NODE_FLOW = ['N2', 'N3', 'N4', 'N5', 'N6', 'N7', 'N8', 'N9'];
 
 /** 与后端 N6_PLUS_PENDING_CHANGE_REASON 一致 */
 export const N6_PLUS_PENDING_CHANGE_REASON =
@@ -261,7 +260,6 @@ export function pendingChangesOf(c: any) {
 
 /** 与后端 NODE_CATALOG / pipeline-nav 中文名对齐。 */
 export const NODE_LABELS: Record<string, string> = {
-  N1: '询盘/客户KYC',
   N2: '报价环节',
   N3: '销售合同/订单确认',
   N4: '变更管理',
@@ -287,7 +285,7 @@ export function nextPipelineNode(current: string, hasChangeOrders = false): stri
 export type PipelineNodeTarget = { code: string; name: string };
 
 /**
- * 合同管理表单（销售 N3 / 采购 N5）离开后应打开的九节点页面。
+ * 合同管理表单（销售 N3 / 采购 N5）离开后应打开的下一业务节点。
  * 案件已离开本表单时跟 currentNode；否则为保存/过闸后的下一步。
  */
 export function nextWorkNodeFromForm(
@@ -488,8 +486,7 @@ export function procurementContractTitle(c: any, live?: { supplierName?: string;
 }
 
 export function nodePage(code: string) {
-  if (code === 'N1') return '/pages/node/kyc';
-  if (code === 'N2') return '/pages/node/quote';
+  if (code === 'N1' || code === 'N2') return '/pages/node/quote';
   if (code === 'N3') return '/pages/node/contract';
   if (code === 'N4') return '/pages/node/change';
   if (code === 'N5') return '/pages/node/procurement';

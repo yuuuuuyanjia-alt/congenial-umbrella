@@ -12,7 +12,6 @@ import {
   SaveCustomsDto,
   SaveDocumentDto,
   SaveFixDto,
-  SaveInquiryDto,
   SavePlanDto,
   SaveQuoteDto,
   SaveSettlementDto,
@@ -73,16 +72,7 @@ export class CasesController {
     return this.cases.upsertParty(id, dto, actorId);
   }
 
-  @Post(':id/nodes/N1/inquiry')
-  inquiry(
-    @Param('id') id: string,
-    @Body() dto: SaveInquiryDto,
-    @Headers('x-actor-id') actorId?: string,
-  ) {
-    return this.cases.saveInquiry(id, dto, actorId);
-  }
-
-  @Post(':id/nodes/N1/screen')
+  @Post(':id/nodes/N3/screen')
   screen(@Param('id') id: string, @Headers('x-actor-id') actorId?: string) {
     return this.cases.screenKyc(id, actorId);
   }

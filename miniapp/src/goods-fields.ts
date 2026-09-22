@@ -12,6 +12,19 @@ export function displayGoodsSpec(raw?: string | null): string {
   return String(raw ?? '').trim();
 }
 
+/** 已保存的一侧（含空字符串）优先；null 才回落到报价或销售合同默认。 */
+export function resolveIndependentGoods(
+  own: { goodsDesc?: string | null; goodsSpec?: string | null } | null | undefined,
+  fallback?: { goodsDesc?: string | null; goodsSpec?: string | null } | null,
+): { goodsDesc: string; goodsSpec: string } {
+  const descOwned = !!own && own.goodsDesc != null;
+  const specOwned = !!own && own.goodsSpec != null;
+  return {
+    goodsDesc: displayGoodsName(descOwned ? own!.goodsDesc : fallback?.goodsDesc),
+    goodsSpec: displayGoodsSpec(specOwned ? own!.goodsSpec : fallback?.goodsSpec),
+  };
+}
+
 export function resolveCarriedGoods(input: {
   contract?: { goodsDesc?: string | null; goodsSpec?: string | null } | null;
   quote?: {

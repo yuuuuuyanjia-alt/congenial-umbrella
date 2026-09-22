@@ -231,7 +231,7 @@ async function main() {
   console.log('  SUPPLIER  ', supplierBlock.caseNo, supplierBlock.id, '（国内供应商命中不可靠实体，N5 硬拦截）');
   console.log('  PORT_YELLOW', portYellow.caseNo, portYellow.id, '（港口直出薄利黄灯，工作台第三页领取/通过/驳回）');
   console.log('  PORT_RED  ', portRed.caseNo, portRed.id, '（港口直出像空转，红线硬拦截）');
-  console.log(`客户管理：${customerCount} 个客户，${enrolledBuyers} 个已达 N3 的买方已挂档（询盘未达 N3 的如 DEMO-BLOCK 不录入）`);
+  console.log(`客户管理：${customerCount} 个客户，${enrolledBuyers} 个已达 N3 的买方已挂档（仍在报价 N2 的案件不录入；DEMO-BLOCK 已到 N3 但买方筛查硬拦截）`);
   console.log('采购合同 ↔ 销售合同（先销售后采购）：');
   for (const p of linkedPairs) {
     console.log(`  ${p.poNo || '（无 PO 号）'}  ←  ${p.salesCaseNo}（${p.customer}，${p.caseNo} 采购侧）`);
@@ -703,10 +703,10 @@ async function seedBlockCase(salesId: string, complianceId: string) {
   const c = await prisma.tradeCase.create({
     data: {
       caseNo: 'DEMO-BLOCK',
-      title: '华南汽配询盘 Banned Trading（高置信硬拦截）',
+      title: '华南汽配销售合同 Banned Trading（买方筛查硬拦截）',
       scenario: 'HARD_BLOCK',
       status: 'BLOCKED',
-      currentNode: 'N1',
+      currentNode: 'N3',
       overallRisk: 'HIGH',
       goodsDesc: '汽车制动组件',
       destination: 'Bandar Abbas',
@@ -714,18 +714,33 @@ async function seedBlockCase(salesId: string, complianceId: string) {
       parties: {
         create: [
           { role: 'BUYER', name: buyer, country: 'IR', isSameAsBuyer: true },
-          { role: 'PAYER', name: buyer, country: 'IR', isSameAsBuyer: true },
           { role: 'CONSIGNEE', name: buyer, country: 'IR', isSameAsBuyer: true },
         ],
       },
       nodes: {
         create: nodeCreates({
-          N1: {
+          N2: { status: 'PASSED', decision: 'PASS', summary: '报价已过，进入销售合同' },
+          N3: {
             status: 'BLOCKED',
             decision: 'HARD_BLOCK',
-            summary: '高置信命中 OFAC 模拟清单，硬拦截',
+            summary: '买方高置信命中 OFAC 模拟清单，销售合同不得推进',
           },
         }),
+      },
+      quotes: {
+        create: {
+          version: 1,
+          status: 'ACTIVE',
+          priceBasis: 'INCLUSIVE',
+          includedItems: JSON.stringify(['OCEAN_FREIGHT']),
+          validityUntil: new Date('2026-12-31'),
+          unitPriceFen: 1100000,
+          unit: 'TON',
+          quantity: 8,
+          amountFen: 8800000,
+          goodsDesc: '汽车制动组件',
+          snapshotJson: JSON.stringify({ version: 1, goodsDesc: '汽车制动组件' }),
+        },
       },
     },
   });
@@ -734,6 +749,7 @@ async function seedBlockCase(salesId: string, complianceId: string) {
     data: {
       caseId: c.id,
       partyId: party!.id,
+      nodeCode: 'N3',
       listCode: 'OFAC',
       listedName: 'BANNED TRADING LLC',
       matchedName: buyer,
@@ -741,23 +757,25 @@ async function seedBlockCase(salesId: string, complianceId: string) {
       riskLevel: 'HIGH',
       disposition: 'OPEN',
       score: 98,
-      rawJson: JSON.stringify({ source: 'mock-blacklist', note: '精确命中' }),
+      rawJson: JSON.stringify({ source: 'mock-blacklist', note: '精确命中', nodeCode: 'N3' }),
     },
   });
   await prisma.kycReport.create({
     data: {
       caseId: c.id,
+      nodeCode: 'N3',
       score: 98,
       riskLevel: 'HIGH',
-      summary: '高置信命中 OFAC（模拟）BANNED TRADING LLC，硬拦截，禁止进入后续交易节点。',
+      summary: '高置信命中 OFAC（模拟）BANNED TRADING LLC，硬拦截，禁止推进销售合同。',
       payload: JSON.stringify({ hits: 1, decision: 'HARD_BLOCK' }),
     },
   });
   await prisma.auditLog.createMany({
     data: [
-      { caseId: c.id, actorId: salesId, action: 'CASE_CREATED', nodeCode: 'N1', detail: JSON.stringify({ scenario: 'HARD_BLOCK' }) },
-      { caseId: c.id, actorId: complianceId, action: 'KYC_SCREENED', nodeCode: 'N1', detail: JSON.stringify({ decision: 'HARD_BLOCK', score: 98 }) },
-      { caseId: c.id, actorId: complianceId, action: 'GATE_REFUSED', nodeCode: 'N1', detail: JSON.stringify({ missing: ['N1_HIGH_CONFIDENCE_HIT'] }) },
+      { caseId: c.id, actorId: salesId, action: 'CASE_CREATED', nodeCode: 'N2', detail: JSON.stringify({ scenario: 'HARD_BLOCK' }) },
+      { caseId: c.id, actorId: salesId, action: 'QUOTE_VERSION_SAVED', nodeCode: 'N2', detail: JSON.stringify({ version: 1 }) },
+      { caseId: c.id, actorId: complianceId, action: 'KYC_SCREENED', nodeCode: 'N3', detail: JSON.stringify({ decision: 'HARD_BLOCK', score: 98 }) },
+      { caseId: c.id, actorId: complianceId, action: 'GATE_REFUSED', nodeCode: 'N3', detail: JSON.stringify({ missing: ['N3_HIGH_CONFIDENCE_HIT'] }) },
     ],
   });
   return c;

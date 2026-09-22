@@ -10,19 +10,20 @@ import {
   procurementOpenTarget,
 } from './create-flow';
 
-describe('新建销售/采购合同（N1 起 / 采购点选已签销售合同）', () => {
-  it('POST /cases 从 N1 起：新案不进销售列表', () => {
-    const created = { currentNode: 'N1', contract: null, procurementPlan: null };
+describe('新建销售/采购合同（N2 报价起 / 采购点选已签销售合同）', () => {
+  it('POST /cases 从 N2 起：新案不进销售列表', () => {
+    const created = { currentNode: 'N2', contract: null, procurementPlan: null };
     expect(newCaseAppearsOnList('sales', created)).toBe(false);
   });
 
-  it('销售落地打开询盘 KYC，不跳到空白 N3', () => {
+  it('销售落地打开报价，不跳到空白 N3，也不再打开询盘', () => {
     const land = contractCreateLanding('sales');
     expect(land.createsNewCase).toBe(true);
-    expect(land.formNode).toBe('N1');
-    expect(land.formPath).toBe('/pages/node/kyc');
-    expect(land.earliestWritable).toBe('N1');
-    expect(land.mustPassBeforeAdvance).toEqual(['N1', 'N2']);
+    expect(land.formNode).toBe('N2');
+    expect(land.formPath).toBe('/pages/node/quote');
+    expect(land.earliestWritable).toBe('N2');
+    expect(land.mustPassBeforeAdvance).toEqual(['N2']);
+    expect(land.formPath).not.toContain('kyc');
   });
 
   it('采购不新建案件，须点选已签销售合同后打开该案 N5', () => {

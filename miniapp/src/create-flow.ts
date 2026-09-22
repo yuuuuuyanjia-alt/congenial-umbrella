@@ -30,7 +30,7 @@ export function buildCreateCaseBody(title: string, amountYuan: string) {
 }
 
 export function salesCreateLandingPage(caseId: string) {
-  return `/pages/node/kyc?id=${caseId}&fromCreate=1`;
+  return `/pages/node/quote?id=${caseId}&fromCreate=1`;
 }
 
 export function signedSalesPicks(rows: any[]) {

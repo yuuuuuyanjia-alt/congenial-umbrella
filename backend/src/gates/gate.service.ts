@@ -59,7 +59,7 @@ export class GateService {
         partyRole: h.party?.role ?? null,
         nodeCode: h.nodeCode,
       })),
-      kycRan: c.kycReports.some((k) => k.nodeCode === 'N1'),
+      kycRan: c.kycReports.some((k) => k.nodeCode === 'N3' || k.nodeCode === 'N1'),
       supplierScreened: hasSupplierScreen(c.kycReports, c.parties),
       contract: c.contract
         ? {

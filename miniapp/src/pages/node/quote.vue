@@ -2,12 +2,13 @@
   <view class="wrap" v-if="c">
     <view class="card">
       <view class="h2">报价环节</view>
-      <view class="muted">勾选所含项目，填写有效期与单价（吨或千克）。含「价格待定 / 费用另议」不得推进。保存即生成新版本，旧版 SUPERSEDED。</view>
+      <view class="muted">勾选所含项目，填写有效期与单价（吨或千克）。含「价格待定 / 费用另议」不得推进。保存即生成新版本，旧版 SUPERSEDED。货物名称与规格可改，并作为销售合同的默认值。</view>
+      <view class="ok" v-if="fromCreate" style="margin-top: 12rpx">已创建销售合同案，请先完成报价，再进入销售合同填写买方、收货人并完成筛查。</view>
       <view class="err" v-if="!canWriteBusiness" style="margin-top: 8rpx">当前为{{ roleLabel }}，本页只读，不可保存或推进。</view>
     </view>
     <view class="card">
       <view class="label">货物名称</view>
-      <input class="input" v-model="form.goodsDesc" placeholder="与询盘相同，可改" />
+      <input class="input" v-model="form.goodsDesc" placeholder="货物名称，可改" />
       <view class="label">规格</view>
       <input class="input" v-model="form.goodsSpec" placeholder="如型号、尺寸" />
       <view class="label">所含项目</view>
@@ -76,6 +77,7 @@ const includedOptions = [
 const UNIT_LABEL: Record<string, string> = { TON: '吨', KG: '千克' };
 
 const id = ref('');
+const fromCreate = ref(false);
 const c = ref<any>(null);
 const err = ref('');
 const ok = ref('');
@@ -119,6 +121,7 @@ const nextHint = computed(() => {
 
 onLoad(async (q) => {
   id.value = q?.id || '';
+  fromCreate.value = q?.fromCreate === '1' || q?.fromCreate === 'true';
   await reload();
 });
 
