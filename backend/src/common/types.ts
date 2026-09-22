@@ -94,6 +94,16 @@ export interface ShipmentSnap {
   packingEvidenceId?: string | null;
 }
 
+/** 证据链条目。N6 推进只认已落盘的发票 / 箱单。 */
+export interface EvidenceSnap {
+  id: string;
+  nodeCode: string;
+  kind: string;
+  ref?: string | null;
+  note?: string | null;
+  payload?: unknown;
+}
+
 export interface DocSnap {
   type: string;
   isFinal: boolean;
@@ -289,6 +299,8 @@ export interface CaseSnapshot {
   caseGoodsDesc?: string | null;
   taxFinanceReviews?: TaxFinanceReviewSnap[] | null;
   taxRebate?: TaxRebateSnap | null;
+  /** 本案证据链。N6 用其中的发票 / 箱单上传记录。 */
+  evidences?: EvidenceSnap[] | null;
 }
 
 export interface SalesContractSideSnap {

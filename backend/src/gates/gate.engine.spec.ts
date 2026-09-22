@@ -191,6 +191,22 @@ function baseSnap(over: Partial<CaseSnapshot> = {}): CaseSnapshot {
       },
     ],
     occupancyReviews: [],
+    evidences: [
+      {
+        id: 'ev-n6-invoice',
+        nodeCode: 'N6',
+        kind: 'N6_INVOICE',
+        ref: 'shipment/case/invoice.pdf',
+        payload: { storageKey: 'shipment/case/invoice.pdf', fileName: '发票.pdf' },
+      },
+      {
+        id: 'ev-n6-packing',
+        nodeCode: 'N6',
+        kind: 'N6_PACKING',
+        ref: 'shipment/case/packing.pdf',
+        payload: { storageKey: 'shipment/case/packing.pdf', fileName: '箱单.pdf' },
+      },
+    ],
     ...over,
   };
 }
@@ -937,6 +953,64 @@ describe('闸门引擎 MVP 节点', () => {
     );
     expect(passed.canProceed).toBe(true);
     expect(passed.missing).not.toContain('N6_CUSTOMER_WRITTEN_INSTRUCTION');
+  });
+
+  it('N6 发票与箱单必须已在证据链落盘，手填编号或未落盘 id 不能过闸', () => {
+    const ship = {
+      hasInternalApproval: true,
+      blControl: 'ORIGINAL',
+      invoiceEvidenceId: 'ev-n6-invoice',
+      packingEvidenceId: 'ev-n6-packing',
+    };
+    const missingChain = evaluateN6(baseSnap({ shipment: ship, evidences: [] }));
+    expect(missingChain.canProceed).toBe(false);
+    expect(missingChain.missing).toEqual(expect.arrayContaining(['N6_INVOICE', 'N6_PACKING']));
+
+    const wrongKind = evaluateN6(
+      baseSnap({
+        shipment: ship,
+        evidences: [
+          {
+            id: 'ev-n6-invoice',
+            nodeCode: 'N6',
+            kind: 'N6_INVOICE',
+            payload: { fileName: '只有文件名.pdf' },
+          },
+          {
+            id: 'ev-n6-packing',
+            nodeCode: 'N3',
+            kind: 'N6_PACKING',
+            payload: { storageKey: 'shipment/case/packing.pdf' },
+          },
+        ],
+      }),
+    );
+    expect(wrongKind.canProceed).toBe(false);
+    expect(wrongKind.missing).toEqual(expect.arrayContaining(['N6_INVOICE', 'N6_PACKING']));
+
+    const onChain = evaluateN6(baseSnap({ shipment: ship }));
+    expect(onChain.canProceed).toBe(true);
+  });
+
+  it('N6 不要求客户书面指示、已收到书面指示或依据编号', () => {
+    const r = evaluateN6(
+      baseSnap({
+        contract: { ...baseSnap().contract!, incoterms: 'FOB' },
+        shipment: {
+          hasCustomerWrittenInstruction: false,
+          instructionRef: '',
+          hasInternalApproval: true,
+          blControl: 'NO_BL',
+          noBlReason: 'FOB 买方自行订舱',
+          noBlRef: '',
+          invoiceEvidenceId: 'ev-n6-invoice',
+          packingEvidenceId: 'ev-n6-packing',
+        },
+      }),
+    );
+    expect(r.canProceed).toBe(true);
+    expect(r.missing).not.toContain('N6_CUSTOMER_WRITTEN_INSTRUCTION');
+    expect(r.missing.join(' ')).not.toMatch(/NO_BL_REF|INSTRUCTION|依据/);
   });
 
   it('N6 证据齐全可通过', () => {

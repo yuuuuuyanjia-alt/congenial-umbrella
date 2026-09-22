@@ -582,7 +582,32 @@ export function isNoBlControl(blControl?: string | null): boolean {
 }
 
 export function hasNoBlJustification(s: Pick<ShipmentSnap, 'noBlReason' | 'noBlRef' | 'noBlEvidenceStub'>): boolean {
+  // 依据编号（noBlRef）不是必填。无提单仍可凭原因说明或装船通知附件过闸；历史编号若还在，也算依据。
   return !!(s.noBlReason?.trim() || s.noBlRef?.trim() || s.noBlEvidenceStub?.trim());
+}
+
+function evidencePayload(payload: unknown): Record<string, unknown> | null {
+  let value = payload;
+  if (typeof value === 'string') {
+    try {
+      value = JSON.parse(value);
+    } catch {
+      return null;
+    }
+  }
+  if (!value || typeof value !== 'object') return null;
+  return value as Record<string, unknown>;
+}
+
+/** 装运记录上的 id 必须指向本案证据链里已落盘的发票或箱单，手填编号不算。 */
+export function n6UploadOnChain(snap: CaseSnapshot, evidenceId: string | null | undefined, kind: string): boolean {
+  const id = String(evidenceId || '').trim();
+  if (!id) return false;
+  const ev = (snap.evidences || []).find((e) => e.id === id && e.kind === kind && e.nodeCode === 'N6');
+  if (!ev) return false;
+  const stored = evidencePayload(ev.payload);
+  const key = String(stored?.storageKey || '').trim();
+  return key.startsWith('shipment/') && !key.includes('..');
 }
 
 /** N7 跟随 N6：买方安排运输且已选无提单时，不硬要提单，改核装船通知 / 订舱号。 */
@@ -601,13 +626,14 @@ export function evaluateN6(snap: CaseSnapshot): GateResult {
     return finalizeHard(r);
   }
 
-  if (!s.invoiceEvidenceId?.trim()) {
+  // 书面指示、已收到书面指示、依据编号都不再是闸门条件。
+  if (!n6UploadOnChain(snap, s.invoiceEvidenceId, 'N6_INVOICE')) {
     r.missing.push('N6_INVOICE');
-    r.reasons.push('硬闸门：缺少发票（须上传）');
+    r.reasons.push('硬闸门：缺少已写入证据链的发票上传');
   }
-  if (!s.packingEvidenceId?.trim()) {
+  if (!n6UploadOnChain(snap, s.packingEvidenceId, 'N6_PACKING')) {
     r.missing.push('N6_PACKING');
-    r.reasons.push('硬闸门：缺少箱单（须上传）');
+    r.reasons.push('硬闸门：缺少已写入证据链的箱单上传');
   }
   if (!s.hasInternalApproval) {
     r.missing.push('N6_INTERNAL_APPROVAL');

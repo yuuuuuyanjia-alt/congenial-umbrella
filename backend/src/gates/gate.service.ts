@@ -35,6 +35,7 @@ export class GateService {
         occupancyReviews: { orderBy: { createdAt: 'asc' } },
         taxFinanceReviews: { orderBy: { createdAt: 'asc' } },
         taxRebateChecklist: true,
+        evidences: { orderBy: { createdAt: 'asc' } },
       },
     });
     const goodsKey = normGoods(c.goodsDesc);
@@ -162,6 +163,14 @@ export class GateService {
         : null,
       caseGoodsDesc: c.goodsDesc,
       salesContract: salesSideOf(c),
+      evidences: c.evidences.map((e) => ({
+        id: e.id,
+        nodeCode: e.nodeCode,
+        kind: e.kind,
+        ref: e.ref,
+        note: e.note,
+        payload: e.payload ? safeObj(e.payload) : null,
+      })),
     };
   }
 

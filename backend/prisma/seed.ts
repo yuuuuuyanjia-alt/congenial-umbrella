@@ -277,7 +277,11 @@ async function attachN6TradeDocs(caseId: string) {
       kind: 'N6_INVOICE',
       ref: 'N6-INVOICE',
       note: '发票',
-      payload: JSON.stringify({ fileName: '演示发票.pdf', kind: 'INVOICE' }),
+      payload: JSON.stringify({
+        fileName: '演示发票.pdf',
+        kind: 'INVOICE',
+        storageKey: `shipment/${caseId}/seed-invoice.pdf`,
+      }),
     },
   });
   const packing = await prisma.evidence.create({
@@ -287,7 +291,11 @@ async function attachN6TradeDocs(caseId: string) {
       kind: 'N6_PACKING',
       ref: 'N6-PACKING',
       note: '箱单',
-      payload: JSON.stringify({ fileName: '演示箱单.pdf', kind: 'PACKING' }),
+      payload: JSON.stringify({
+        fileName: '演示箱单.pdf',
+        kind: 'PACKING',
+        storageKey: `shipment/${caseId}/seed-packing.pdf`,
+      }),
     },
   });
   await prisma.shipment.update({
