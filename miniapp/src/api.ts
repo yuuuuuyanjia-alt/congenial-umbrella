@@ -152,6 +152,118 @@ export async function uploadDemoShipmentDoc(caseId: string, kind: ShipmentDocKin
   return postShipmentDocUpload(caseId, kind, blob, fileName);
 }
 
+/** N7 只保留这六份。商业发票与发票分别必填。 */
+export const N7_DOC_SLOTS = [
+  { kind: 'SALES_CONTRACT', label: '销售合同', demoName: '演示销售合同.pdf' },
+  { kind: 'COMMERCIAL_INVOICE', label: '商业发票', demoName: '演示商业发票.pdf' },
+  { kind: 'PACKING', label: '箱单', demoName: '演示箱单.pdf' },
+  { kind: 'PURCHASE_CONTRACT', label: '采购合同', demoName: '演示采购合同.pdf' },
+  { kind: 'INVOICE', label: '发票', demoName: '演示发票.pdf' },
+  { kind: 'CUSTOMS', label: '报关单', demoName: '演示报关单.pdf' },
+] as const;
+
+export type ConsistencyDocKind = (typeof N7_DOC_SLOTS)[number]['kind'];
+
+export async function postConsistencyDocUpload(
+  caseId: string,
+  kind: ConsistencyDocKind,
+  file: Blob,
+  fileName: string,
+): Promise<SinosureUploadResult & { kind: string; label?: string }> {
+  const problem = shipmentDocFileError(fileName, file.size);
+  if (problem) return Promise.reject({ message: problem });
+  if (typeof fetch !== 'function' || typeof FormData !== 'function') {
+    return Promise.reject({ message: '当前环境不支持上传文件' });
+  }
+  const fd = new FormData();
+  fd.append('file', file, fileName);
+  fd.append('fileName', fileName);
+  fd.append('kind', kind);
+  const res = await fetch(`${BASE}/cases/${caseId}/nodes/N7/docs/upload`, {
+    method: 'POST',
+    headers: demoHeaders(false),
+    body: fd,
+  });
+  const data = await res.json().catch(() => ({ message: '单证上传失败' }));
+  if (!res.ok) throw data;
+  return data;
+}
+
+export function chooseAndUploadConsistencyDoc(
+  caseId: string,
+  kind: ConsistencyDocKind,
+): Promise<SinosureUploadResult> {
+  if (typeof document !== 'undefined' && typeof document.createElement === 'function') {
+    return new Promise((resolve, reject) => {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = '.pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.webp,application/pdf';
+      input.onchange = () => {
+        const file = input.files?.[0];
+        if (!file) {
+          reject({ message: '未选择文件' });
+          return;
+        }
+        postConsistencyDocUpload(caseId, kind, file, file.name).then(resolve, reject);
+      };
+      input.click();
+    });
+  }
+  return new Promise((resolve, reject) => {
+    const uniAny = uni as any;
+    const chooser = uniAny.chooseFile || uniAny.chooseMessageFile;
+    if (!chooser) {
+      reject({ message: '当前环境不支持选择文件' });
+      return;
+    }
+    chooser({
+      count: 1,
+      type: 'all',
+      extension: SINOSURE_UPLOAD_EXTS,
+      success: (res: any) => {
+        const f = res.tempFiles?.[0];
+        const filePath = f?.path || f?.tempFilePath || res.tempFilePaths?.[0];
+        const fileName = f?.name || 'document.pdf';
+        const size = Number(f?.size || 0);
+        if (!filePath) {
+          reject({ message: '未选择文件' });
+          return;
+        }
+        const problem = shipmentDocFileError(fileName, size || 1);
+        if (problem) {
+          reject({ message: problem });
+          return;
+        }
+        uni.uploadFile({
+          url: BASE + `/cases/${caseId}/nodes/N7/docs/upload`,
+          filePath,
+          name: 'file',
+          formData: { fileName, kind },
+          header: demoHeaders(false),
+          success: (up) => {
+            let data: any = up.data;
+            try {
+              if (typeof data === 'string') data = JSON.parse(data);
+            } catch {
+              /* 保留原文 */
+            }
+            if (up.statusCode >= 200 && up.statusCode < 300) resolve(data);
+            else reject(data || { message: '单证上传失败' });
+          },
+          fail: (err) => reject(err),
+        });
+      },
+      fail: (err: any) => reject(err?.errMsg ? { message: '未选择文件' } : err),
+    });
+  });
+}
+
+export async function uploadDemoConsistencyDoc(caseId: string, kind: ConsistencyDocKind) {
+  const slot = N7_DOC_SLOTS.find((row) => row.kind === kind);
+  const blob = await loadDemoSinosurePdf();
+  return postConsistencyDocUpload(caseId, kind, blob, slot?.demoName || '演示单证.pdf');
+}
+
 function chooseShipmentDocH5(caseId: string, kind: ShipmentDocKind): Promise<SinosureUploadResult> {
   return new Promise((resolve, reject) => {
     const input = document.createElement('input');

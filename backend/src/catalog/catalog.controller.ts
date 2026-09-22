@@ -125,7 +125,7 @@ export class CatalogController {
         defaultCurrency: SALES_CURRENCY,
         procurementCurrency: PROCUREMENT_CURRENCY,
         n6n7:
-          '装运/单证规则跟随所选运输术语：FOB/EXW/FAS/FCA 买方安排运输（可无提单）；CIF/CFR 等卖方出单（须正本或电放）。N7 跟随 N6：无提单路径核验装船通知/订舱号，不硬要提单；卖方提单路径仍须提单一致。T/T 不是 Incoterm。无有效运输术语时明确回退为 FOB，避免把 T/T 切成 T 后误走卖方提单路径。存在未生效变更单时 N6/N7/N8/N9 硬拦截，须先生效变更。',
+          'N6 须上传发票与箱单并完成内部审批。装运规则跟随所选运输术语：FOB/EXW/FAS/FCA 买方安排运输（可无提单，须填写原因）；CIF/CFR 等卖方出单（须正本或电放）。不再要求客户书面指示或订舱编号。N7 只要求六份上传：销售合同、商业发票、箱单、采购合同、发票、报关单；商业发票与发票分别必填，缺任一份 409。T/T 不是 Incoterm。无有效运输术语时明确回退为 FOB。存在未生效变更单时 N6/N7/N8/N9 硬拦截，须先生效变更。',
       },
       taxFinance: {
         label: '出口退税与融资性贸易审查',

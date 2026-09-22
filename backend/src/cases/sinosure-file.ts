@@ -61,7 +61,7 @@ export function basenameOnly(name: string): string {
   return (base || 'sinosure-policy').slice(0, 180);
 }
 
-export type UploadFolder = 'sinosure' | 'shipment';
+export type UploadFolder = 'sinosure' | 'shipment' | 'docs';
 
 export function assertSinosureUpload(
   file: { originalname: string; size: number },
@@ -85,13 +85,13 @@ export function safeStorageKey(
   const safeCase = String(caseId || '').replace(/[^a-zA-Z0-9_-]/g, '');
   const safeId = String(fileId || '').replace(/[^a-zA-Z0-9_-]/g, '');
   if (!safeCase || !safeId || !ext) throw new SinosureFileError('无法保存文件');
-  if (folder !== 'sinosure' && folder !== 'shipment') throw new SinosureFileError('非法文件引用');
+  if (folder !== 'sinosure' && folder !== 'shipment' && folder !== 'docs') throw new SinosureFileError('非法文件引用');
   return `${folder}/${safeCase}/${safeId}${ext}`;
 }
 
 export function assertSafeStorageKey(key: string): string {
   const norm = String(key || '').replace(/\\/g, '/').trim();
-  const allowed = norm.startsWith('sinosure/') || norm.startsWith('shipment/');
+  const allowed = norm.startsWith('sinosure/') || norm.startsWith('shipment/') || norm.startsWith('docs/');
   if (!allowed || norm.includes('..') || norm.includes('\0')) {
     throw new SinosureFileError('非法文件引用');
   }

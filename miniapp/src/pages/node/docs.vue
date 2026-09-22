@@ -2,161 +2,209 @@
   <view class="wrap">
     <view class="card">
       <view class="h2">单证一致性 · 硬闸门</view>
-      <view class="muted" v-if="noBlPath">
-        N6 无提单路径：须有终稿合同，合同 / 发票 / 装箱单关键字段一致；不要求提单。核验装船通知 / 订舱号（与 N6 NO_BL 一致）。存在未生效变更单时禁止推进。
+      <view class="muted">
+        须上传销售合同、商业发票、箱单、采购合同、发票、报关单共六份。商业发票与发票是两项，都要有。缺任一份不得推进。存在未生效变更单时禁止推进。
       </view>
-      <view class="muted" v-else>
-        须有终稿合同，且合同 / 发票 / 装箱单 / 提单关键字段一致；不一致必须留下修改记录。存在未生效变更单时禁止推进。
-      </view>
-      <view class="err" v-if="!canWriteBusiness" style="margin-top: 8rpx">当前为{{ roleLabel }}，本页只读，不可保存或推进。</view>
+      <view class="err" v-if="!canWriteBusiness" style="margin-top: 8rpx">当前为{{ roleLabel }}，本页只读，不可上传或推进。</view>
     </view>
     <PendingChangeBlock :case-id="id" :case-data="c" />
-    <view class="card" v-if="noBlPath">
-      <view class="h2">装船通知 / 订舱号</view>
-      <view class="muted">跟随 N6 无提单依据，本节点不要求提单。</view>
-      <view class="label">订舱 / 装船通知编号</view>
-      <view class="muted">{{ shippingAdvice.noBlRef || '（未填）' }}</view>
-      <view class="label">原因说明</view>
-      <view class="muted">{{ shippingAdvice.noBlReason || '（未填）' }}</view>
-      <view class="label">依据附件</view>
-      <view class="muted">{{ shippingAdvice.noBlEvidenceStub || '（未挂）' }}</view>
-    </view>
-    <view class="card" v-for="doc in visibleDocs" :key="doc.type">
-      <view class="h2">{{ doc.label }}</view>
-      <view class="label">买方</view>
-      <input class="input" v-model="doc.fields.buyerName" />
-      <view class="label">收货人</view>
-      <input class="input" v-model="doc.fields.consigneeName" />
-      <view class="label">货物</view>
-      <input class="input" v-model="doc.fields.goodsDesc" />
-      <view class="label">金额（分）</view>
-      <input class="input" type="number" v-model="doc.fields.amountFen" />
-      <view class="label">终稿</view>
-      <switch :checked="doc.isFinal" @change="(e: any) => (doc.isFinal = e.detail.value)" />
-      <view class="btn btn-ghost" v-if="canWriteBusiness" @click="saveDoc(doc)">保存{{ doc.label }}</view>
-    </view>
-    <view class="card">
-      <view class="h2">不符点修改记录</view>
-      <input class="input" v-model="fix.field" placeholder="字段英文名，如 buyerName" />
-      <input class="input" v-model="fix.fromValue" placeholder="原值" />
-      <input class="input" v-model="fix.toValue" placeholder="更正值" />
-      <input class="input" v-model="fix.reason" placeholder="原因" />
-      <view class="btn btn-ghost" v-if="canWriteBusiness" @click="saveFix">登记修改</view>
+    <view class="card" v-for="slot in docSlots" :key="slot.kind">
+      <view class="h2">{{ slot.label }}</view>
+      <view class="readonly" v-if="fileOf(slot.kind)">{{ fileOf(slot.kind) }}</view>
+      <view class="muted" v-else>尚未上传</view>
+      <view class="muted" v-if="fileOf(slot.kind)" style="margin-top: 8rpx">文件已写入证据链。</view>
+      <view class="btn btn-ghost" v-if="evidenceOf(slot.kind)" @click="openFile(slot.kind)">查看文件</view>
+      <view class="doc-actions" v-if="canWriteBusiness">
+        <view class="btn btn-ghost" @click="pickFile(slot.kind)">{{ fileOf(slot.kind) ? '重新上传' : '上传' }}{{ slot.label }}</view>
+        <view class="btn btn-ghost" @click="useDemo(slot.kind)">
+          {{ uploading === slot.kind ? '正在上传示例…' : '使用演示示例' }}
+        </view>
+      </view>
     </view>
     <view class="btn btn-danger" v-if="canWriteBusiness" @click="tryAdvance">校验硬闸门并推进</view>
     <view class="err" v-if="err">{{ err }}</view>
     <view class="ok" v-if="ok">{{ ok }}</view>
+    <NextNodeCta
+      v-if="nextReady"
+      :target="nextTarget"
+      :ready="nextReady"
+      :hint="nextHint"
+      button-label="进入下一步"
+      @go="goNext"
+    />
   </view>
 </template>
 
 <script setup lang="ts">
 import { onLoad } from '@dcloudio/uni-app';
 import { computed, reactive, ref } from 'vue';
-import { api } from '../../api';
+import {
+  api,
+  chooseAndUploadConsistencyDoc,
+  evidenceFileUrl,
+  goToNode,
+  N7_DOC_SLOTS,
+  nextWorkNodeFromForm,
+  pipelineNodeName,
+  uploadDemoConsistencyDoc,
+  type ConsistencyDocKind,
+} from '../../api';
+import NextNodeCta from '../../components/NextNodeCta.vue';
 import PendingChangeBlock from '../../components/PendingChangeBlock.vue';
 import { useDemoRole } from '../../role';
 
-const BUYER_FREIGHT = ['FOB', 'EXW', 'FAS', 'FCA'];
+const FORM_NODE = 'N7';
+const docSlots = N7_DOC_SLOTS;
+const KIND_OF: Record<ConsistencyDocKind, string> = {
+  SALES_CONTRACT: 'N7_SALES_CONTRACT',
+  COMMERCIAL_INVOICE: 'N7_COMMERCIAL_INVOICE',
+  PACKING: 'N7_PACKING',
+  PURCHASE_CONTRACT: 'N7_PURCHASE_CONTRACT',
+  INVOICE: 'N7_INVOICE',
+  CUSTOMS: 'N7_CUSTOMS',
+};
 
 const id = ref('');
 const { canWriteBusiness, roleLabel } = useDemoRole();
 const err = ref('');
 const ok = ref('');
+const uploading = ref<ConsistencyDocKind | ''>('');
 const c = ref<any>(null);
-const noBlPath = ref(false);
-const shippingAdvice = reactive({ noBlRef: '', noBlReason: '', noBlEvidenceStub: '' });
-const docs = reactive([
-  { type: 'CONTRACT', label: '合同', isFinal: true, fields: blank() },
-  { type: 'INVOICE', label: '发票', isFinal: true, fields: blank() },
-  { type: 'PACKING', label: '装箱单', isFinal: true, fields: blank() },
-  { type: 'BL', label: '提单', isFinal: true, fields: blank() },
-]);
-const visibleDocs = computed(() => (noBlPath.value ? docs.filter((d) => d.type !== 'BL') : docs));
-const fix = reactive({ field: 'buyerName', fromValue: '', toValue: '', reason: '' });
+const advancedTo = ref<string | null>(null);
+const files = reactive<Record<string, { evidenceId: string; fileName: string }>>({});
 
-function blank() {
-  return { buyerName: '', consigneeName: '', goodsDesc: '', amountFen: 0, currency: 'USD', incoterms: 'CIF' };
-}
-
-function incotermsCode(raw?: string | null) {
-  const s = String(raw || '')
-    .trim()
-    .toUpperCase()
-    .replace(/^INCOTERMS(?:\s*20\d{2})?\s+/, '');
-  if (!s) return '';
-  const known = ['EXW', 'FCA', 'FAS', 'FOB', 'CFR', 'CIF', 'CPT', 'CIP', 'DAP', 'DPU', 'DDP'];
-  const found = s.match(/[A-Z]{3}/g) || [];
-  for (const code of found) {
-    if (known.includes(code)) return code;
-  }
+const nextTarget = computed(() =>
+  c.value
+    ? nextWorkNodeFromForm(FORM_NODE, {
+        currentNode: c.value.currentNode,
+        overrideNext: advancedTo.value,
+      })
+    : null,
+);
+const nextReady = computed(() => {
+  if (!nextTarget.value || !c.value) return false;
+  if (advancedTo.value) return true;
+  const cur = c.value.currentNode || '';
+  return !!cur && cur !== FORM_NODE;
+});
+const nextHint = computed(() => {
+  const t = nextTarget.value;
+  if (!t) return '';
+  if (advancedTo.value) return `已过闸。下一步为 ${t.code} ${t.name}。`;
+  const cur = c.value?.currentNode;
+  if (cur && cur !== FORM_NODE) return `本案已在 ${cur} ${pipelineNodeName(cur)}。可直接进入该节点。`;
   return '';
-}
-
-function transportIncoterms(raw?: string | null) {
-  const s = String(raw || '').trim();
-  if (incotermsCode(s)) return s;
-  if (/t\s*\/\s*t/i.test(s) || /^tt(?:\b|\s|$)/i.test(s)) return 'FOB';
-  return s || 'CIF';
-}
-
-function effectiveIncotermsCode(raw?: string | null) {
-  const code = incotermsCode(raw);
-  if (code) return code;
-  const s = String(raw || '').trim();
-  if (/t\s*\/\s*t/i.test(s) || /^tt(?:\b|\s|$)/i.test(s)) return 'FOB';
-  return '';
-}
+});
 
 onLoad(async (q) => {
   id.value = q?.id || '';
-  c.value = await api.case(id.value);
-  const sh = c.value.shipment || {};
-  const blc = String(sh.blControl || '').toUpperCase();
-  const term = effectiveIncotermsCode(sh.incotermsOverride || c.value.contract?.incoterms);
-  noBlPath.value = (blc === 'NO_BL' || blc === 'FOB_NO_BL') && BUYER_FREIGHT.includes(term);
-  shippingAdvice.noBlRef = sh.noBlRef || '';
-  shippingAdvice.noBlReason = sh.noBlReason || '';
-  shippingAdvice.noBlEvidenceStub = sh.noBlEvidenceStub || '';
-  for (const d of c.value.documents || []) {
-    const target = docs.find((x) => x.type === d.type);
-    if (target) {
-      target.isFinal = d.isFinal;
-      Object.assign(target.fields, d.fields || {});
-    }
-  }
-  if (c.value.contract) {
-    const t = docs[0];
-    t.isFinal = c.value.contract.isFinal;
-    t.fields.buyerName = c.value.contract.buyerName || t.fields.buyerName;
-    t.fields.consigneeName = c.value.contract.consigneeName || '';
-    t.fields.goodsDesc = c.value.contract.goodsDesc || c.value.goodsDesc;
-    t.fields.amountFen = c.value.contract.amountFen || c.value.amountFen;
-    t.fields.incoterms = transportIncoterms(c.value.contract.incoterms);
-  }
+  await reload();
 });
 
-async function saveDoc(doc: any) {
-  await api.saveDocument(id.value, {
-    type: doc.type,
-    isFinal: doc.isFinal,
-    fields: { ...doc.fields, amountFen: Number(doc.fields.amountFen) },
-  });
-  ok.value = `${doc.label}已保存`;
+function fileOf(kind: ConsistencyDocKind) {
+  return files[kind]?.fileName || '';
 }
 
-async function saveFix() {
-  await api.saveFix(id.value, { ...fix });
-  ok.value = '不符点修改已入审计';
+function evidenceOf(kind: ConsistencyDocKind) {
+  return files[kind]?.evidenceId || '';
+}
+
+function hydrate(row: any) {
+  c.value = row;
+  for (const slot of docSlots) {
+    const evidenceKind = KIND_OF[slot.kind];
+    const matches = (row.evidences || []).filter(
+      (e: any) => e.kind === evidenceKind && e.nodeCode === 'N7' && e.payload?.storageKey,
+    );
+    const ev = matches[matches.length - 1];
+    if (ev) files[slot.kind] = { evidenceId: ev.id, fileName: ev.payload?.fileName || slot.demoName };
+    else delete files[slot.kind];
+  }
+}
+
+async function reload() {
+  hydrate(await api.case(id.value));
+}
+
+function uploadError(e: any, ignoreCancel = false) {
+  const msg = e?.message || e?.errMsg || '';
+  if (ignoreCancel && (!msg || /cancel|取消|未选择/.test(String(msg)))) return;
+  err.value = Array.isArray(e?.message) ? e.message.join('；') : msg || '单证上传失败';
+}
+
+function remember(kind: ConsistencyDocKind, uploaded: { evidenceId: string; fileName: string }) {
+  const slot = docSlots.find((row) => row.kind === kind);
+  files[kind] = { evidenceId: uploaded.evidenceId, fileName: uploaded.fileName };
+  ok.value = `已上传${slot?.label || ''} ${uploaded.fileName}`;
+}
+
+function pickFile(kind: ConsistencyDocKind) {
+  if (!id.value || uploading.value) return;
+  err.value = '';
+  ok.value = '';
+  chooseAndUploadConsistencyDoc(id.value, kind)
+    .then((uploaded) => remember(kind, uploaded))
+    .catch((e: any) => uploadError(e, true));
+}
+
+function useDemo(kind: ConsistencyDocKind) {
+  if (!id.value || uploading.value) return;
+  err.value = '';
+  ok.value = '';
+  uploading.value = kind;
+  uploadDemoConsistencyDoc(id.value, kind)
+    .then((uploaded) => remember(kind, uploaded))
+    .catch((e: any) => uploadError(e))
+    .finally(() => {
+      uploading.value = '';
+    });
+}
+
+function openFile(kind: ConsistencyDocKind) {
+  const evidenceId = evidenceOf(kind);
+  if (!id.value || !evidenceId) return;
+  const url = evidenceFileUrl(id.value, evidenceId);
+  if (typeof window !== 'undefined') window.open(url, '_blank');
 }
 
 async function tryAdvance() {
   err.value = '';
+  ok.value = '';
   try {
-    for (const d of visibleDocs.value) await saveDoc(d);
     const r = await api.advance(id.value, 'N7');
-    ok.value = `硬闸门通过，下一节点 ${r.nextNode}`;
+    advancedTo.value = r.nextNode || null;
+    await reload();
+    const title = r.nextNode ? pipelineNodeName(r.nextNode) : '';
+    ok.value = r.nextNode ? `已推进至 ${r.nextNode} ${title}` : '已推进';
   } catch (e: any) {
-    err.value = ['硬闸门拒绝推进', ...(e?.reasons || [])].join('\n');
+    err.value = ['硬闸门拒绝推进', ...(e?.reasons || []), e?.missing ? `缺失项 ${e.missing.join(', ')}` : '']
+      .filter(Boolean)
+      .join('\n');
   }
 }
+
+function goNext() {
+  const t = nextTarget.value;
+  if (t && id.value) goToNode(id.value, t.code);
+}
 </script>
+
+<style scoped>
+.readonly {
+  margin-top: 8rpx;
+  border: 2rpx solid #e8eef3;
+  border-radius: 12rpx;
+  padding: 18rpx;
+  background: #f7f5f0;
+  font-weight: 650;
+  color: #0f3d2e;
+}
+.doc-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12rpx;
+}
+.doc-actions .btn {
+  flex: 1 1 280rpx;
+}
+</style>

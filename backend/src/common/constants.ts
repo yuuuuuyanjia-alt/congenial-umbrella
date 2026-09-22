@@ -46,7 +46,7 @@ export const NODE_CATALOG = [
     mvp: true,
     isHardGate: true,
     isStub: false,
-    summary: '硬闸门：终稿合同 + 合同/发票/装箱单字段一致 + 不符点修改记录。CIF/卖方提单路径另须提单一致；FOB 等 N6 无提单路径改核装船通知/订舱号，不硬要提单。存在未生效变更单时硬拦截。运输术语按 Incoterms 比对，T/T 结算方式不参与；装运规则与 N6 相同，跟随所选运输术语。',
+    summary: '硬闸门：销售合同、商业发票、箱单、采购合同、发票、报关单六份均须上传并写入证据链。商业发票与发票分别必填，缺任一份拒绝推进。不再核验提单一致、装船通知或字段勾选。存在未生效变更单时硬拦截。',
   },
   {
     code: 'N8',
@@ -472,11 +472,34 @@ export const EvidenceKind = {
   SINOSURE_CONFIRM: 'SINOSURE_CONFIRM',
   N6_INVOICE: 'N6_INVOICE',
   N6_PACKING: 'N6_PACKING',
+  N7_SALES_CONTRACT: 'N7_SALES_CONTRACT',
+  N7_COMMERCIAL_INVOICE: 'N7_COMMERCIAL_INVOICE',
+  N7_PACKING: 'N7_PACKING',
+  N7_PURCHASE_CONTRACT: 'N7_PURCHASE_CONTRACT',
+  N7_INVOICE: 'N7_INVOICE',
+  N7_CUSTOMS: 'N7_CUSTOMS',
   DIRECT_PORT_GOODS: 'DIRECT_PORT_GOODS',
   DIRECT_PORT_CUSTOMS_PARTY: 'DIRECT_PORT_CUSTOMS_PARTY',
   DIRECT_PORT_REMITTANCE: 'DIRECT_PORT_REMITTANCE',
   DIRECT_PORT_EMPTY_TURN: 'DIRECT_PORT_EMPTY_TURN',
 } as const;
+
+/** N7 六份单证。商业发票与发票是两项，不能互相顶替。 */
+export const N7_UPLOADS = [
+  { slot: 'SALES_CONTRACT', kind: EvidenceKind.N7_SALES_CONTRACT, label: '销售合同', missing: 'N7_SALES_CONTRACT' },
+  { slot: 'COMMERCIAL_INVOICE', kind: EvidenceKind.N7_COMMERCIAL_INVOICE, label: '商业发票', missing: 'N7_COMMERCIAL_INVOICE' },
+  { slot: 'PACKING', kind: EvidenceKind.N7_PACKING, label: '箱单', missing: 'N7_PACKING' },
+  { slot: 'PURCHASE_CONTRACT', kind: EvidenceKind.N7_PURCHASE_CONTRACT, label: '采购合同', missing: 'N7_PURCHASE_CONTRACT' },
+  { slot: 'INVOICE', kind: EvidenceKind.N7_INVOICE, label: '发票', missing: 'N7_INVOICE' },
+  { slot: 'CUSTOMS', kind: EvidenceKind.N7_CUSTOMS, label: '报关单', missing: 'N7_CUSTOMS' },
+] as const;
+
+export type N7UploadSlot = (typeof N7_UPLOADS)[number]['slot'];
+
+export function n7Upload(slot: string) {
+  const key = String(slot || '').trim().toUpperCase().replace(/-/g, '_');
+  return N7_UPLOADS.find((row) => row.slot === key) ?? null;
+}
 
 /** 模糊报价用语：命中则禁止推进 */
 export const VAGUE_PRICE_RE =

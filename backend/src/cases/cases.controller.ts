@@ -219,6 +219,26 @@ export class CasesController {
     );
   }
 
+  @Post(':id/nodes/N7/docs/upload')
+  @UseFilters(UploadExceptionFilter)
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: SINOSURE_UPLOAD_MAX_BYTES } }))
+  uploadN7Doc(
+    @Param('id') id: string,
+    @UploadedFile()
+    file: { originalname: string; size: number; buffer: Buffer } | undefined,
+    @Body('fileName') fileName?: string,
+    @Body('kind') kind?: string,
+    @Headers('x-actor-id') actorId?: string,
+  ) {
+    return this.cases.uploadConsistencyDoc(
+      id,
+      kind,
+      file || { originalname: '', size: 0, buffer: Buffer.alloc(0) },
+      actorId,
+      fileName,
+    );
+  }
+
   @Post(':id/nodes/N7/documents')
   document(
     @Param('id') id: string,

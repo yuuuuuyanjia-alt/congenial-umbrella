@@ -3,7 +3,7 @@
     <view class="card">
       <view class="h2">装运 / 提单指示 · 硬闸门</view>
       <view class="muted">
-        须上传发票与箱单，并完成内部审批。CIF / CFR 等卖方出单：点选「正本提单」或「电放提单」其一即可（不必两样都有）。FOB / EXW / FAS / FCA 等买方安排运输：可不控提单，走「无提单」路径并留下依据。T/T 是结算方式不是运输术语；装运规则跟随所选 Incoterm，未填运输术语时按 FOB 回退。存在未生效变更单时禁止装运。
+        须上传发票与箱单，并完成内部审批。CIF / CFR 等卖方出单：点选「正本提单」或「电放提单」其一即可（不必两样都有）。FOB / EXW / FAS / FCA 等买方安排运输：可不控提单，走「无提单」路径并填写原因。T/T 是结算方式不是运输术语；装运规则跟随所选 Incoterm，未填运输术语时按 FOB 回退。存在未生效变更单时禁止装运。
       </view>
       <view class="err" v-if="!canWriteBusiness" style="margin-top: 8rpx">当前为{{ roleLabel }}，本页只读，不可保存或推进。</view>
     </view>
@@ -89,13 +89,11 @@
       <view class="choice-row">
         <view class="choice-btn" :class="{ 'choice-btn-on': isNoBl }" @click="selectBl('NO_BL')">无提单</view>
       </view>
-      <view class="muted">买方指定货代、卖方不签发或不控提单时使用。须填写原因或挂上装船通知 / 订舱记录。</view>
+      <view class="muted">买方指定货代、卖方不签发或不控提单时使用。须填写原因说明。</view>
 
       <view v-if="isNoBl">
         <view class="label">无提单原因说明</view>
         <input class="input" v-model="form.noBlReason" placeholder="如：FOB 买方自行订舱，卖方不控提单" />
-        <view class="btn btn-ghost" v-if="canWriteBusiness" @click="stubUpload">演示上传装船通知 / 订舱记录</view>
-        <view class="muted" v-if="form.noBlEvidenceStub">已挂演示附件：{{ form.noBlEvidenceStub }}</view>
       </view>
 
       <view class="btn" v-if="canWriteBusiness" @click="save">保存指示</view>
@@ -277,12 +275,6 @@ function selectBl(v: string) {
   if (v === 'NO_BL' && currentNoBl) form.blControl = '';
   else if (form.blControl === v) form.blControl = '';
   else form.blControl = v;
-}
-
-function stubUpload() {
-  form.noBlEvidenceStub = `DEMO-SA-${id.value.slice(-6) || 'FOB'}.pdf`;
-  if (!form.noBlReason) form.noBlReason = '买方安排运输，附装船通知/订舱记录（演示）';
-  ok.value = `已挂演示附件 ${form.noBlEvidenceStub}`;
 }
 
 function payload() {

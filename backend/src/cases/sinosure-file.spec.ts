@@ -27,6 +27,7 @@ describe('中信保保单文件', () => {
     expect(() => assertSafeStorageKey('/etc/passwd')).toThrow(SinosureFileError);
     expect(assertSafeStorageKey('sinosure/case/file.pdf')).toBe('sinosure/case/file.pdf');
     expect(assertSafeStorageKey('shipment/case/invoice.pdf')).toBe('shipment/case/invoice.pdf');
+    expect(assertSafeStorageKey('docs/case/sales.pdf')).toBe('docs/case/sales.pdf');
     expect(() => assertSafeStorageKey('other/case/file.pdf')).toThrow(SinosureFileError);
     const root = path.join(tmpdir(), 'sinosure-root');
     expect(() => absolutePathForKey('sinosure/../../etc/passwd', root)).toThrow(SinosureFileError);

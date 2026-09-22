@@ -5,14 +5,12 @@ import {
   CIF_FAMILY_INCOTERMS,
   INCOTERMS_CODES,
   N6_MISSING_TRANSPORT_FALLBACK,
-  COMPARE_FIELDS,
+  N7_UPLOADS,
   ChangeStatus,
   Decision,
   DelayTrigger,
   Disposition,
-  DocType,
   EportStatus,
-  FieldLabel,
   HISTORY_DEV_MEDIUM_PCT,
   HISTORY_DEV_SOFT_PCT,
   NodeStatus,
@@ -610,9 +608,14 @@ export function n6UploadOnChain(snap: CaseSnapshot, evidenceId: string | null | 
   return key.startsWith('shipment/') && !key.includes('..');
 }
 
-/** N7 跟随 N6：买方安排运输且已选无提单时，不硬要提单，改核装船通知 / 订舱号。 */
-export function isN7NoBlPath(snap: CaseSnapshot): boolean {
-  return isNoBlControl(snap.shipment?.blControl) && isBuyerArrangedFreight(effectiveN6Incoterms(snap));
+/** N7 单证：该 kind 的最新证据必须已落在 docs/ 下，手填编号不算。 */
+export function n7UploadOnChain(snap: CaseSnapshot, kind: string): boolean {
+  const rows = (snap.evidences || []).filter((e) => e.kind === kind && e.nodeCode === 'N7');
+  const ev = rows[rows.length - 1];
+  if (!ev) return false;
+  const stored = evidencePayload(ev.payload);
+  const key = String(stored?.storageKey || '').trim();
+  return key.startsWith('docs/') && !key.includes('..');
 }
 
 export function evaluateN6(snap: CaseSnapshot): GateResult {
@@ -689,66 +692,16 @@ export function evaluateN7(snap: CaseSnapshot): GateResult {
   const r = emptyResult('N7');
   const pending = refusePendingChangeAtShipment(r, snap);
   if (pending) return pending;
-  const byType = Object.fromEntries(snap.documents.map((d) => [d.type, d]));
-  const contractDoc = byType[DocType.CONTRACT];
-  const invoice = byType[DocType.INVOICE];
-  const packing = byType[DocType.PACKING];
-  const bl = byType[DocType.BL];
-  const finalContract = snap.contract?.isFinal || contractDoc?.isFinal;
-
-  if (!finalContract) {
-    r.missing.push('N7_FINAL_CONTRACT');
-    r.reasons.push('硬闸门：缺少终稿合同');
-  }
-  if (!invoice) {
-    r.missing.push('N7_INVOICE');
-    r.reasons.push('硬闸门：缺少发票');
-  }
-  if (!packing) {
-    r.missing.push('N7_PACKING');
-    r.reasons.push('硬闸门：缺少装箱单');
-  }
-
-  const noBlPath = isN7NoBlPath(snap);
-  if (noBlPath) {
-    if (!snap.shipment || !hasNoBlJustification(snap.shipment)) {
-      r.missing.push('N7_SHIPPING_ADVICE');
-      r.reasons.push('硬闸门：无提单路径须核验装船通知 / 订舱号等依据（与 N6 NO_BL 一致），不要求提单');
+  for (const slot of N7_UPLOADS) {
+    if (!n7UploadOnChain(snap, slot.kind)) {
+      r.missing.push(slot.missing);
+      r.reasons.push(`硬闸门：缺少已写入证据链的${slot.label}上传`);
     }
-  } else if (!bl) {
-    r.missing.push('N7_BL');
-    r.reasons.push('硬闸门：缺少提单');
   }
-
-  const docs = (noBlPath ? [contractDoc, invoice, packing] : [contractDoc, invoice, packing, bl]).filter(Boolean);
-  const setLabel = noBlPath ? '合同/发票/装箱单' : '合同/发票/装箱单/提单';
-  const fixed = new Set(snap.mismatchFixes.map((f) => f.field));
-  for (const field of COMPARE_FIELDS) {
-    const values = docs
-      .map((d) => d!.fields[field])
-      .filter((v) => v !== undefined && v !== null && String(v).trim() !== '')
-      .map((v) => comparableDocField(field, v))
-      .filter((v): v is string => !!v);
-    if (values.length < 2) continue;
-    const unique = new Set(values);
-    if (unique.size > 1 && !fixed.has(field)) {
-      r.missing.push(`N7_FIELD_MISMATCH_${field}`);
-      r.reasons.push(
-        `硬闸门：${FieldLabel[field] || field} 在${setLabel}间不一致，且无不符点修改记录`,
-      );
-    }
+  if (!r.missing.length) {
+    r.reasons.push('硬闸门证据齐全：销售合同、商业发票、箱单、采购合同、发票、报关单均已上传');
   }
   return finalizeHard(r);
-}
-
-function comparableDocField(field: string, v: unknown): string | null {
-  const s = String(v).trim();
-  if (!s) return null;
-  if (field !== 'incoterms') return s.toUpperCase();
-  const code = parseIncotermsCode(s);
-  if (code) return code;
-  if (isSettlementOnlyIncoterms(s)) return null;
-  return s.toUpperCase();
 }
 
 export function evaluateN8(snap: CaseSnapshot): GateResult {

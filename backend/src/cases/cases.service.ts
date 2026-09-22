@@ -15,6 +15,7 @@ import {
   Disposition,
   EportStatus,
   EvidenceKind,
+  n7Upload,
   ADVANCE_IDEMPOTENT_REASON,
   ADVANCE_NOT_CURRENT_REASON,
   N3_SINOSURE_UNREGISTERED_REASON,
@@ -1350,6 +1351,68 @@ export class CasesService {
     });
     return {
       kind,
+      evidenceId: ev.id,
+      evidenceRef: ev.id,
+      fileName: meta.fileName,
+      mime: meta.mime,
+      size: meta.size,
+      sha256: meta.sha256,
+      storageKey: meta.storageKey,
+    };
+  }
+
+  async uploadConsistencyDoc(
+    caseId: string,
+    rawSlot: string | undefined,
+    file: { originalname: string; size: number; buffer: Buffer },
+    actorId?: string,
+    fileNameOverride?: string,
+  ) {
+    await this.ensureCase(caseId);
+    const spec = n7Upload(rawSlot || '');
+    if (!spec) throw new BadRequestException('请指定销售合同、商业发票、箱单、采购合同、发票或报关单');
+    if (!file?.buffer?.length) throw new BadRequestException(`请选择${spec.label}文件`);
+    const originalName = (fileNameOverride || file.originalname || '').trim();
+    let meta: StoredFileMeta;
+    try {
+      meta = await writeSinosureFile({
+        caseId,
+        id: randomUUID(),
+        originalName,
+        buffer: file.buffer,
+        folder: 'docs',
+        label: spec.label,
+      });
+    } catch (e) {
+      if (e instanceof SinosureFileError) throw new BadRequestException(e.message);
+      throw e;
+    }
+    const ev = await this.addEvidence(caseId, 'N7', spec.kind, {
+      ref: meta.storageKey,
+      note: spec.label,
+      payload: { ...meta, uploaded: true, slot: spec.slot },
+    });
+    await this.touchNode(caseId, 'N7', NodeStatus.IN_PROGRESS);
+    await this.audit.append({
+      caseId,
+      actorId,
+      action: 'CONSISTENCY_DOC_UPLOADED',
+      nodeCode: 'N7',
+      detail: {
+        slot: spec.slot,
+        kind: spec.kind,
+        evidenceId: ev.id,
+        fileName: meta.fileName,
+        storageKey: meta.storageKey,
+        sha256: meta.sha256,
+        size: meta.size,
+        mime: meta.mime,
+      },
+    });
+    return {
+      slot: spec.slot,
+      kind: spec.kind,
+      label: spec.label,
       evidenceId: ev.id,
       evidenceRef: ev.id,
       fileName: meta.fileName,
