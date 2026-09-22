@@ -91,7 +91,6 @@ import {
   SaveCustomsDto,
   SaveDocumentDto,
   SaveFixDto,
-  SaveInquiryDto,
   SavePlanDto,
   SaveQuoteDto,
   SaveSettlementDto,
@@ -326,7 +325,7 @@ export class CasesService {
         title: dto.title,
         scenario: 'CUSTOM',
         status: CaseStatus.DRAFT,
-        currentNode: 'N1',
+        currentNode: 'N2',
         overallRisk: RiskLevel.LOW,
         goodsDesc: dto.goodsDesc,
         goodsSpec: dto.goodsSpec || null,
@@ -350,35 +349,16 @@ export class CasesService {
       await this.prisma.party.createMany({
         data: parties.map((p) => ({ caseId: created.id, ...p })),
       });
-      await this.touchNode(created.id, 'N1', NodeStatus.IN_PROGRESS);
     }
+    await this.touchNode(created.id, 'N2', NodeStatus.IN_PROGRESS);
     await this.audit.append({
       caseId: created.id,
       actorId,
       action: 'CASE_CREATED',
-      nodeCode: 'N1',
+      nodeCode: 'N2',
       detail: { caseNo, title: dto.title, buyerSeeded: parties.length > 0 },
     });
     return this.get(created.id);
-  }
-
-  async saveInquiry(caseId: string, dto: SaveInquiryDto, actorId?: string) {
-    await this.ensureCase(caseId);
-    const data: { goodsDesc?: string; goodsSpec?: string | null } = {};
-    if (dto.goodsDesc != null) data.goodsDesc = dto.goodsDesc;
-    if (dto.goodsSpec != null) data.goodsSpec = dto.goodsSpec;
-    if (Object.keys(data).length) {
-      await this.prisma.tradeCase.update({ where: { id: caseId }, data });
-    }
-    await this.touchNode(caseId, 'N1', NodeStatus.IN_PROGRESS);
-    await this.audit.append({
-      caseId,
-      actorId,
-      action: 'INQUIRY_GOODS_SAVED',
-      nodeCode: 'N1',
-      detail: { goodsDesc: dto.goodsDesc ?? null, goodsSpec: dto.goodsSpec ?? null },
-    });
-    return this.get(caseId);
   }
 
   async upsertParty(caseId: string, dto: UpsertPartyDto, actorId?: string) {
@@ -398,7 +378,7 @@ export class CasesService {
     const party = existing
       ? await this.prisma.party.update({ where: { id: existing.id }, data })
       : await this.prisma.party.create({ data: { caseId, ...data } });
-    const nodeCode = dto.role === PartyRole.SUPPLIER ? 'N5' : 'N1';
+    const nodeCode = dto.role === PartyRole.SUPPLIER ? 'N5' : 'N3';
     await this.touchNode(caseId, nodeCode, NodeStatus.IN_PROGRESS);
     if (dto.role !== PartyRole.SUPPLIER) {
       await this.enrollBuyerIfReachedN3(caseId, actorId);
@@ -414,7 +394,7 @@ export class CasesService {
   }
 
   async screenKyc(caseId: string, actorId?: string) {
-    return this.screenParties(caseId, 'N1', [...CUSTOMER_PARTY_ROLES], actorId);
+    return this.screenParties(caseId, 'N3', [...CUSTOMER_PARTY_ROLES], actorId);
   }
 
   async screenSupplier(caseId: string, actorId?: string) {
@@ -1173,6 +1153,8 @@ export class CasesService {
       paymentDueAt: schedule.rollup.paymentDueAt,
       paidAt: schedule.rollup.paidAt,
       paymentMode: schedule.paymentMode,
+      goodsDesc: dto.goodsDesc !== undefined ? dto.goodsDesc : existingPlan?.goodsDesc ?? null,
+      goodsSpec: dto.goodsSpec !== undefined ? dto.goodsSpec : existingPlan?.goodsSpec ?? null,
     };
     const row = await this.prisma.$transaction(async (tx) => {
       const plan = await tx.procurementPlan.upsert({
@@ -1940,13 +1922,15 @@ export class CasesService {
     });
   }
 
-  private async screenParties(caseId: string, nodeCode: 'N1' | 'N5', roles: string[], actorId?: string) {
+  private async screenParties(caseId: string, nodeCode: 'N3' | 'N5', roles: string[], actorId?: string) {
     const c = await this.ensureCase(caseId);
     const parties = await this.prisma.party.findMany({ where: { caseId, role: { in: roles } } });
     if (nodeCode === 'N5' && !parties.some((p) => p.name.trim())) {
       throw new BadRequestException('请先保存国内供应商再执行筛查');
     }
-    await this.prisma.screeningHit.deleteMany({ where: { caseId, nodeCode } });
+    await this.prisma.screeningHit.deleteMany({
+      where: nodeCode === 'N3' ? { caseId, nodeCode: { in: ['N1', 'N3'] } } : { caseId, nodeCode },
+    });
     const allHits: Array<Record<string, unknown> & { score: number }> = [];
     for (const p of parties) {
       const matches = await this.screening.screenName(p.nameEn || p.name);

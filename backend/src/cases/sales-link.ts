@@ -14,6 +14,7 @@ export type SalesLinkCaseInput = {
     counterparty?: string | null;
     buyerName?: string | null;
     goodsDesc?: string | null;
+    goodsSpec?: string | null;
     amountFen?: number | null;
     currency?: string | null;
     deliveryDate?: Date | string | null;
@@ -56,6 +57,7 @@ export type SalesLinkView = {
   n3Status: string | null;
   signed: boolean;
   goodsDesc: string;
+  goodsSpec: string | null;
   destination: string;
   deliveryDate: Date | string | null;
   deliveryMode: string | null;
@@ -119,6 +121,7 @@ export function presentSalesLink(row: SalesLinkCaseInput): SalesLinkView {
     n3Status: n3StatusOf(row.nodes),
     signed: isEligibleSalesCase(row),
     goodsDesc: row.goodsDesc,
+    goodsSpec: row.contract?.goodsSpec ?? null,
     destination: row.destination,
     deliveryDate: row.contract?.deliveryDate ?? null,
     deliveryMode: row.contract?.deliveryMode ?? null,

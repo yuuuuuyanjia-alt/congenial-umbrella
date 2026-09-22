@@ -43,7 +43,7 @@ export class CatalogController {
 
   @Get('health')
   health() {
-    return { ok: true, name: 'export-risk-guard', scope: 'N1-N9' };
+    return { ok: true, name: 'export-risk-guard', scope: 'N2-N9' };
   }
 
   @Get('catalog')
@@ -56,7 +56,7 @@ export class CatalogController {
       nodes: NODE_CATALOG,
       userRoles: UserRoleLabel,
       demoRoles: [
-        { role: UserRole.SALES, label: UserRoleLabel.SALES, hint: '录入客户/销售/采购并推进 N1–N9；工作台只读' },
+        { role: UserRole.SALES, label: UserRoleLabel.SALES, hint: '录入客户/销售/采购并推进 N2–N9；工作台只读' },
         { role: UserRole.RISK, label: UserRoleLabel.RISK, hint: '工作台领取/放行/驳回与筛查处置；可查看合同' },
         { role: UserRole.MANAGER, label: UserRoleLabel.MANAGER, hint: '只读：评估、占用、列表；不可审批或推进' },
       ],
@@ -101,7 +101,7 @@ export class CatalogController {
       },
       customers: {
         label: '客户管理',
-        note: '仅收录已到达销售合同确认（N3）的买方。按规范化名称+国家或税号匹配并合并，避免重复档案。展示中信保限额与占用（未履行完毕未回款、已履行完毕未回款）、剩余额度或超额分档、签过的合同、已收汇/未收汇、约定收款日。到期日优先用合同 paymentDueAt，否则由交货期 + 付款条件账期推算。询盘/报价阶段不录入。',
+        note: '仅收录已到达销售合同确认（N3）的买方。按规范化名称+国家或税号匹配并合并，避免重复档案。展示中信保限额与占用（未履行完毕未回款、已履行完毕未回款）、剩余额度或超额分档、签过的合同、已收汇/未收汇、约定收款日。到期日优先用合同 paymentDueAt，否则由交货期 + 付款条件账期推算。报价阶段不录入。',
       },
       suppliers: {
         label: '供应商管理',
@@ -118,7 +118,7 @@ export class CatalogController {
         bucketOrder: SALES_SHIPMENT_BUCKET_ORDER,
         grouping:
           '列表按未出运 / 已出运 / 已完成分组。已出运：CIF 装运日期已填，或 FOB 国内段到达口岸/港口时间已填，或电汇结算下装运日期已填，或 N6 已通过/已过装运节点，或已有提单号，或 FOB 等无提单路径已登记。已完成：已出运且客户已提货且 N9 已回款（水单/到账且未收汇为 0）。已出运列不含已完成。',
-        n3: '运输术语仅 FOB / CIF，与结算方式（前 T/T / 后 T/T）独立。销售合同金额可选人民币或美元。交货方式为自有仓或港口直出；直出填货物仓储地点、批次号。货物名称与规格自询盘/报价带入。销售合同填写装运港与装运期限（与装运页 CIF 装运港口、装运日期分开）。中信保保单须上传文件并写入证据链。CIF 装运（含货物状态）在装运页办理。前 T/T 登记收汇凭证、收汇金额与比例。',
+        n3: '买方与收货人在本节点填写并筛查，须通过后才能推进。运输术语仅 FOB / CIF，与结算方式（前 T/T / 后 T/T）独立。销售合同金额可选人民币或美元。交货方式为自有仓或港口直出；直出填货物仓储地点、批次号。货物名称与规格默认可从报价带入，与采购合同各自保存。销售合同填写装运港与装运期限（与装运页 CIF 装运港口、装运日期分开）。中信保保单须上传文件并写入证据链。CIF 装运（含货物状态）在装运页办理。前 T/T 登记收汇凭证、收汇金额与比例。',
         tradeTerms: TRADE_TERM_OPTIONS,
         ttTiming: TtTimingLabel,
         currencies: SALES_CURRENCY_OPTIONS,

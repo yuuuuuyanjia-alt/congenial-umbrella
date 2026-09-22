@@ -1,4 +1,10 @@
-import { displayGoodsName, parseContractUnit, parseTtVouchers, resolveCarriedGoods } from './goods-fields';
+import {
+  displayGoodsName,
+  parseContractUnit,
+  parseTtVouchers,
+  resolveCarriedGoods,
+  resolveIndependentGoods,
+} from './goods-fields';
 
 describe('货物名称 / 规格贯通', () => {
   it('展示回填剔除默认「机械」，保存侧不依赖此函数', () => {
@@ -31,6 +37,26 @@ describe('货物名称 / 规格贯通', () => {
         caseGoodsSpec: 'Φ12',
       }),
     ).toEqual({ goodsDesc: '', goodsSpec: 'Φ12' });
+  });
+
+  it('N3 与 N5 已保存的货物互不覆盖；未保存一侧才用对方作默认', () => {
+    expect(
+      resolveIndependentGoods(
+        { goodsDesc: '采购货', goodsSpec: '采购规格' },
+        { goodsDesc: '销售货', goodsSpec: '销售规格' },
+      ),
+    ).toEqual({ goodsDesc: '采购货', goodsSpec: '采购规格' });
+    expect(
+      resolveIndependentGoods({ goodsDesc: '', goodsSpec: null }, { goodsDesc: '销售货', goodsSpec: '销售规格' }),
+    ).toEqual({ goodsDesc: '', goodsSpec: '销售规格' });
+    expect(resolveIndependentGoods(null, { goodsDesc: '销售货', goodsSpec: '销售规格' })).toEqual({
+      goodsDesc: '销售货',
+      goodsSpec: '销售规格',
+    });
+    expect(resolveIndependentGoods({ goodsDesc: '机械', goodsSpec: '' }, { goodsDesc: '销售货' })).toEqual({
+      goodsDesc: '',
+      goodsSpec: '',
+    });
   });
 
   it('合同单位仅吨/千克，旧套/台回退为吨', () => {

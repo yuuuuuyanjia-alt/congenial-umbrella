@@ -6,7 +6,7 @@
 
     <view class="card" v-if="canCreate && kind === 'sales'">
       <view class="h2">新建销售合同</view>
-      <view class="muted">将创建出口案并打开询盘/客户 KYC。请按 N1 筛查 → N2 报价 → N3 销售合同办理，不能跳过。</view>
+      <view class="muted">将创建出口案并打开报价。请先完成报价，再在销售合同填写买方、收货人并完成筛查。不能跳过报价。</view>
       <view class="label">标题</view>
       <input class="input" v-model="draft.title" :placeholder="DEMO_CREATE.salesTitle" />
       <view class="label">金额</view>
@@ -166,8 +166,8 @@ const empty = computed(() =>
       ? '暂无采购合同。请点上方选择一笔已签订的销售合同办理采购。'
       : '暂无采购合同。请先完成销售合同签订，待案件到达国内采购/备货后再登记采购合同。'
     : canCreate.value
-      ? '暂无销售合同。可点上方新建；新案从询盘 KYC 起，通过后才会出现在本列表。'
-      : '暂无销售合同。询盘未通过或尚未到达销售合同节点的案件不在此列。',
+      ? '暂无销售合同。可点上方新建；新案从报价起，到达销售合同后才会出现在本列表。'
+      : '暂无销售合同。尚未到达销售合同节点的案件不在此列。',
 );
 
 const list = computed(() => {

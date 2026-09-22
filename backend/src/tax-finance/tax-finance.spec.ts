@@ -422,9 +422,9 @@ describe('退税·融资性工作台状态机', () => {
     expect(blocked.decision).toBe(Decision.HARD_BLOCK);
     expect(blocked.missing).toContain('N5_PO_NO');
 
-    const passN1 = applyTaxFinanceGate(
+    const passQuote = applyTaxFinanceGate(
       {
-        nodeCode: 'N1',
+        nodeCode: 'N2',
         decision: Decision.PASS,
         canProceed: true,
         missing: [],
@@ -433,7 +433,7 @@ describe('退税·融资性工作台状态机', () => {
       },
       base(),
     );
-    expect(passN1.taxFinance).toBeUndefined();
+    expect(passQuote.taxFinance).toBeUndefined();
     expect(TAX_FINANCE_DIRECT_DOCS_REASON).toContain('港口直出');
   });
 });

@@ -4,7 +4,7 @@
       <view class="eyebrow">国有企业 · 跨境出口</view>
       <view class="h1">贸易风险管控</view>
       <view class="muted" style="margin-top: 12rpx">
-        筛查嵌在询盘→报价→销售合同→变更→采购合同/国内备货→装运→单证→报关→收汇业务流中，无需单独登录筛查系统。销售合同与采购合同分开签订，惯例先销售后采购。高风险硬拦截，中风险进审核队列，低风险软提示不阻断。全链路审计留痕。
+        筛查嵌在报价→销售合同→变更→采购合同/国内备货→装运→单证→报关→收汇业务流中，无需单独登录筛查系统。买方筛查在销售合同办理。销售合同与采购合同分开签订，惯例先销售后采购。高风险硬拦截，中风险进审核队列，低风险软提示不阻断。全链路审计留痕。
       </view>
     </view>
 
@@ -58,7 +58,7 @@ const entryBlocks = computed(() => homeEntryBlocks(role.value));
 const entryHint = computed(() => {
   if (role.value === 'RISK') return '本岗默认先进入审核工作台；销售/采购合同也可进入。';
   if (role.value === 'MANAGER') return '本岗只读：先看客户评估与合同列表，不可审批、推进或新建合同。';
-  return '本岗可新建并录入销售合同、采购合同并推进 N1–N9。';
+  return '本岗可新建并录入销售合同、采购合同并推进 N2–N9。';
 });
 function syncNavTitle() {
   uni.setNavigationBarTitle({
@@ -88,14 +88,14 @@ const paths = [
     title: '软提示',
     tag: 'SOFT ALERT',
     cls: 'badge-soft',
-    desc: '名称近似命中（低置信），提示关注但不阻断询盘推进。',
+    desc: '名称近似命中（低置信），提示关注但不阻断销售合同推进。',
   },
   {
     caseNo: 'DEMO-BLOCK',
     title: '硬拦截',
     tag: 'HARD BLOCK',
     cls: 'badge-block',
-    desc: '高置信命中 OFAC 模拟清单，N1 闸门拒绝进入后续交易。',
+    desc: '高置信命中 OFAC 模拟清单，销售合同买方筛查拒绝推进。',
   },
   {
     caseNo: 'DEMO-FOB',

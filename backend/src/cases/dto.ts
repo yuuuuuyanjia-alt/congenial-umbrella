@@ -53,11 +53,6 @@ export class TtVoucherDto {
   @IsOptional() @IsString() fileName?: string | null;
 }
 
-export class SaveInquiryDto {
-  @IsOptional() @IsString() goodsDesc?: string;
-  @IsOptional() @IsString() goodsSpec?: string;
-}
-
 export class SaveContractDto {
   @IsString() counterparty: string;
   @IsOptional() @IsString() incoterms?: string;
@@ -269,6 +264,10 @@ export class SavePlanDto {
   installments?: SavePlanInstallmentDto[];
   /** 关联的销售/出口案件 id（须已签销售合同） */
   @IsOptional() @IsString() salesCaseId?: string;
+  /** 采购合同货物名称。与销售合同分列保存，不回写 N3。 */
+  @IsOptional() @IsString() goodsDesc?: string | null;
+  /** 采购合同规格。与销售合同分列保存，不回写 N3。 */
+  @IsOptional() @IsString() goodsSpec?: string | null;
 }
 
 export class SaveCustomsDto {

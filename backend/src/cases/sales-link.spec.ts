@@ -88,7 +88,7 @@ describe('销售合同关联（先销售后采购）', () => {
     expect(isSalesContractSigned({ currentNode: 'N4', n3Status: NodeStatus.IN_PROGRESS, hasContract: true })).toBe(true);
   });
 
-  it('询盘/报价阶段不可作为采购关联对象', () => {
+  it('报价阶段不可作为采购关联对象', () => {
     expect(isSalesContractSigned({ currentNode: 'N1', n3Status: NodeStatus.NOT_STARTED, hasContract: true })).toBe(
       false,
     );
@@ -219,7 +219,7 @@ describe('销售/采购合同列表分流（同一案件模型，按节点过滤
     expect(parseContractListKind('')).toBeUndefined();
   });
 
-  it('N3 为销售列表起点，询盘硬拦截与报价中案件不进入销售合同列表', () => {
+  it('N3 为销售列表起点，未到销售合同节点的案件不进入销售合同列表', () => {
     expect(hasReachedNode('N2', 'N3')).toBe(false);
     expect(hasReachedNode('N3', 'N3')).toBe(true);
     expect(hasReachedNode('N5', 'N3')).toBe(true);

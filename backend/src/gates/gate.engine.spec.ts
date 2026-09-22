@@ -1,7 +1,6 @@
 import { Decision, N3_SINOSURE_UNREGISTERED_REASON, N6_PLUS_PENDING_CHANGE_REASON, SINOSURE_EXPOSURE_HIGH_REVIEW_REASON } from '../common/constants';
 import { CaseSnapshot } from '../common/types';
 import {
-  evaluateN1,
   evaluateN2,
   evaluateN3,
   evaluateN3ContractSave,
@@ -219,8 +218,8 @@ function fobNoBlSnap(over: Partial<CaseSnapshot> = {}): CaseSnapshot {
 }
 
 describe('闸门引擎 MVP 节点', () => {
-  it('N1 高置信命中硬拦截', () => {
-    const r = evaluateN1(
+  it('N3 买方高置信命中硬拦截，不得推进销售合同', () => {
+    const r = evaluateN3(
       baseSnap({
         hits: [
           {
@@ -231,17 +230,19 @@ describe('闸门引擎 MVP 节点', () => {
             riskLevel: 'HIGH',
             disposition: 'OPEN',
             score: 98,
+            partyRole: 'BUYER',
+            nodeCode: 'N3',
           },
         ],
       }),
     );
     expect(r.decision).toBe(Decision.HARD_BLOCK);
     expect(r.canProceed).toBe(false);
-    expect(r.missing).toContain('N1_HIGH_CONFIDENCE_HIT');
+    expect(r.missing).toContain('N3_HIGH_CONFIDENCE_HIT');
   });
 
-  it('N1 不把国内供应商命中当作客户 KYC 拦截', () => {
-    const r = evaluateN1(
+  it('N3 不把国内供应商命中当作买方筛查拦截', () => {
+    const r = evaluateN3(
       baseSnap({
         hits: [
           {
@@ -262,38 +263,45 @@ describe('闸门引擎 MVP 节点', () => {
     expect(r.decision).toBe(Decision.PASS);
   });
 
-  it('N1 无付款人仍可通过（买方与收货人齐全即可）', () => {
-    const r = evaluateN1(
+  it('N3 无付款人仍可通过（买方与收货人齐全即可）', () => {
+    const r = evaluateN3(
       baseSnap({
         parties: [
           { role: 'BUYER', name: 'Nordlicht GmbH' },
           { role: 'CONSIGNEE', name: 'Nordlicht GmbH' },
+          { role: 'SUPPLIER', name: '苏州精工机械有限公司', country: 'CN' },
         ],
       }),
     );
     expect(r.canProceed).toBe(true);
-    expect(r.missing).not.toContain('N1_PARTY_PAYER');
+    expect(r.missing).not.toContain('N3_PARTY_PAYER');
   });
 
-  it('N1 缺少买方或收货人拒绝', () => {
-    const noBuyer = evaluateN1(
+  it('N3 缺少买方或收货人拒绝', () => {
+    const noBuyer = evaluateN3(
       baseSnap({
         parties: [{ role: 'CONSIGNEE', name: 'Nordlicht GmbH' }],
       }),
     );
     expect(noBuyer.canProceed).toBe(false);
-    expect(noBuyer.missing).toContain('N1_PARTY_BUYER');
-    const noConsignee = evaluateN1(
+    expect(noBuyer.missing).toContain('N3_PARTY_BUYER');
+    const noConsignee = evaluateN3(
       baseSnap({
         parties: [{ role: 'BUYER', name: 'Nordlicht GmbH' }],
       }),
     );
     expect(noConsignee.canProceed).toBe(false);
-    expect(noConsignee.missing).toContain('N1_PARTY_CONSIGNEE');
+    expect(noConsignee.missing).toContain('N3_PARTY_CONSIGNEE');
   });
 
-  it('N1 低置信软提示不阻断', () => {
-    const r = evaluateN1(
+  it('N3 尚未筛查不得推进', () => {
+    const r = evaluateN3(baseSnap({ kycRan: false }));
+    expect(r.canProceed).toBe(false);
+    expect(r.missing).toContain('N3_SCREENING_NOT_RUN');
+  });
+
+  it('N3 买方低置信软提示不阻断', () => {
+    const r = evaluateN3(
       baseSnap({
         hits: [
           {
@@ -304,6 +312,8 @@ describe('闸门引擎 MVP 节点', () => {
             riskLevel: 'LOW',
             disposition: 'OPEN',
             score: 28,
+            partyRole: 'BUYER',
+            nodeCode: 'N3',
           },
         ],
       }),
@@ -312,8 +322,8 @@ describe('闸门引擎 MVP 节点', () => {
     expect(r.canProceed).toBe(true);
   });
 
-  it('N1 中风险进入审核队列', () => {
-    const r = evaluateN1(
+  it('N3 买方中风险进入审核队列', () => {
+    const r = evaluateN3(
       baseSnap({
         hits: [
           {
@@ -324,6 +334,8 @@ describe('闸门引擎 MVP 节点', () => {
             riskLevel: 'MEDIUM',
             disposition: 'OPEN',
             score: 64,
+            partyRole: 'BUYER',
+            nodeCode: 'N3',
           },
         ],
       }),
@@ -1568,7 +1580,7 @@ describe('闸门引擎 N4 变更管理', () => {
     expect(r.reasons.join('')).toContain('无待确认变更');
   });
 
-  it('收货人变更为空时关联复核 N1 拒绝', () => {
+  it('收货人变更为空时关联复核买方筛查拒绝', () => {
     const r = evaluateN4(
       baseSnap({
         changeOrders: [
@@ -1588,7 +1600,7 @@ describe('闸门引擎 N4 变更管理', () => {
       }),
     );
     expect(r.canProceed).toBe(false);
-    expect(r.missing.some((m) => m.includes('N1_PARTY_CONSIGNEE'))).toBe(true);
+    expect(r.missing.some((m) => m.includes('N3_PARTY_CONSIGNEE'))).toBe(true);
   });
 });
 
@@ -1718,7 +1730,7 @@ describe('闸门引擎 N5 国内采购/备货', () => {
             disposition: 'OPEN',
             score: 98,
             partyRole: 'BUYER',
-            nodeCode: 'N1',
+            nodeCode: 'N3',
           },
         ],
       }),

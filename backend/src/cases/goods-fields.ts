@@ -29,6 +29,23 @@ export type GoodsCarryInput = {
  * 贯通顺序：合同 → 报价 → 报价快照 → 案件。
  * 「机械」只在展示回填时剔除，保存原文仍照收。
  */
+/**
+ * N3 与 N5 各自保存货物名称/规格。
+ * own 字段为 null/undefined 时才用 fallback（报价带入 N3、销售合同暂作 N5 默认）。
+ * 已写入的值（含空字符串）不再被另一侧覆盖。
+ */
+export function resolveIndependentGoods(
+  own: { goodsDesc?: string | null; goodsSpec?: string | null } | null | undefined,
+  fallback?: { goodsDesc?: string | null; goodsSpec?: string | null } | null,
+): { goodsDesc: string; goodsSpec: string } {
+  const descOwned = !!own && own.goodsDesc != null;
+  const specOwned = !!own && own.goodsSpec != null;
+  return {
+    goodsDesc: displayGoodsName(descOwned ? own!.goodsDesc : fallback?.goodsDesc),
+    goodsSpec: displayGoodsSpec(specOwned ? own!.goodsSpec : fallback?.goodsSpec),
+  };
+}
+
 export function resolveCarriedGoods(input: GoodsCarryInput): { goodsDesc: string; goodsSpec: string } {
   const quote = input.quote;
   return {

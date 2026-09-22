@@ -73,7 +73,7 @@ model TradeCase {
   currentNode String
   overallRisk String
   goodsDesc   String
-  /// 规格（与货物名称分列，贯通 N1/N2/N3）
+  /// 规格（报价可带入销售合同；采购合同另存，互不覆盖）
   goodsSpec   String?
   destination String
   amountFen   Int
@@ -203,7 +203,7 @@ model Contract {
   hasDisputeClause    Boolean   @default(false)
   isFinal             Boolean   @default(false)
   goodsDesc           String?
-  /// 规格（与货物名称分列，贯通 N1/N2/N3）
+  /// 规格（报价可带入；与采购合同分列，保存不覆盖 N5）
   goodsSpec           String?
   amountFen           Int?
   currency            String    @default("USD")
@@ -544,6 +544,10 @@ model ProcurementPlan {
   /// 本采购合同服务的销售/出口案件（须已达 N3 且已签销售合同）
   salesCaseId               String?
   poNo                      String?
+  /// 采购合同货物名称。与销售合同各自保存，保存时不回写合同或案件品名。
+  goodsDesc                 String?
+  /// 采购合同规格。空字符串表示用户清空；null 表示尚未单独填写，界面可暂用销售合同作默认。
+  goodsSpec                 String?
   /// 供应商实际交付日期（计划交付，接口字段仍为 plannedArrival）
   plannedArrival            DateTime?
   /// 对照用：关联销售合同交货期快照；闸门优先用关联销售合同当前交货期

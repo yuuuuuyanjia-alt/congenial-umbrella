@@ -17,10 +17,6 @@
       "style": { "navigationBarTitleText": "案件详情" }
     },
     {
-      "path": "pages/node/kyc",
-      "style": { "navigationBarTitleText": "询盘/客户KYC" }
-    },
-    {
       "path": "pages/node/quote",
       "style": { "navigationBarTitleText": "报价环节" }
     },

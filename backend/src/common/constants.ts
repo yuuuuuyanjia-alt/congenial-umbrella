@@ -1,14 +1,6 @@
 /** 节点目录：询盘 → 收汇 九节点全量。N4 无待确认变更时可直接过闸。 */
 export const NODE_CATALOG = [
   {
-    code: 'N1',
-    name: '询盘/客户KYC',
-    mvp: true,
-    isHardGate: false,
-    isStub: false,
-    summary: '买方/收货人关系确认，制裁与不可靠实体筛查，生成KYC报告与风险评分。付款人不再作为询盘必填当事方。',
-  },
-  {
     code: 'N2',
     name: '报价环节',
     mvp: true,
@@ -22,7 +14,7 @@ export const NODE_CATALOG = [
     mvp: true,
     isHardGate: false,
     isStub: false,
-    summary: '销售/出口合同与采购合同分开签订。销售合同金额可选人民币或美元；中信保限额仍登记美元，占用不换汇，仅美元销售计入美元占用池，人民币合同展示原币并提示暂不计入美元占用。运输术语仅 FOB / CIF，与前 T/T / 后 T/T 独立。交货方式为自有仓或港口直出；直出填仓储地点、批次号。货物名称与规格自询盘/报价带入。销售合同填写装运港与装运期限（与装运页 CIF 装运港口、装运日期分开）。中信保保单上传文件并写入证据链。CIF 装运节点在装运页办理。',
+    summary: '销售/出口合同与采购合同分开签订。买方与收货人在本节点填写并完成制裁/不可靠实体筛查，须通过后才能推进；不再单设询盘 KYC 页。销售合同金额可选人民币或美元；中信保限额仍登记美元，占用不换汇，仅美元销售计入美元占用池，人民币合同展示原币并提示暂不计入美元占用。运输术语仅 FOB / CIF，与前 T/T / 后 T/T 独立。交货方式为自有仓或港口直出；直出填仓储地点、批次号。货物名称与规格默认可从报价带入，与采购合同各自保存。销售合同填写装运港与装运期限（与装运页 CIF 装运港口、装运日期分开）。中信保保单上传文件并写入证据链。CIF 装运节点在装运页办理。',
   },
   {
     code: 'N4',
@@ -94,11 +86,11 @@ export const PartyRoleLabel: Record<string, string> = {
 
 export const CUSTOMER_PARTY_ROLES = [PartyRole.BUYER, PartyRole.PAYER, PartyRole.CONSIGNEE] as const;
 
-/** 询盘 KYC 过闸必填当事方：买方与收货人。付款人可缺省。 */
-export const N1_REQUIRED_PARTY_ROLES = [PartyRole.BUYER, PartyRole.CONSIGNEE] as const;
+/** 销售合同过闸必填当事方：买方与收货人。付款人可缺省。原询盘 KYC 必填项，现并入 N3。 */
+export const N3_REQUIRED_PARTY_ROLES = [PartyRole.BUYER, PartyRole.CONSIGNEE] as const;
 
-/** 新建销售案预填当事方（不含付款人）。 */
-export const N1_CREATE_PARTY_ROLES = [PartyRole.BUYER, PartyRole.CONSIGNEE] as const;
+/** 新建销售案预填当事方（不含付款人），在 N3 可改。 */
+export const N3_CREATE_PARTY_ROLES = N3_REQUIRED_PARTY_ROLES;
 
 export const QuoteIncludedItem = {
   OCEAN_FREIGHT: 'OCEAN_FREIGHT',

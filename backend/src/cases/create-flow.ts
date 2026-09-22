@@ -1,4 +1,4 @@
-import { N1_CREATE_PARTY_ROLES, PartyRole } from '../common/constants';
+import { N3_CREATE_PARTY_ROLES, PartyRole } from '../common/constants';
 import { SALES_CURRENCY } from '../common/currencies';
 import { canWriteBusiness } from '../auth/roles';
 import { isEligibleSalesCase, isProcurementContractListItem, isSalesContractListItem } from './sales-link';
@@ -26,7 +26,7 @@ export type CreateCaseSeedInput = {
 };
 
 /**
- * 销售：POST /cases 从 N1 起，落地询盘 KYC，用户沿 N1→N2→N3 填写销售合同（不跳到空白 N3）。
+ * 销售：POST /cases 从 N2 报价起，再进入 N3 填写买方/收货人、筛查并确认销售合同（不经过询盘页）。
  * 采购：不新建无销售合同的案件；须点选一笔已签销售合同，打开该案 N5（已有 PO 则编辑）。
  */
 export function contractCreateLanding(kind: ContractCreateKind) {
@@ -42,11 +42,11 @@ export function contractCreateLanding(kind: ContractCreateKind) {
   }
   return {
     createsNewCase: true as const,
-    formNode: 'N1' as const,
-    formPath: '/pages/node/kyc',
-    earliestWritable: 'N1' as const,
+    formNode: 'N2' as const,
+    formPath: '/pages/node/quote',
+    earliestWritable: 'N2' as const,
     requiresSignedSalesPick: false,
-    mustPassBeforeAdvance: ['N1', 'N2'] as const,
+    mustPassBeforeAdvance: ['N2'] as const,
   };
 }
 
@@ -64,12 +64,12 @@ export function demoCreateCaseInput(title?: string | null, amountFen?: number | 
   };
 }
 
-/** 买方/收货人同名预填，便于在 N1 直接筛查。付款人不再预填。 */
+/** 买方/收货人同名预填，在 N3 可改并筛查。付款人不再预填。 */
 export function demoPartiesFromBuyer(buyerName?: string | null, country?: string | null) {
   const name = String(buyerName || '').trim();
   if (!name) return [];
   const c = String(country || '').trim() || null;
-  return N1_CREATE_PARTY_ROLES.map((role) => ({
+  return N3_CREATE_PARTY_ROLES.map((role) => ({
     role,
     name,
     country: c,

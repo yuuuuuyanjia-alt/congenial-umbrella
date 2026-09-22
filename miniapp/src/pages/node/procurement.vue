@@ -8,9 +8,9 @@
       </view>
       <view class="muted" v-else-if="c.currentNode" style="margin-top: 8rpx">本案当前节点：{{ c.currentNode }} {{ currentNodeName }}</view>
       <view class="err" v-if="needsKycFirst" style="margin-top: 12rpx">
-        本案尚未到达采购合同节点。保存或推进前须从已签订的销售合同中任选一笔关联，不会自动带入。过闸仍须按九节点从当前节点推进。
+        本案尚未到达采购合同节点。请先完成报价与销售合同。保存或推进前须从已签订的销售合同中任选一笔关联，不会自动带入。
       </view>
-      <view class="btn btn-ghost" v-if="needsKycFirst && canWriteBusiness" @click="goEarliest">去办询盘 / 客户 KYC</view>
+      <view class="btn btn-ghost" v-if="needsKycFirst && canWriteBusiness" @click="goEarliest">去办{{ earliestName }}</view>
     </view>
     <NextNodeCta
       :target="nextTarget"
@@ -96,6 +96,10 @@
       <view class="h2">采购合同 / 备货</view>
       <view class="label">采购订单 / 采购合同编号</view>
       <input class="input" v-model="form.poNo" placeholder="如 PO-2026-011" />
+      <view class="label">货物名称</view>
+      <input class="input" v-model="form.goodsDesc" placeholder="与销售合同各自填写，修改不会改写销售合同" />
+      <view class="label">规格</view>
+      <input class="input" v-model="form.goodsSpec" placeholder="如型号、尺寸" />
       <view class="label">关联销售合同交货期（对照用）</view>
       <view class="readonly" v-if="salesDeliveryYmd">{{ salesDeliveryYmd }}</view>
       <view class="muted" v-else>请先选择已签订的销售合同。有交货期时，计划交付日期或实际交付日期任一晚于该日须登记延期。</view>
@@ -232,6 +236,7 @@ import {
   yuanToFen,
 } from '../../api';
 import NextNodeCta from '../../components/NextNodeCta.vue';
+import { resolveIndependentGoods } from '../../goods-fields';
 import { useDemoRole } from '../../role';
 
 const FORM_NODE = 'N5';
@@ -272,6 +277,8 @@ const form = reactive({
   supplierAddress: '',
   salesCaseId: '',
   poNo: '',
+  goodsDesc: '',
+  goodsSpec: '',
   plannedArrival: '2026-11-28',
   actualArrival: '',
   amountYuan: '',
@@ -310,8 +317,14 @@ const salesDeliveryYmd = computed(() =>
 );
 const currentNodeName = computed(() => pipelineNodeName(c.value?.currentNode));
 const needsKycFirst = computed(() => !!c.value && !hasReachedNode(c.value.currentNode, FORM_NODE));
+const earliestCode = computed(() => {
+  const cur = c.value?.currentNode;
+  if (cur && cur !== 'N5' && cur !== 'N1') return cur;
+  return 'N2';
+});
+const earliestName = computed(() => pipelineNodeName(earliestCode.value));
 function goEarliest() {
-  if (id.value) goToNode(id.value, 'N1');
+  if (id.value) goToNode(id.value, earliestCode.value);
 }
 const nextTarget = computed(() =>
   c.value
@@ -537,6 +550,16 @@ async function reload() {
     form.installments = loaded.installments;
     form.paymentConditionText = loaded.installments[0]?.conditionText || p.installments?.[0]?.conditionText || '一次性付清';
   }
+  const sales = salesOptions.value.find((o: any) => o.id === form.salesCaseId);
+  const goods = resolveIndependentGoods(
+    p ? { goodsDesc: p.goodsDesc, goodsSpec: p.goodsSpec } : null,
+    {
+      goodsDesc: sales?.goodsDesc || c.value.contract?.goodsDesc || c.value.goodsDesc,
+      goodsSpec: sales?.goodsSpec || c.value.contract?.goodsSpec || c.value.goodsSpec,
+    },
+  );
+  form.goodsDesc = goods.goodsDesc;
+  form.goodsSpec = goods.goodsSpec;
 }
 
 function togglePicker() {

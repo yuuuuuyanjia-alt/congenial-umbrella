@@ -16,7 +16,8 @@ import {
   HISTORY_DEV_MEDIUM_PCT,
   HISTORY_DEV_SOFT_PCT,
   NodeStatus,
-  N1_REQUIRED_PARTY_ROLES,
+  N3_REQUIRED_PARTY_ROLES,
+  NODE_FLOW,
   N3_SINOSURE_UNREGISTERED_REASON,
   N5_SALES_LINK_REQUIRED_REASON,
   N5_SALES_NOT_SIGNED_REASON,
@@ -71,9 +72,6 @@ export function emptyResult(nodeCode: string): GateResult {
 export function evaluateNode(nodeCode: string, snap: CaseSnapshot): GateResult {
   let result: GateResult;
   switch (nodeCode) {
-    case 'N1':
-      result = evaluateN1(snap);
-      break;
     case 'N2':
       result = evaluateN2(snap);
       break;
@@ -116,17 +114,21 @@ export function supplierHitsOf(hits: HitSnap[]): HitSnap[] {
   return hits.filter((h) => isSupplierHit(h));
 }
 
-export function evaluateN1(snap: CaseSnapshot): GateResult {
-  const r = emptyResult('N1');
-  for (const role of N1_REQUIRED_PARTY_ROLES) {
+/**
+ * 买方 / 收货人制裁筛查。原 N1 询盘闸门，现并入 N3：未通过不得推进销售合同。
+ * 付款人不是必填。供应商命中不在此列。
+ */
+export function evaluateBuyerScreening(snap: CaseSnapshot): GateResult {
+  const r = emptyResult('N3');
+  for (const role of N3_REQUIRED_PARTY_ROLES) {
     if (!snap.parties.some((p) => p.role === role && p.name.trim())) {
-      r.missing.push(`N1_PARTY_${role}`);
+      r.missing.push(`N3_PARTY_${role}`);
       r.reasons.push(`缺少当事方：${PartyRoleLabel[role]}`);
     }
   }
   if (!snap.kycRan) {
-    r.missing.push('N1_SCREENING_NOT_RUN');
-    r.reasons.push('尚未完成制裁/不可靠实体筛查');
+    r.missing.push('N3_SCREENING_NOT_RUN');
+    r.reasons.push('尚未完成买方/收货人制裁与不可靠实体筛查');
   }
 
   const buckets = openHitBuckets(customerHitsOf(snap.hits));
@@ -134,8 +136,8 @@ export function evaluateN1(snap: CaseSnapshot): GateResult {
     applyHighScreening(
       r,
       buckets,
-      'N1_HIGH_CONFIDENCE_HIT',
-      '高置信命中制裁/不可靠实体清单，硬拦截，禁止进入后续交易节点',
+      'N3_HIGH_CONFIDENCE_HIT',
+      '高置信命中制裁/不可靠实体清单，硬拦截，禁止推进销售合同',
     )
   ) {
     return r;
@@ -145,19 +147,33 @@ export function evaluateN1(snap: CaseSnapshot): GateResult {
     applyMediumScreening(
       r,
       buckets,
-      'N1_REVIEW_PENDING',
-      '中风险命中，进入案例工作台审核队列，通过前不得推进',
+      'N3_REVIEW_PENDING',
+      '中风险命中，进入案例工作台审核队列，通过前不得推进销售合同',
     )
   ) {
     return r;
   }
   if (applyLowScreeningAlert(r, buckets, '低置信/低风险命中：软提示，不阻断业务，须保留审计痕迹')) {
-    r.reasons.push('当事方齐全，筛查仅低置信软提示');
+    r.reasons.push('买方与收货人齐全，筛查仅低置信软提示');
     return r;
   }
   r.decision = Decision.PASS;
   r.canProceed = true;
-  r.reasons.push('当事方齐全且筛查未命中阻断项');
+  r.reasons.push('买方与收货人齐全且筛查未命中阻断项');
+  return r;
+}
+
+function mergeBuyerScreeningSoft(r: GateResult, screening: GateResult): GateResult {
+  if (screening.decision !== Decision.SOFT_ALERT) return r;
+  for (const alert of screening.alerts) {
+    if (!r.alerts.includes(alert)) r.alerts.push(alert);
+  }
+  if (r.canProceed && (r.decision === Decision.PASS || r.decision === Decision.SOFT_ALERT)) {
+    if (r.decision === Decision.PASS) r.decision = Decision.SOFT_ALERT;
+    for (const reason of screening.reasons) {
+      if (!r.reasons.includes(reason)) r.reasons.push(reason);
+    }
+  }
   return r;
 }
 
@@ -227,6 +243,12 @@ export function evaluateN2(snap: CaseSnapshot): GateResult {
 }
 
 export function evaluateN3(snap: CaseSnapshot): GateResult {
+  const screening = evaluateBuyerScreening(snap);
+  if (!screening.canProceed) return screening;
+  return mergeBuyerScreeningSoft(evaluateN3Commercial(snap), screening);
+}
+
+function evaluateN3Commercial(snap: CaseSnapshot): GateResult {
   const r = emptyResult('N3');
   if (!hasRegisteredSinosureLimit(snap, 'N3')) {
     return blockN3SinosureUnregistered(r, snap);
@@ -905,8 +927,8 @@ function retriggerRelated(snap: CaseSnapshot, co: ChangeOrderSnap): GateResult |
   const fields = new Set(co.diffs.map((d) => d.field));
   const hypothetical = applyDiffsToSnap(snap, co.diffs);
   if (fields.has('consigneeName') || fields.has('buyerName') || fields.has('payerName')) {
-    const n1 = evaluateN1(hypothetical);
-    if (!n1.canProceed) return n1;
+    const screened = evaluateBuyerScreening(hypothetical);
+    if (!screened.canProceed) return screened;
   }
   if (fields.has('paymentTerms')) {
     const n3 = evaluateN3(hypothetical);
@@ -975,9 +997,10 @@ function refusePendingChangeAtShipment(r: GateResult, snap: CaseSnapshot): GateR
   return HARD_GATES.has(r.nodeCode) ? finalizeHard(r) : blockMissing(r);
 }
 
-/** 流程 1→2→3→4(按需)→5→6→7→8→9。N3 之后若无变更单则跳过 N4。 */
+/** 流程从报价起：2→3→4(按需)→5→6→7→8→9。N3 之后若无变更单则跳过 N4。历史 N1 直接进入报价。 */
 export function nextNode(current: string, snap?: CaseSnapshot): string | null {
-  const order = ['N1', 'N2', 'N3', 'N4', 'N5', 'N6', 'N7', 'N8', 'N9'];
+  if (current === 'N1') return 'N2';
+  const order = NODE_FLOW as readonly string[];
   const i = order.indexOf(current);
   if (i < 0 || i === order.length - 1) return null;
   if (current === 'N3' && snap && !(snap.changeOrders || []).length) return 'N5';
