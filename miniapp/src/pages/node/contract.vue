@@ -127,10 +127,13 @@
       <view class="muted" v-if="sinosureHint" style="margin-top: 8rpx">{{ sinosureHint }}</view>
       <view class="label">中信保保单</view>
       <view class="readonly" v-if="sino.fileName">{{ sino.fileName }}</view>
-      <view class="muted" v-else>请上传 PDF，或 Word / Excel / 图片。</view>
+      <view class="muted">请上传 PDF，或 Word / Excel / 图片。没有保单文件时，可点「使用演示示例保单」，无需打开本机文件选择器。</view>
       <view class="muted" v-if="sino.fileStored" style="margin-top: 8rpx">文件已写入证据链。</view>
       <view class="btn btn-ghost" v-if="sino.fileStored && sino.evidenceId" @click="openSinosureFile">查看保单文件</view>
-      <view class="btn btn-ghost" v-if="canWriteBusiness" @click="pickSinosureFile">{{ sino.fileName ? '重新上传保单' : '上传保单' }}</view>
+      <view class="sino-actions" v-if="canWriteBusiness">
+        <view class="btn btn-ghost" @click="pickSinosureFile">{{ sino.fileName ? '重新上传保单' : '上传保单' }}</view>
+        <view class="btn btn-ghost" @click="useDemoSinosure">{{ demoUploading ? '正在上传示例保单…' : '使用演示示例保单' }}</view>
+      </view>
       <view class="label">保单编号（可选）</view>
       <input class="input" v-model="sino.evidenceRef" placeholder="保单或限额批单编号，可留空" />
       <view class="label">投保限额</view>
@@ -164,6 +167,7 @@ import {
   decisionText,
   fenToYuan,
   chooseAndUploadSinosure,
+  uploadDemoSinosure,
   evidenceFileUrl,
   goToNode,
   hasReachedNode,
@@ -262,6 +266,7 @@ const sino = reactive({
   limitYuan: '',
   currency: SALES_CURRENCY,
 });
+const demoUploading = ref(false);
 
 const tradeTerm = computed(() => resolveTradeTerm(form.incoterms));
 
@@ -488,21 +493,38 @@ function stubVoucher() {
   ok.value = '已生成模拟收汇凭证（演示环境，非真实上传）';
 }
 
+function applySinosureUpload(uploaded: { evidenceId: string; fileName: string }) {
+  sino.evidenceId = uploaded.evidenceId;
+  sino.fileName = uploaded.fileName;
+  sino.fileStored = true;
+  ok.value = `已上传保单 ${uploaded.fileName}`;
+}
+
+function sinosureUploadError(e: any, ignoreCancel = false) {
+  const msg = e?.message || e?.errMsg || '';
+  if (ignoreCancel && (!msg || /cancel|取消|未选择/.test(String(msg)))) return;
+  err.value = Array.isArray(e?.message) ? e.message.join('；') : msg || '保单上传失败';
+}
+
 function pickSinosureFile() {
-  if (!id.value) return;
+  if (!id.value || demoUploading.value) return;
   err.value = '';
   ok.value = '';
   chooseAndUploadSinosure(id.value)
-    .then((uploaded) => {
-      sino.evidenceId = uploaded.evidenceId;
-      sino.fileName = uploaded.fileName;
-      sino.fileStored = true;
-      ok.value = `已上传保单 ${uploaded.fileName}`;
-    })
-    .catch((e: any) => {
-      const msg = e?.message || e?.errMsg || '';
-      if (!msg || /cancel|取消|未选择/.test(String(msg))) return;
-      err.value = Array.isArray(e?.message) ? e.message.join('；') : msg || '保单上传失败';
+    .then(applySinosureUpload)
+    .catch((e: any) => sinosureUploadError(e, true));
+}
+
+function useDemoSinosure() {
+  if (!id.value || demoUploading.value) return;
+  err.value = '';
+  ok.value = '';
+  demoUploading.value = true;
+  uploadDemoSinosure(id.value)
+    .then(applySinosureUpload)
+    .catch((e: any) => sinosureUploadError(e))
+    .finally(() => {
+      demoUploading.value = false;
     });
 }
 
@@ -681,5 +703,13 @@ function goNext() {
   background: #f7f5f0;
   font-weight: 650;
   color: #0f3d2e;
+}
+.sino-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12rpx;
+}
+.sino-actions .btn {
+  flex: 1 1 280rpx;
 }
 </style>
