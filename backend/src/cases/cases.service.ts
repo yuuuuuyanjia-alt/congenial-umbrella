@@ -71,6 +71,19 @@ import {
 import { demoPartiesFromBuyer } from './create-flow';
 import { advanceResponseNextNode, laterNode, resolveAdvance } from './advance-guard';
 import {
+  aggregateRemittance,
+  batchNodeCreates,
+  BATCH_NODE_DONE,
+  caseReadyForBatchAdvance,
+  describeDefaultBatch,
+  isBatchPipelineNode,
+  nextBatchNode,
+  presentShipmentBatch,
+  rollupCaseShipping,
+  selectBatch,
+} from './shipment-batch';
+import { hasReachedN3 } from '../customers/customer-match';
+import {
   isCifFamilyIncoterms,
   mergeOmittedCifShipmentFields,
   normalizeTransportIncoterms,
@@ -140,8 +153,10 @@ export class CasesService {
         parties: true,
         hits: true,
         contract: true,
-        shipment: true,
-        settlement: true,
+        shipmentBatches: {
+          orderBy: { seq: 'asc' },
+          include: { shipment: true, settlement: true, nodes: true },
+        },
         procurementPlan: {
           include: {
             salesCase: { include: { contract: true, parties: true, nodes: true } },
@@ -159,15 +174,27 @@ export class CasesService {
     return filtered.map((c) => {
       const salesLink = c.procurementPlan?.salesCase ? presentSalesLink(c.procurementPlan.salesCase) : null;
       const supplierName = supplierNameOf(c);
-      const contract = presentSalesContract(c.contract, c.settlement);
+      const batches = c.shipmentBatches || [];
+      const primary = batches[0];
+      const amountFen = c.contract?.amountFen ?? c.amountFen;
+      const remittance = aggregateRemittance(batches, { contractAmountFen: amountFen, sole: batches.length <= 1 });
+      const contract = presentSalesContract(c.contract, remittance);
       const shipmentStatus = presentSalesShipmentStatus({
         status: c.status,
         currentNode: c.currentNode,
         nodes: c.nodes,
         contract,
-        shipment: c.shipment,
+        shipment: primary?.shipment,
         amountFen: contract?.amountFen ?? c.amountFen,
-        settlement: c.settlement,
+        settlement: remittance,
+        batches: batches.map((b) => ({
+          amountFen: b.amountFen,
+          currentNode: b.currentNode,
+          shipmentDate: b.shipmentDate,
+          nodes: b.nodes,
+          shipment: b.shipment,
+          settlement: b.settlement,
+        })),
       });
       return {
         ...c,
@@ -185,6 +212,9 @@ export class CasesService {
           salesLink,
         }),
         contract,
+        shipment: primary?.shipment ?? null,
+        settlement: primary?.settlement ?? null,
+        shipmentBatches: batches.map((b) => presentShipmentBatch(b, amountFen, batches.length <= 1)),
         ...shipmentStatus,
       };
     });
@@ -199,10 +229,17 @@ export class CasesService {
         hits: { include: { party: true } },
         kycReports: { orderBy: { createdAt: 'desc' }, take: 12 },
         contract: true,
-        shipment: { include: { approver: true } },
         documents: true,
         mismatchFixes: true,
-        settlement: true,
+        shipmentBatches: {
+          orderBy: { seq: 'asc' },
+          include: {
+            shipment: { include: { approver: true } },
+            settlement: true,
+            nodes: true,
+            documents: true,
+          },
+        },
         gateChecks: { orderBy: { createdAt: 'desc' }, take: 12 },
         quotes: { orderBy: { version: 'desc' } },
         changeOrders: { include: { diffs: true }, orderBy: { createdAt: 'asc' } },
@@ -238,7 +275,11 @@ export class CasesService {
     const sinosureExposure = await this.customers.occupancyForCase(id);
     const salesLink = c.procurementPlan?.salesCase ? presentSalesLink(c.procurementPlan.salesCase) : null;
     const supplierName = supplierNameOf(c);
-    const contract = presentSalesContract(c.contract, c.settlement);
+    const batches = c.shipmentBatches || [];
+    const primary = batches[0];
+    const amountFen = c.contract?.amountFen ?? c.amountFen;
+    const remittance = aggregateRemittance(batches, { contractAmountFen: amountFen, sole: batches.length <= 1 });
+    const contract = presentSalesContract(c.contract, remittance);
     const presentedContract = contract
       ? {
           ...contract,
@@ -251,7 +292,7 @@ export class CasesService {
       : null;
     const taxRebateReady = evaluateFt4({
       customs: c.customs ? { eportStatus: c.customs.eportStatus } : null,
-      settlement: c.settlement || undefined,
+      settlement: remittance || undefined,
       taxRebate: c.taxRebateChecklist,
     });
     const shipmentStatus = presentSalesShipmentStatus({
@@ -259,9 +300,17 @@ export class CasesService {
       currentNode: c.currentNode,
       nodes: c.nodes,
       contract,
-      shipment: c.shipment,
+      shipment: primary?.shipment,
       amountFen: contract?.amountFen ?? c.amountFen,
-      settlement: c.settlement,
+      settlement: remittance,
+      batches: batches.map((b) => ({
+        amountFen: b.amountFen,
+        currentNode: b.currentNode,
+        shipmentDate: b.shipmentDate,
+        nodes: b.nodes,
+        shipment: b.shipment,
+        settlement: b.settlement,
+      })),
     });
     return {
       ...c,
@@ -278,6 +327,9 @@ export class CasesService {
       }),
       catalog: NODE_CATALOG,
       contract: presentedContract,
+      shipment: primary?.shipment ?? null,
+      settlement: primary?.settlement ?? null,
+      shipmentBatches: batches.map((b) => presentShipmentBatch(b, amountFen, batches.length <= 1)),
       ...shipmentStatus,
       sinosureExposure,
       kycReports: c.kycReports.map((k) => ({ ...k, payload: safeJson(k.payload) })),
@@ -353,6 +405,10 @@ export class CasesService {
         data: parties.map((p) => ({ caseId: created.id, ...p })),
       });
     }
+    await this.createDefaultBatch(created.id, {
+      amountFen: dto.amountFen,
+      currency: requireSalesCurrency(dto.currency, '出口案件'),
+    });
     await this.touchNode(created.id, 'N2', NodeStatus.IN_PROGRESS);
     await this.audit.append({
       caseId: created.id,
@@ -529,6 +585,7 @@ export class CasesService {
       },
     });
     await this.snapshotContract(caseId, null);
+    await this.syncSoleBatchFromContract(caseId);
     await this.touchNode(caseId, 'N3', NodeStatus.IN_PROGRESS);
     await this.enrollBuyerIfReachedN3(caseId, actorId);
     await this.audit.append({
@@ -545,8 +602,8 @@ export class CasesService {
       newAmountFen: dto.amountFen ?? undefined,
       newCurrency: currency,
     });
-    const settlement = await this.prisma.settlement.findUnique({ where: { caseId } });
-    return { ...presentSalesContract(row, settlement), sinosureExposure, occupancyGate };
+    const remittance = await this.remittanceOf(caseId);
+    return { ...presentSalesContract(row, remittance), sinosureExposure, occupancyGate };
   }
 
   async saveSinosure(caseId: string, nodeCode: string, dto: SaveSinosureDto, actorId?: string) {
@@ -737,8 +794,10 @@ export class CasesService {
     file: { originalname: string; size: number; buffer: Buffer },
     actorId?: string,
     fileNameOverride?: string,
+    batchId?: string,
   ) {
     await this.ensureCase(caseId);
+    const batch = await this.requireBatch(caseId, batchId);
     const spec = tradeDocUpload(nodeCode, slot);
     if (!spec) throw new BadRequestException('不支持的单证类型');
     if (!file?.buffer?.length) throw new BadRequestException(`请选择${spec.label}文件`);
@@ -761,7 +820,9 @@ export class CasesService {
       ref: meta.storageKey,
       note: spec.label,
       payload: { ...meta, slot: spec.slot, uploaded: true },
+      batchId: batch.id,
     });
+    await this.touchBatchNode(batch.id, code, NodeStatus.IN_PROGRESS);
     await this.touchNode(caseId, code, NodeStatus.IN_PROGRESS);
     await this.audit.append({
       caseId,
@@ -771,6 +832,8 @@ export class CasesService {
       detail: {
         slot: spec.slot,
         kind: spec.kind,
+        batchId: batch.id,
+        batchNo: batch.batchNo,
         evidenceId: ev.id,
         fileName: meta.fileName,
         storageKey: meta.storageKey,
@@ -1082,6 +1145,7 @@ export class CasesService {
           data: { amountFen: patch.amountFen as number },
         });
       }
+      await this.syncSoleBatchFromContract(caseId);
     }
     if (partyChanged) {
       await this.screenKyc(caseId, actorId);
@@ -1287,8 +1351,9 @@ export class CasesService {
     };
   }
 
-  async saveShipment(caseId: string, dto: SaveShipmentDto, actorId?: string) {
+  async saveShipment(caseId: string, dto: SaveShipmentDto, actorId?: string, batchId?: string) {
     await this.ensureCase(caseId);
+    const batch = await this.requireBatch(caseId, batchId);
     const data = {
       hasCustomerWrittenInstruction: dto.hasCustomerWrittenInstruction,
       instructionRef: dto.instructionRef || null,
@@ -1304,8 +1369,8 @@ export class CasesService {
       incotermsOverride: normalizeTransportIncoterms(dto.incotermsOverride) || null,
     };
     const row = await this.prisma.shipment.upsert({
-      where: { caseId },
-      create: { caseId, ...data },
+      where: { batchId: batch.id },
+      create: { caseId, batchId: batch.id, ...data },
       update: data,
     });
     const existingContract = await this.prisma.contract.findUnique({ where: { caseId } });
@@ -1319,36 +1384,55 @@ export class CasesService {
       (v) => v !== undefined,
     );
     const effectiveTerm = normalizeTransportIncoterms(dto.incotermsOverride) || existingContract?.incoterms;
-    if (existingContract && (isCifFamilyIncoterms(effectiveTerm) || hasCifPayload)) {
-      const merged = mergeOmittedCifShipmentFields(cifIncoming, existingContract);
-      await this.prisma.contract.update({
-        where: { caseId },
-        data: {
-          shipmentPort: merged.shipmentPort ?? null,
-          shipmentDate: merged.shipmentDate ? parseDate(merged.shipmentDate) : null,
-          etaDate: merged.etaDate ? parseDate(merged.etaDate) : null,
-          arrivalPort: merged.arrivalPort ?? null,
-        },
+    const batchCount = await this.prisma.shipmentBatch.count({ where: { caseId } });
+    let voyage = {
+      shipmentPort: batch.shipmentPort,
+      shipmentDate: batch.shipmentDate,
+      etaDate: batch.etaDate,
+      arrivalPort: batch.arrivalPort,
+    };
+    if (isCifFamilyIncoterms(effectiveTerm) || hasCifPayload) {
+      const merged = mergeOmittedCifShipmentFields(cifIncoming, {
+        shipmentPort: batch.shipmentPort ?? (batchCount === 1 ? existingContract?.shipmentPort : null),
+        shipmentDate: batch.shipmentDate ?? (batchCount === 1 ? existingContract?.shipmentDate : null),
+        etaDate: batch.etaDate ?? (batchCount === 1 ? existingContract?.etaDate : null),
+        arrivalPort: batch.arrivalPort ?? (batchCount === 1 ? existingContract?.arrivalPort : null),
       });
+      voyage = {
+        shipmentPort: merged.shipmentPort ?? null,
+        shipmentDate: merged.shipmentDate ? parseDate(merged.shipmentDate) : null,
+        etaDate: merged.etaDate ? parseDate(merged.etaDate) : null,
+        arrivalPort: merged.arrivalPort ?? null,
+      };
+      await this.prisma.shipmentBatch.update({ where: { id: batch.id }, data: voyage });
+      if (existingContract && batchCount === 1) {
+        await this.prisma.contract.update({
+          where: { caseId },
+          data: voyage,
+        });
+      }
     }
+    await this.touchBatchNode(batch.id, 'N6', NodeStatus.IN_PROGRESS);
     await this.touchNode(caseId, 'N6', NodeStatus.IN_PROGRESS);
     await this.audit.append({
       caseId,
       actorId,
       action: 'SHIPMENT_SAVED',
       nodeCode: 'N6',
-      detail: dto,
+      detail: { ...dto, batchId: batch.id, batchNo: batch.batchNo },
     });
-    return row;
+    return { ...row, batchId: batch.id, ...voyage };
   }
 
-  async saveDocument(caseId: string, dto: SaveDocumentDto, actorId?: string) {
+  async saveDocument(caseId: string, dto: SaveDocumentDto, actorId?: string, batchId?: string) {
     await this.ensureCase(caseId);
+    const batch = await this.requireBatch(caseId, batchId);
     const existing = await this.prisma.tradeDocument.findFirst({
-      where: { caseId, type: dto.type },
+      where: { batchId: batch.id, type: dto.type },
     });
     const data = {
       caseId,
+      batchId: batch.id,
       type: dto.type,
       isFinal: dto.isFinal ?? false,
       fieldsJson: JSON.stringify(dto.fields ?? {}),
@@ -1356,71 +1440,63 @@ export class CasesService {
     const row = existing
       ? await this.prisma.tradeDocument.update({ where: { id: existing.id }, data })
       : await this.prisma.tradeDocument.create({ data });
+    await this.touchBatchNode(batch.id, 'N7', NodeStatus.IN_PROGRESS);
     await this.touchNode(caseId, 'N7', NodeStatus.IN_PROGRESS);
     await this.audit.append({
       caseId,
       actorId,
       action: 'DOCUMENT_SAVED',
       nodeCode: 'N7',
-      detail: { type: dto.type, isFinal: dto.isFinal },
+      detail: { type: dto.type, isFinal: dto.isFinal, batchId: batch.id, batchNo: batch.batchNo },
     });
     return { ...row, fields: dto.fields };
   }
 
-  async saveFix(caseId: string, dto: SaveFixDto, actorId?: string) {
+  async saveFix(caseId: string, dto: SaveFixDto, actorId?: string, batchId?: string) {
     await this.ensureCase(caseId);
-    const row = await this.prisma.docMismatchFix.create({ data: { caseId, ...dto } });
+    const batch = await this.requireBatch(caseId, batchId);
+    const row = await this.prisma.docMismatchFix.create({ data: { caseId, batchId: batch.id, ...dto } });
     await this.audit.append({
       caseId,
       actorId,
       action: 'MISMATCH_FIX_RECORDED',
       nodeCode: 'N7',
-      detail: dto,
+      detail: { ...dto, batchId: batch.id, batchNo: batch.batchNo },
     });
     return row;
   }
 
-  async saveSettlement(caseId: string, dto: SaveSettlementDto, actorId?: string) {
+  async saveSettlement(caseId: string, dto: SaveSettlementDto, actorId?: string, batchId?: string) {
     await this.ensureCase(caseId);
+    const batch = await this.requireBatch(caseId, batchId);
     const isThirdParty =
       dto.isThirdParty ?? dto.payerName.trim().toUpperCase() !== dto.buyerName.trim().toUpperCase();
     const { receivedAt, ...rest } = dto;
-    const existing = await this.prisma.settlement.findUnique({ where: { caseId } });
+    const existing = await this.prisma.settlement.findUnique({ where: { batchId: batch.id } });
     const parsedReceived =
       parseDate(receivedAt) ?? existing?.receivedAt ?? (dto.hasRemittanceMemo ? new Date() : null);
     const row = await this.prisma.settlement.upsert({
-      where: { caseId },
-      create: { caseId, ...rest, isThirdParty, receivedAt: parsedReceived },
+      where: { batchId: batch.id },
+      create: { caseId, batchId: batch.id, ...rest, isThirdParty, receivedAt: parsedReceived },
       update: { ...rest, isThirdParty, receivedAt: parsedReceived },
     });
-    const trade = await this.prisma.tradeCase.findUnique({
-      where: { id: caseId },
-      include: { contract: true },
-    });
-    if (trade?.contract) {
-      const amountFen = trade.contract.amountFen ?? trade.amountFen ?? 0;
-      await this.prisma.contract.update({
-        where: { caseId },
-        data: {
-          hasRemittance: !!(row.receivedAt || row.hasRemittanceMemo),
-          remittedFen: receivedFenOf(row, amountFen),
-        },
-      });
-    }
+    await this.refreshContractRemittance(caseId);
+    await this.touchBatchNode(batch.id, 'N9', NodeStatus.IN_PROGRESS);
     await this.touchNode(caseId, 'N9', NodeStatus.IN_PROGRESS);
     await this.audit.append({
       caseId,
       actorId,
       action: 'SETTLEMENT_SAVED',
       nodeCode: 'N9',
-      detail: dto,
+      detail: { ...dto, batchId: batch.id, batchNo: batch.batchNo },
     });
     return row;
   }
 
-  async previewGate(caseId: string, nodeCode: string) {
+  async previewGate(caseId: string, nodeCode: string, batchId?: string) {
     await this.ensureCase(caseId);
-    return this.gates.evaluateAndPersist(caseId, nodeCode);
+    const scoped = isBatchPipelineNode(nodeCode) ? (await this.requireBatch(caseId, batchId)).id : undefined;
+    return this.gates.evaluateAndPersist(caseId, nodeCode, scoped);
   }
 
   async saveTaxRebate(caseId: string, dto: SaveTaxRebateDto, actorId?: string) {
@@ -1516,7 +1592,10 @@ export class CasesService {
     return this.customers.occupancyForCase(caseId, { ...override, newCurrency });
   }
 
-  async advance(caseId: string, nodeCode: string, actorId?: string) {
+  async advance(caseId: string, nodeCode: string, actorId?: string, batchId?: string) {
+    if (isBatchPipelineNode(nodeCode)) {
+      return this.advanceBatch(caseId, nodeCode, actorId, batchId);
+    }
     const tradeCase = await this.ensureCase(caseId);
     const node = await this.prisma.caseNode.findUnique({
       where: { caseId_code: { caseId, code: nodeCode } },
@@ -2123,11 +2202,12 @@ export class CasesService {
     caseId: string,
     nodeCode: string,
     kind: string,
-    input: { ref?: string; note?: string; payload?: unknown },
+    input: { ref?: string; note?: string; payload?: unknown; batchId?: string | null },
   ) {
     return this.prisma.evidence.create({
       data: {
         caseId,
+        batchId: input.batchId || null,
         nodeCode,
         kind,
         ref: input.ref,
@@ -2135,6 +2215,334 @@ export class CasesService {
         payload: JSON.stringify(input.payload ?? {}),
       },
     });
+  }
+
+  async listBatches(caseId: string) {
+    await this.ensureCase(caseId);
+    const [trade, contract] = await Promise.all([
+      this.prisma.tradeCase.findUnique({ where: { id: caseId } }),
+      this.prisma.contract.findUnique({ where: { caseId } }),
+    ]);
+    const rows = await this.prisma.shipmentBatch.findMany({
+      where: { caseId },
+      orderBy: { seq: 'asc' },
+      include: { shipment: true, settlement: true, nodes: true },
+    });
+    const amountFen = contract?.amountFen ?? trade?.amountFen ?? 0;
+    return rows.map((b) => presentShipmentBatch(b, amountFen, rows.length <= 1));
+  }
+
+  async createBatch(
+    caseId: string,
+    dto: { batchNo?: string; quantity?: number; unit?: string; amountFen?: number },
+    actorId?: string,
+  ) {
+    const trade = await this.ensureCase(caseId);
+    const n3 = await this.prisma.caseNode.findUnique({ where: { caseId_code: { caseId, code: 'N3' } } });
+    if (!hasReachedN3(trade.currentNode, n3?.status)) {
+      throw new BadRequestException('销售合同到达 N3 之后才能新建出运批次');
+    }
+    const existing = await this.prisma.shipmentBatch.findMany({
+      where: { caseId },
+      orderBy: { seq: 'asc' },
+    });
+    const seq = (existing.reduce((max, row) => Math.max(max, row.seq), 0) || 0) + 1;
+    const batchNo = (dto.batchNo || '').trim() || String(seq);
+    if (existing.some((row) => row.batchNo === batchNo)) {
+      throw new BadRequestException(`批次号 ${batchNo} 已存在`);
+    }
+    const contract = await this.prisma.contract.findUnique({ where: { caseId } });
+    const described = describeDefaultBatch({ status: NodeStatus.NOT_STARTED, currentNode: 'N2', nodes: [] });
+    const batch = await this.prisma.shipmentBatch.create({
+      data: {
+        caseId,
+        batchNo,
+        seq,
+        quantity: dto.quantity ?? null,
+        unit: dto.unit?.trim() || contract?.unit || null,
+        amountFen: dto.amountFen ?? null,
+        currency: contract?.currency || trade.currency,
+        currentNode: 'N6',
+        status: described.status === CaseStatus.COMPLETED ? NodeStatus.NOT_STARTED : NodeStatus.NOT_STARTED,
+        nodes: { create: batchNodeCreates([]) },
+      },
+      include: { shipment: true, settlement: true, nodes: true },
+    });
+    await this.syncCaseFromBatches(caseId);
+    await this.audit.append({
+      caseId,
+      actorId,
+      action: 'SHIPMENT_BATCH_CREATED',
+      nodeCode: 'N6',
+      detail: { batchId: batch.id, batchNo: batch.batchNo, seq, quantity: dto.quantity ?? null, amountFen: dto.amountFen ?? null },
+    });
+    const amountFen = contract?.amountFen ?? trade.amountFen;
+    return presentShipmentBatch(batch, amountFen, existing.length === 0);
+  }
+
+  private async advanceBatch(caseId: string, nodeCode: string, actorId?: string, batchId?: string) {
+    const tradeCase = await this.ensureCase(caseId);
+    if (!caseReadyForBatchAdvance(tradeCase.currentNode, tradeCase.status)) {
+      throw new HttpException(
+        {
+          code: 'BATCH_NOT_READY',
+          message: '销售合同尚未进入装运，不能单独推进出运批次',
+          currentNode: tradeCase.currentNode,
+          requestedNode: nodeCode,
+        },
+        HttpStatus.CONFLICT,
+      );
+    }
+    const batch = await this.requireBatch(caseId, batchId);
+    const node = await this.prisma.shipmentBatchNode.findUnique({
+      where: { batchId_code: { batchId: batch.id, code: nodeCode } },
+    });
+    if (!node) throw new NotFoundException('批次节点不存在');
+    const batchCurrent = batch.currentNode === BATCH_NODE_DONE ? 'N9' : batch.currentNode;
+    const guard = resolveAdvance({
+      currentNode: batchCurrent,
+      requestedNode: nodeCode,
+      requestedStatus: node.status,
+    });
+    if (guard.kind === 'idempotent') {
+      return {
+        stub: false,
+        idempotent: true,
+        batchId: batch.id,
+        batchNo: batch.batchNo,
+        result: {
+          nodeCode,
+          decision: node.decision || Decision.PASS,
+          canProceed: true,
+          missing: [],
+          reasons: [guard.reason || ADVANCE_IDEMPOTENT_REASON],
+          alerts: [],
+        },
+        nextNode: batch.currentNode === BATCH_NODE_DONE ? null : batch.currentNode,
+        currentNode: tradeCase.currentNode,
+      };
+    }
+    if (guard.kind === 'reject') {
+      throw new HttpException(
+        {
+          code: guard.code,
+          message: guard.message || ADVANCE_NOT_CURRENT_REASON,
+          currentNode: batch.currentNode,
+          requestedNode: nodeCode,
+          batchId: batch.id,
+          batchNo: batch.batchNo,
+        },
+        HttpStatus.CONFLICT,
+      );
+    }
+    const result = await this.gates.evaluateAndPersist(caseId, nodeCode, batch.id);
+    await this.audit.append({
+      caseId,
+      actorId,
+      action: result.canProceed ? 'NODE_ADVANCED' : 'GATE_REFUSED',
+      nodeCode,
+      detail: { ...result, batchId: batch.id, batchNo: batch.batchNo },
+    });
+    if (!result.canProceed) {
+      const blocked = result.decision === Decision.HARD_BLOCK;
+      await this.prisma.shipmentBatchNode.update({
+        where: { id: node.id },
+        data: {
+          status: result.decision === Decision.REVIEW ? NodeStatus.REVIEW : NodeStatus.BLOCKED,
+          decision: result.decision,
+          summary: result.reasons.join('；'),
+        },
+      });
+      const siblingCount = await this.prisma.shipmentBatch.count({ where: { caseId } });
+      if (siblingCount <= 1 && (blocked || result.decision === Decision.REVIEW)) {
+        await this.prisma.tradeCase.update({
+          where: { id: caseId },
+          data: {
+            status: blocked ? CaseStatus.BLOCKED : CaseStatus.IN_PROGRESS,
+            overallRisk: blocked ? RiskLevel.HIGH : RiskLevel.MEDIUM,
+            currentNode: laterNode(tradeCase.currentNode, nodeCode),
+          },
+        });
+      }
+      this.throwGateRefused(result);
+    }
+    await this.prisma.shipmentBatchNode.update({
+      where: { id: node.id },
+      data: {
+        status: NodeStatus.PASSED,
+        decision: result.decision,
+        summary: [...result.reasons, ...result.alerts].join('；'),
+        completedAt: new Date(),
+      },
+    });
+    const next = nextBatchNode(nodeCode);
+    await this.prisma.shipmentBatch.update({
+      where: { id: batch.id },
+      data: {
+        currentNode: next,
+        status: next === BATCH_NODE_DONE ? CaseStatus.COMPLETED : CaseStatus.IN_PROGRESS,
+      },
+    });
+    const rolled = await this.syncCaseFromBatches(caseId);
+    return {
+      stub: false,
+      batchId: batch.id,
+      batchNo: batch.batchNo,
+      result,
+      nextNode: next === BATCH_NODE_DONE ? null : next,
+      currentNode: rolled?.currentNode || tradeCase.currentNode,
+    };
+  }
+
+  private async requireBatch(caseId: string, batchId?: string | null) {
+    let batches = await this.prisma.shipmentBatch.findMany({
+      where: { caseId },
+      orderBy: { seq: 'asc' },
+    });
+    if (!batches.length) {
+      const created = await this.createDefaultBatch(caseId);
+      batches = [created];
+    }
+    const picked = selectBatch(batches, batchId);
+    if (picked.error === 'BATCH_NOT_FOUND') throw new NotFoundException('出运批次不存在');
+    if (picked.error === 'BATCH_REQUIRED' || !picked.batch) {
+      throw new HttpException(
+        {
+          code: 'BATCH_REQUIRED',
+          message: '同一销售合同有多笔出运批次，请指定要办理的批次',
+        },
+        HttpStatus.CONFLICT,
+      );
+    }
+    return picked.batch;
+  }
+
+  private async createDefaultBatch(
+    caseId: string,
+    preset?: { amountFen?: number | null; currency?: string | null },
+  ) {
+    const existing = await this.prisma.shipmentBatch.findFirst({
+      where: { caseId, seq: 1 },
+    });
+    if (existing) return existing;
+    const trade = await this.prisma.tradeCase.findUniqueOrThrow({
+      where: { id: caseId },
+      include: { contract: true, nodes: true },
+    });
+    const described = describeDefaultBatch({
+      status: trade.status,
+      currentNode: trade.currentNode,
+      nodes: trade.nodes,
+    });
+    return this.prisma.shipmentBatch.create({
+      data: {
+        caseId,
+        batchNo: '1',
+        seq: 1,
+        quantity: trade.contract?.quantity ?? null,
+        unit: trade.contract?.unit ?? null,
+        amountFen: preset?.amountFen ?? trade.contract?.amountFen ?? trade.amountFen,
+        currency: preset?.currency || trade.contract?.currency || trade.currency,
+        currentNode: described.currentNode,
+        status: described.status,
+        shipmentPort: trade.contract?.shipmentPort ?? null,
+        shipmentDate: trade.contract?.shipmentDate ?? null,
+        etaDate: trade.contract?.etaDate ?? null,
+        arrivalPort: trade.contract?.arrivalPort ?? null,
+        nodes: { create: described.nodes },
+      },
+    });
+  }
+
+  private async syncSoleBatchFromContract(caseId: string) {
+    const [contract, batches, trade] = await Promise.all([
+      this.prisma.contract.findUnique({ where: { caseId } }),
+      this.prisma.shipmentBatch.findMany({ where: { caseId } }),
+      this.prisma.tradeCase.findUnique({ where: { id: caseId } }),
+    ]);
+    if (!contract || batches.length !== 1 || !trade) return;
+    await this.prisma.shipmentBatch.update({
+      where: { id: batches[0].id },
+      data: {
+        quantity: contract.quantity,
+        unit: contract.unit,
+        amountFen: contract.amountFen ?? trade.amountFen,
+        currency: contract.currency || trade.currency,
+      },
+    });
+  }
+
+  private async remittanceOf(caseId: string) {
+    const [trade, contract, batches] = await Promise.all([
+      this.prisma.tradeCase.findUnique({ where: { id: caseId } }),
+      this.prisma.contract.findUnique({ where: { caseId } }),
+      this.prisma.shipmentBatch.findMany({
+        where: { caseId },
+        include: { settlement: true },
+      }),
+    ]);
+    const amountFen = contract?.amountFen ?? trade?.amountFen ?? 0;
+    return aggregateRemittance(batches, { contractAmountFen: amountFen, sole: batches.length <= 1 });
+  }
+
+  private async refreshContractRemittance(caseId: string) {
+    const trade = await this.prisma.tradeCase.findUnique({
+      where: { id: caseId },
+      include: { contract: true },
+    });
+    if (!trade?.contract) return;
+    const remittance = await this.remittanceOf(caseId);
+    const amountFen = trade.contract.amountFen ?? trade.amountFen ?? 0;
+    await this.prisma.contract.update({
+      where: { caseId },
+      data: {
+        hasRemittance: !!(remittance && (remittance.receivedAt || remittance.hasRemittanceMemo) && remittance.amountFen > 0),
+        remittedFen: remittance?.amountFen ?? receivedFenOf(null, amountFen),
+      },
+    });
+  }
+
+  private async touchBatchNode(batchId: string, code: string, status: string) {
+    if (!isBatchPipelineNode(code)) return;
+    await this.prisma.shipmentBatchNode.updateMany({
+      where: { batchId, code, status: { not: NodeStatus.PASSED } },
+      data: { status, startedAt: new Date() },
+    });
+    if (status === NodeStatus.IN_PROGRESS) {
+      await this.prisma.shipmentBatch.updateMany({
+        where: { id: batchId, status: NodeStatus.NOT_STARTED },
+        data: { status: CaseStatus.IN_PROGRESS },
+      });
+    }
+  }
+
+  private async syncCaseFromBatches(caseId: string) {
+    const trade = await this.prisma.tradeCase.findUnique({ where: { id: caseId } });
+    if (!trade) return null;
+    const batches = await this.prisma.shipmentBatch.findMany({
+      where: { caseId },
+      include: { nodes: true },
+    });
+    const rolled = rollupCaseShipping({
+      caseCurrentNode: trade.currentNode,
+      caseStatus: trade.status,
+      batches,
+    });
+    if (!rolled.apply) return trade;
+    await this.prisma.tradeCase.update({
+      where: { id: caseId },
+      data: { currentNode: rolled.currentNode, status: rolled.status },
+    });
+    for (const node of rolled.nodes) {
+      await this.prisma.caseNode.updateMany({
+        where: { caseId, code: node.code },
+        data: {
+          status: node.status,
+          ...(node.status === NodeStatus.PASSED ? { completedAt: new Date() } : {}),
+        },
+      });
+    }
+    return { ...trade, currentNode: rolled.currentNode, status: rolled.status };
   }
 
   private async snapshotContract(caseId: string, changeOrderId: string | null) {

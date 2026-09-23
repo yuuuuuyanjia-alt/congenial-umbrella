@@ -3,8 +3,9 @@
     <view class="card">
       <view class="h2">单证一致性 · 硬闸门</view>
       <view class="muted">
-        须上传销售合同、商业发票、箱单、采购合同、发票、报关单共六份，缺任一份不得推进。原产地证：运输术语为 FOB 时可以不传；CIF 等非 FOB 必须上传。商业发票与发票是两项，都要有。过闸后进入收汇（N9）。存在未生效变更单时禁止推进。
+        须上传销售合同、商业发票、箱单、采购合同、发票、报关单共六份，缺任一份不得推进。原产地证：运输术语为 FOB 时可以不传；CIF 等非 FOB 必须上传。商业发票与发票是两项，都要有。过闸后进入收汇（N9）。存在未生效变更单时禁止推进。规则按当前批次判断，不要求其他批次先完成。
       </view>
+      <view class="muted" v-if="batchLabel" style="margin-top: 8rpx">当前批次 {{ batchLabel }}。本页只核对本批单证。</view>
       <view class="err" v-if="!canWriteBusiness" style="margin-top: 8rpx">当前为{{ roleLabel }}，本页只读，不可上传或推进。</view>
     </view>
     <PendingChangeBlock :case-id="id" :case-data="c" />
@@ -59,6 +60,7 @@ const FORM_NODE = 'N7';
 const docSlots = N7_DOC_SLOTS;
 
 const id = ref('');
+const batchId = ref('');
 const { canWriteBusiness, roleLabel } = useDemoRole();
 const err = ref('');
 const ok = ref('');
@@ -82,6 +84,12 @@ const nextReady = computed(() => {
   const cur = c.value.currentNode || '';
   return !!cur && cur !== FORM_NODE;
 });
+const activeBatch = computed(() => {
+  const list = c.value?.shipmentBatches || [];
+  if (batchId.value) return list.find((b: any) => b.id === batchId.value) || null;
+  return list[0] || null;
+});
+const batchLabel = computed(() => (activeBatch.value ? `${activeBatch.value.batchNo}（${activeBatch.value.nodeLabel || '单证'}）` : ''));
 const nextHint = computed(() => {
   const t = nextTarget.value;
   if (!t) return '';
@@ -93,6 +101,7 @@ const nextHint = computed(() => {
 
 onLoad(async (q) => {
   id.value = q?.id || '';
+  batchId.value = q?.batchId || '';
   await reload();
 });
 
@@ -102,8 +111,10 @@ function fileOf(kind: string) {
 
 function hydrate(row: any) {
   c.value = row;
+  const batch = activeBatch.value;
+  if (batch?.id) batchId.value = batch.id;
   for (const slot of docSlots) {
-    const ev = latestTradeDoc(row.evidences, slot.kind);
+    const ev = latestTradeDoc(row.evidences, slot.kind, batch?.id);
     if (ev) files[slot.kind] = { evidenceId: ev.id, fileName: ev.payload?.fileName || slot.demoName };
     else delete files[slot.kind];
   }
@@ -128,7 +139,7 @@ function pickFile(slot: TradeDocSlot) {
   if (!id.value || uploading.value) return;
   err.value = '';
   ok.value = '';
-  chooseAndUploadTradeDoc(id.value, 'N7', slot.slot)
+  chooseAndUploadTradeDoc(id.value, 'N7', slot.slot, batchId.value || undefined)
     .then((uploaded) => rememberUpload(slot, uploaded))
     .catch((e: any) => uploadError(e, true));
 }
@@ -138,7 +149,7 @@ function useDemo(slot: TradeDocSlot) {
   err.value = '';
   ok.value = '';
   uploading.value = slot.slot;
-  uploadDemoTradeDoc(id.value, 'N7', slot)
+  uploadDemoTradeDoc(id.value, 'N7', slot, batchId.value || undefined)
     .then((uploaded) => rememberUpload(slot, uploaded))
     .catch((e: any) => uploadError(e))
     .finally(() => {
@@ -157,7 +168,7 @@ async function tryAdvance() {
   err.value = '';
   ok.value = '';
   try {
-    const r = await api.advance(id.value, 'N7');
+    const r = await api.advance(id.value, 'N7', batchId.value || undefined);
     advancedTo.value = r.nextNode || null;
     await reload();
     const title = r.nextNode ? pipelineNodeName(r.nextNode) : '';
@@ -171,7 +182,7 @@ async function tryAdvance() {
 
 function goNext() {
   const t = nextTarget.value;
-  if (t && id.value) goToNode(id.value, t.code);
+  if (t && id.value) goToNode(id.value, t.code, batchId.value || undefined);
 }
 </script>
 

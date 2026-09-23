@@ -14,6 +14,31 @@
       </view>
     </view>
 
+    <view class="card" v-if="showBatches">
+      <view class="h2">出运批次</view>
+      <view class="muted">一份销售合同可分多批出运。每批独立提单、单证和收汇，多批可以同时在途。买方、运输术语、币种和中信保限额仍在销售合同上。</view>
+      <view v-for="b in batches" :key="b.id" style="margin-top: 16rpx">
+        <view>批次 {{ b.batchNo }} · {{ b.nodeLabel || b.currentNode }}</view>
+        <view class="muted">
+          数量 {{ b.quantity ?? '—' }} {{ b.unit || '' }} · 金额 {{ money(b.amountFen, b.currency || c.currency) }} · 已收汇 {{ money(b.receivedFen, b.currency || c.currency) }}
+        </view>
+        <view class="btn btn-ghost" @click="openBatch(b, 'N6')">装运 N6</view>
+        <view class="btn btn-ghost" @click="openBatch(b, 'N7')">单证 N7</view>
+        <view class="btn btn-ghost" @click="openBatch(b, 'N9')">收汇 N9</view>
+      </view>
+      <template v-if="canWriteBusiness">
+        <view class="label" style="margin-top: 16rpx">新建批次号（可空，按顺序生成）</view>
+        <input class="input" v-model="batchForm.batchNo" placeholder="如 2" />
+        <view class="label">本批数量</view>
+        <input class="input" v-model="batchForm.quantity" placeholder="如 4" />
+        <view class="label">本批金额（元，与合同币种一致）</view>
+        <input class="input" v-model="batchForm.amountYuan" placeholder="如 40000.00" />
+        <view class="btn" @click="createBatch">新建批次</view>
+      </template>
+      <view class="ok" v-if="batchMsg">{{ batchMsg }}</view>
+      <view class="err" v-if="batchErr">{{ batchErr }}</view>
+    </view>
+
     <view class="card" v-if="c.procurementPlan?.salesLink">
       <view class="h2">关联销售合同</view>
       <view class="muted">{{ c.procurementPlan.salesLink.customer }} · {{ c.procurementPlan.salesLink.contractNo }}</view>
@@ -84,7 +109,7 @@
 <script setup lang="ts">
 import { onLoad, onShow } from '@dcloudio/uni-app';
 import { computed, reactive, ref } from 'vue';
-import { api, decisionClass, decisionText, money, nodePage } from '../../api';
+import { api, decisionClass, decisionText, hasReachedNode, money, nodePage, yuanToFen } from '../../api';
 import RoleBar from '../../components/RoleBar.vue';
 import { useDemoRole } from '../../role';
 
@@ -107,6 +132,15 @@ const salesDeliveryYmd = computed(() => {
   return d ? String(d).slice(0, 10) : '';
 });
 const rebateItems = computed(() => c.value?.taxRebateReady?.items || []);
+const batches = computed(() => c.value?.shipmentBatches || []);
+const showBatches = computed(() => {
+  if (!c.value) return false;
+  if (c.value.contract) return true;
+  return hasReachedNode(c.value.currentNode, 'N3') && !c.value.procurementPlan;
+});
+const batchForm = reactive({ batchNo: '', quantity: '', amountYuan: '' });
+const batchMsg = ref('');
+const batchErr = ref('');
 
 onLoad((q) => {
   id.value = q?.id || '';
@@ -132,7 +166,40 @@ function role(r: string) {
 }
 
 function openNode(n: any) {
+  if (n.code === 'N6' || n.code === 'N7' || n.code === 'N9') {
+    const list = batches.value;
+    const picked = list.find((b: any) => b.currentNode === n.code) || list[0];
+    if (picked) {
+      openBatch(picked, n.code);
+      return;
+    }
+  }
   uni.navigateTo({ url: `${nodePage(n.code)}?id=${id.value}&code=${n.code}` });
+}
+
+function openBatch(b: any, code: string) {
+  uni.navigateTo({ url: `${nodePage(code)}?id=${id.value}&code=${code}&batchId=${b.id}` });
+}
+
+async function createBatch() {
+  batchErr.value = '';
+  batchMsg.value = '';
+  const quantity = batchForm.quantity.trim() ? Number(batchForm.quantity) : undefined;
+  const amountFen = batchForm.amountYuan.trim() ? yuanToFen(batchForm.amountYuan) : undefined;
+  try {
+    const row = await api.createBatch(id.value, {
+      batchNo: batchForm.batchNo.trim() || undefined,
+      quantity: Number.isFinite(quantity as number) ? quantity : undefined,
+      amountFen,
+    });
+    batchForm.batchNo = '';
+    batchForm.quantity = '';
+    batchForm.amountYuan = '';
+    await load();
+    batchMsg.value = `已新建批次 ${row?.batchNo || ''}`;
+  } catch (e: any) {
+    batchErr.value = gateMessage(e);
+  }
 }
 
 function go(url: string) {

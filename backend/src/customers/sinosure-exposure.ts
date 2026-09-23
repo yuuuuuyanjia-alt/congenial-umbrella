@@ -77,6 +77,13 @@ export interface ExposureContractInput {
   status?: string | null;
   currentNode?: string | null;
   nodes?: Array<{ code: string; status: string }>;
+  /**
+   * 分批出运时由调用方拆好：未出运余额 + 已出运批次未回款。
+   * 缺省则整单按是否已装运归入未履行或已履行。
+   */
+  batchSplit?: boolean;
+  openUnpaidFen?: number | null;
+  fulfilledUnpaidFen?: number | null;
 }
 
 export interface ExposureLine {
@@ -278,6 +285,28 @@ export function splitOccupancy(
   for (const row of rows) {
     if (newCaseId && row.id === newCaseId) continue;
     if (!row.hasContract) continue;
+    if (row.batchSplit) {
+      const openPart = Math.max(0, Number(row.openUnpaidFen) || 0);
+      const fulfilledPart = Math.max(0, Number(row.fulfilledUnpaidFen) || 0);
+      const line = lineOf(row, openPart > 0 ? ContractFulfillment.OPEN : ContractFulfillment.FULFILLED);
+      if (!isUsd(line.currency)) {
+        skippedNonUsd.push({ ...line, unpaidFen: openPart + fulfilledPart });
+        continue;
+      }
+      if (openPart > 0) {
+        openContracts.push({ ...line, unpaidFen: openPart, fulfillment: ContractFulfillment.OPEN });
+        openUnpaidFen += openPart;
+      }
+      if (fulfilledPart > 0) {
+        fulfilledUnpaidContracts.push({
+          ...line,
+          unpaidFen: fulfilledPart,
+          fulfillment: ContractFulfillment.FULFILLED,
+        });
+        fulfilledUnpaidFen += fulfilledPart;
+      }
+      continue;
+    }
     const fulfillment = isExportFulfilled(row) ? ContractFulfillment.FULFILLED : ContractFulfillment.OPEN;
     const line = lineOf(row, fulfillment);
     if (!isUsd(line.currency)) {

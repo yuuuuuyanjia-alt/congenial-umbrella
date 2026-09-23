@@ -10,6 +10,7 @@ import {
   receivedFenOf,
   type SettlementLedgerInput,
 } from '../customers/sinosure-exposure';
+import { batchCountsAsShipped, receivedFenForBatch } from './shipment-batch';
 
 export { isBuyerArrangedFreight, isCifFamilyIncoterms };
 
@@ -269,6 +270,15 @@ export type SalesShipmentInput = {
     noBlReason?: string | null;
     noBlEvidenceStub?: string | null;
   } | null;
+  /** 分批出运。有批次时，任一已出运即计入已出运；收汇按各批次水单合计。 */
+  batches?: Array<{
+    amountFen?: number | null;
+    currentNode?: string | null;
+    shipmentDate?: Date | string | null;
+    nodes?: Array<{ code: string; status: string }> | null;
+    shipment?: SalesShipmentInput['shipment'];
+    settlement?: SettlementLedgerInput;
+  }> | null;
 };
 
 export function resolveRemittedFen(input: {
@@ -410,6 +420,18 @@ function contractOf(input: SalesShipmentInput) {
 /** 已回款：与中信保占用释放同一口径，只认 N9 水单/到账，且未收汇为 0。 */
 export function isSalesRemittanceComplete(input: SalesShipmentInput): boolean {
   const amountFen = input.amountFen ?? contractOf(input)?.amountFen ?? 0;
+  const batches = input.batches || [];
+  if (batches.length) {
+    const sole = batches.length === 1;
+    const receivedFen = batches.reduce(
+      (sum, batch) => sum + receivedFenForBatch(batch, { contractAmountFen: amountFen, sole }),
+      0,
+    );
+    return isSettlementPaid(
+      { hasRemittanceMemo: receivedFen > 0, amountFen: receivedFen, receivedAt: receivedFen > 0 ? new Date(0) : null },
+      amountFen,
+    );
+  }
   return isSettlementPaid(input.settlement, amountFen);
 }
 
@@ -422,6 +444,7 @@ export function isSalesPickedUp(input: SalesShipmentInput): boolean {
  * 任意术语若已填上述日期亦计。否则以 N6 已通过、已过装运节点、提单号或无提单路径为依据。
  */
 export function isSalesShipped(input: SalesShipmentInput): boolean {
+  if ((input.batches || []).some((batch) => batchCountsAsShipped(batch))) return true;
   const ct = contractOf(input);
   if (filledDate(input.shipmentDate ?? ct?.shipmentDate ?? null)) return true;
   if (filledDate(input.domesticPortArrivalAt ?? ct?.domesticPortArrivalAt ?? null)) return true;

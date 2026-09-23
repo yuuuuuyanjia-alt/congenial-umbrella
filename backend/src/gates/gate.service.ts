@@ -5,6 +5,7 @@ import { parseStoredFile } from '../cases/sinosure-file';
 import { evaluateNode } from './gate.engine';
 import { CustomersService } from '../customers/customers.service';
 import { isSalesContractSigned, n3StatusOf } from '../cases/sales-link';
+import { aggregateRemittance, evidencesForBatch, isBatchPipelineNode, mergeBatchNodes } from '../cases/shipment-batch';
 import { OccupancyReviewStatus, occupancyFingerprint, planOccupancyReviewSync } from '../workbench/occupancy-review';
 import { parseDirectPort, planTaxFinanceReviewSync, TAX_FINANCE_NODES, TaxFinanceReviewStatus } from '../tax-finance/tax-finance';
 
@@ -15,7 +16,7 @@ export class GateService {
     private readonly customers: CustomersService,
   ) {}
 
-  async snapshot(caseId: string): Promise<CaseSnapshot> {
+  async snapshot(caseId: string, batchId?: string | null): Promise<CaseSnapshot> {
     const c = await this.prisma.tradeCase.findUniqueOrThrow({
       where: { id: caseId },
       include: {
@@ -23,11 +24,13 @@ export class GateService {
         hits: { include: { party: true } },
         kycReports: { orderBy: { createdAt: 'desc' } },
         contract: true,
-        shipment: true,
         documents: true,
         mismatchFixes: true,
-        settlement: true,
         nodes: true,
+        shipmentBatches: {
+          orderBy: { seq: 'asc' },
+          include: { shipment: true, documents: true, settlement: true, nodes: true },
+        },
         quotes: { orderBy: { version: 'asc' } },
         changeOrders: { include: { diffs: true }, orderBy: { createdAt: 'asc' } },
         procurementPlan: { include: { salesCase: { include: { contract: true, nodes: true, parties: true } } } },
@@ -48,6 +51,42 @@ export class GateService {
         : Promise.resolve(null),
       this.customers.occupancyForCase(caseId),
     ]);
+    const selected = batchId
+      ? c.shipmentBatches.find((b) => b.id === batchId) || null
+      : c.shipmentBatches.length === 1
+        ? c.shipmentBatches[0]
+        : null;
+    const contractAmount = c.contract?.amountFen ?? c.amountFen;
+    const agg = aggregateRemittance(c.shipmentBatches, {
+      contractAmountFen: contractAmount,
+      sole: c.shipmentBatches.length <= 1,
+    });
+    const settlement = selected?.settlement
+      ? selected.settlement
+      : agg
+        ? {
+            payerName: '',
+            buyerName: '',
+            isThirdParty: false,
+            hasThirdPartyProof: false,
+            hasRemittanceMemo: agg.hasRemittanceMemo,
+            hasDocConsistencyProof: false,
+            hasReleaseApproval: false,
+            amountFen: agg.amountFen,
+            receivedAt: agg.receivedAt,
+          }
+        : null;
+    const documents = selected ? selected.documents : c.documents;
+    const mismatchFixes = selected
+      ? c.mismatchFixes.filter((row) => !row.batchId || row.batchId === selected.id)
+      : c.mismatchFixes;
+    const evidenceRows = selected ? evidencesForBatch(c.evidences, selected.id) : c.evidences;
+    const nodes = selected
+      ? mergeBatchNodes(
+          c.nodes.map((n) => ({ code: n.code, status: n.status, decision: n.decision })),
+          selected.nodes.map((n) => ({ code: n.code, status: n.status, decision: n.decision })),
+        )
+      : c.nodes;
     return {
       parties: c.parties,
       hits: c.hits.map((h) => ({
@@ -69,17 +108,17 @@ export class GateService {
             directPort: parseDirectPort(c.contract.directPortJson),
           }
         : null,
-      shipment: c.shipment,
-      documents: c.documents.map(
+      shipment: selected?.shipment ?? null,
+      documents: documents.map(
         (d): DocSnap => ({
           type: d.type,
           isFinal: d.isFinal,
           fields: safeObj(d.fieldsJson),
         }),
       ),
-      mismatchFixes: c.mismatchFixes,
-      settlement: c.settlement,
-      nodes: c.nodes,
+      mismatchFixes,
+      settlement,
+      nodes,
       quotes: c.quotes,
       changeOrders: c.changeOrders.map((co) => ({
         ...co,
@@ -164,7 +203,7 @@ export class GateService {
         : null,
       caseGoodsDesc: c.goodsDesc,
       salesContract: salesSideOf(c),
-      evidences: c.evidences.map((row): EvidenceFileSnap => {
+      evidences: evidenceRows.map((row): EvidenceFileSnap => {
         const meta = parseStoredFile(row.payload);
         return {
           id: row.id,
@@ -177,14 +216,16 @@ export class GateService {
     };
   }
 
-  async evaluateAndPersist(caseId: string, nodeCode: string): Promise<GateResult> {
-    const snap = await this.snapshot(caseId);
+  async evaluateAndPersist(caseId: string, nodeCode: string, batchId?: string | null): Promise<GateResult> {
+    const scoped = isBatchPipelineNode(nodeCode) ? batchId : null;
+    const snap = await this.snapshot(caseId, scoped);
     const result = evaluateNode(nodeCode, snap);
     await this.syncOccupancyReview(caseId, result, snap.occupancyReviews);
     await this.syncTaxFinanceReview(caseId, result, snap.taxFinanceReviews);
     await this.prisma.gateCheck.create({
       data: {
         caseId,
+        batchId: scoped || null,
         nodeCode,
         decision: result.decision,
         canProceed: result.canProceed,

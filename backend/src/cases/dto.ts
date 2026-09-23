@@ -102,6 +102,13 @@ export class SaveContractDto {
   ttVouchers?: TtVoucherDto[];
 }
 
+export class CreateShipmentBatchDto {
+  @IsOptional() @IsString() batchNo?: string;
+  @IsOptional() @IsInt() quantity?: number;
+  @IsOptional() @IsString() unit?: string;
+  @IsOptional() @IsInt() amountFen?: number;
+}
+
 export class SaveShipmentDto {
   @IsBoolean() hasCustomerWrittenInstruction: boolean;
   @IsOptional() @IsString() instructionRef?: string;
