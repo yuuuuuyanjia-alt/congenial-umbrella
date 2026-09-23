@@ -3,9 +3,9 @@
     <view class="card">
       <view class="h2">装运 / 提单指示 · 硬闸门</view>
       <view class="muted">
-        须上传发票与箱单（写入证据链），并完成内部审批。CIF / CFR 等卖方出单：点选「正本提单」或「电放提单」其一即可（不必两样都有）。FOB / EXW / FAS / FCA 等买方安排运输：可不控提单，走「无提单」路径。T/T 是结算方式不是运输术语；装运规则跟随所选 Incoterm，未填运输术语时按 FOB 回退。存在未生效变更单时禁止装运。同一合同的其他批次不必先完成。
+        须上传商业发票与箱单（写入证据链），并完成内部审批。CIF / CFR 等卖方出单：点选「正本提单」或「电放提单」其一即可（不必两样都有）。FOB / EXW / FAS / FCA 等买方安排运输：可不控提单，走「无提单」路径。T/T 是结算方式不是运输术语；装运规则跟随所选 Incoterm，未填运输术语时按 FOB 回退。存在未生效变更单时禁止装运。同一合同的其他批次不必先完成。
       </view>
-      <view class="muted" v-if="batchLabel" style="margin-top: 8rpx">当前批次 {{ batchLabel }}。本页只办理这一批的提单、发票和箱单。</view>
+      <view class="muted" v-if="batchLabel" style="margin-top: 8rpx">当前批次 {{ batchLabel }}。本页只办理这一批的提单、商业发票和箱单。</view>
       <view class="err" v-if="!canWriteBusiness" style="margin-top: 8rpx">当前为{{ roleLabel }}，本页只读，不可保存或推进。</view>
     </view>
     <PendingChangeBlock :case-id="id" :case-data="c" />
@@ -34,7 +34,7 @@
         <input class="input" v-model="form.arrivalPort" placeholder="预计到达的港口，如 Hamburg" />
       </template>
 
-      <view class="h2" style="margin-top: 24rpx">发票与箱单</view>
+      <view class="h2" style="margin-top: 24rpx">商业发票与箱单</view>
       <view class="muted">两份都要上传后才能过闸。没有文件时可用演示示例，无需打开本机文件选择器。</view>
       <view v-for="slot in docSlots" :key="slot.slot" style="margin-top: 16rpx">
         <view class="label">{{ slot.label }}</view>

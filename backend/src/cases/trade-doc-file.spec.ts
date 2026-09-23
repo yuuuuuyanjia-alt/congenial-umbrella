@@ -6,12 +6,15 @@ import { assertSafeStorageKey } from './sinosure-file';
 import { writeTradeDocFile } from './trade-doc-file';
 
 describe('装运/单证上传', () => {
-  it('N6 只有发票和箱单，N7 七个槽位且商业发票与发票分开', () => {
+  it('N6 只有商业发票和箱单，N7 七个槽位且商业发票与发票分开', () => {
+    expect(tradeDocUpload('N6', 'invoice')?.slot).toBe('invoice');
     expect(tradeDocUpload('N6', 'invoice')?.kind).toBe('N6_INVOICE');
+    expect(tradeDocUpload('N6', 'invoice')?.label).toBe('商业发票');
     expect(tradeDocUpload('N6', 'packing')?.kind).toBe('N6_PACKING');
     expect(tradeDocUpload('N6', 'sales-contract')).toBeNull();
     expect(tradeDocUpload('N7', 'commercial-invoice')?.missing).toBe('N7_COMMERCIAL_INVOICE');
     expect(tradeDocUpload('N7', 'invoice')?.missing).toBe('N7_INVOICE');
+    expect(tradeDocUpload('N7', 'invoice')?.label).toBe('发票');
     expect(tradeDocUpload('N7', 'invoice')?.kind).not.toBe(tradeDocUpload('N7', 'commercial-invoice')?.kind);
     const n7 = [
       'sales-contract',
