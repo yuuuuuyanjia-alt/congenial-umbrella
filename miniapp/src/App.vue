@@ -242,7 +242,13 @@ uni-input.input {
   height: auto;
   min-height: 0;
   overflow: visible;
-  padding: 0;
+  /* `.input` margin-top is not a hit target, so taps in the gap under the
+     label (every N5 row) hit the card and never focus the field. Keep that
+     gap, but make it part of the host. background-clip leaves the page color
+     showing so the gray box does not grow into the label. */
+  margin-top: 0;
+  padding: 10rpx 0 0;
+  background-clip: content-box;
 }
 uni-input.input > .uni-input-wrapper {
   height: auto;

@@ -16,8 +16,10 @@
  *    moved a few pixels, so the caret click never reached the control.
  *
  * This file focuses the inner input/textarea when the pointer lands on the
- * shell, and it does not swallow clicks that start on or hit a field. Card
- * `@click` is still ignored after a drag-select on non-field copy (case nos).
+ * shell, the gap under a `.label`, or the label itself (a tap, not a
+ * drag-select). N5 is the worst case: supplier, PO, dates, and delay notes
+ * are a long run of label + gap + field, and those misses feel like a stuck
+ * caret. Card `@click` is still ignored after a drag-select on non-field copy.
  * No copy/cut/paste/contextmenu/keydown/beforeinput preventDefault — native
  * clipboard and typing stay intact. Do not preventDefault on pointerdown:
  * that cancels the caret.
@@ -68,6 +70,35 @@ export function textEntryField(target: EventTarget | null): HTMLInputElement | H
 function selectionText(): string {
   if (typeof window === 'undefined' || !window.getSelection) return '';
   return String(window.getSelection()).trim();
+}
+
+const SKIP_TO_FIELD = '.muted, .readonly, .err, .ok';
+const STOP_BEFORE_FIELD = '.label, .btn, .choice-row, .choice-btn, .chips, .h1, .h2, .pick';
+
+/**
+ * A tap on the caption above a field should type into that field. Dragging
+ * the caption still selects it for copy, so this is only used when the
+ * pointer did not move.
+ */
+export function fieldAfterLabel(target: EventTarget | null): HTMLInputElement | HTMLTextAreaElement | null {
+  const el = elementFromTarget(target);
+  if (!el || el.closest('.btn, .choice-btn, .chip, .pick, button, a')) return null;
+  const label = el.closest('.label');
+  if (!label) return null;
+  let next = label.nextElementSibling;
+  for (let i = 0; i < 3 && next; i += 1) {
+    if (next.matches(STOP_BEFORE_FIELD)) break;
+    const host = next.matches(`${FIELD_HOST}, input, textarea`) ? next : null;
+    if (host) {
+      if (isTextEntryField(host)) return host.disabled ? null : host;
+      const field = host.querySelector('input, textarea');
+      if (isTextEntryField(field) && !field.disabled) return field;
+      return null;
+    }
+    if (!next.matches(SKIP_TO_FIELD)) break;
+    next = next.nextElementSibling;
+  }
+  return null;
 }
 
 function focusField(field: HTMLInputElement | HTMLTextAreaElement) {
@@ -143,6 +174,13 @@ export function enableH5Clipboard(): void {
       // focus and collapse that selection.
       if (field && !field.disabled && document.activeElement !== field && (startedOnField || !dragged)) {
         focusField(field);
+      }
+      if (!startedOnField && !field && !dragged) {
+        const labeled = fieldAfterLabel(e.target);
+        if (labeled) {
+          focusField(labeled);
+          e.stopPropagation();
+        }
       }
       // Never steal a field gesture. stopImmediatePropagation here used to
       // drop the caret click after a 4px move while selecting text.
