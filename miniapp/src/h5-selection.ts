@@ -24,11 +24,13 @@
  * clipboard and typing stay intact. Do not preventDefault on pointerdown:
  * that cancels the caret.
  *
- * Scroll: uni-h5 scrolls `body`. A capturing pointermove that walks the DOM,
- * or a pointerdown that focuses a field, runs on every pan and fights that
- * scroll. Move / touchmove / scroll handlers only compare coordinates and
- * then detach. Focus and selection walks happen on click, and only when the
- * gesture was not a scroll.
+ * Scroll (every H5 page, not one route): uni-h5 scrolls `body`. Selection
+ * hit-testing on that scroller, or a pointermove that walks the DOM, runs on
+ * each pan of the homepage, lists, node pages, and the workbench. Move /
+ * touchmove / scroll handlers only compare coordinates. While the page is
+ * actually scrolling, `html.h5-scrolling` turns selection off for the whole
+ * shell and turns it back on when the pan stops. A mouse drag still selects
+ * text. Focus walks happen on click, and only when the gesture was not a scroll.
  */
 
 const SELECT_MOVE_PX = 4;
@@ -44,6 +46,8 @@ export type SelectionGesture = {
   scrolling: boolean;
   onField: boolean;
   listenMove: boolean;
+  /** mouse drags select text; touch pans scroll. Empty means a generic pan. */
+  pointerType: string;
 };
 
 export function createSelectionGesture(): SelectionGesture {
@@ -56,10 +60,17 @@ export function createSelectionGesture(): SelectionGesture {
     scrolling: false,
     onField: false,
     listenMove: false,
+    pointerType: '',
   };
 }
 
-export function beginPointer(g: SelectionGesture, x: number, y: number, onField: boolean): void {
+export function beginPointer(
+  g: SelectionGesture,
+  x: number,
+  y: number,
+  onField: boolean,
+  pointerType = '',
+): void {
   g.id += 1;
   g.pointerDown = true;
   g.x = x;
@@ -68,6 +79,7 @@ export function beginPointer(g: SelectionGesture, x: number, y: number, onField:
   g.scrolling = false;
   g.onField = onField;
   g.listenMove = true;
+  g.pointerType = pointerType;
 }
 
 /**
@@ -82,7 +94,9 @@ export function samplePointerMove(g: SelectionGesture, x: number, y: number): 'i
   const dist2 = dx * dx + dy * dy;
   if (dist2 <= SELECT_MOVE_PX * SELECT_MOVE_PX) return 'track';
   g.dragged = true;
-  if (dist2 >= SCROLL_MOVE_PX * SCROLL_MOVE_PX) {
+  // A mouse drag is a text selection on every page. Only a touch/pen pan
+  // (or an unspecified pointer) is a scroll we should stop tracking.
+  if (g.pointerType !== 'mouse' && dist2 >= SCROLL_MOVE_PX * SCROLL_MOVE_PX) {
     g.scrolling = true;
     g.listenMove = false;
     return 'scroll';
@@ -92,10 +106,20 @@ export function samplePointerMove(g: SelectionGesture, x: number, y: number): 'i
 
 /** A real scroll event during the gesture. No layout reads. */
 export function noteScroll(g: SelectionGesture): void {
-  if (!g.pointerDown) return;
+  if (!g.pointerDown || g.pointerType === 'mouse') return;
   g.dragged = true;
   g.scrolling = true;
   g.listenMove = false;
+}
+
+/**
+ * Wheel, trackpad, and touch pans should drop selection hit-testing.
+ * A mouse-button drag is a copy gesture and must keep user-select.
+ */
+export function shouldPauseSelection(g: SelectionGesture): boolean {
+  if (!g.pointerDown) return true;
+  if (g.pointerType === 'mouse') return false;
+  return g.scrolling;
 }
 
 export function endPointer(g: SelectionGesture): void {
@@ -214,14 +238,37 @@ export function enableH5Clipboard(): void {
 
   const g = createSelectionGesture();
   const passiveCapture: AddEventListenerOptions = { capture: true, passive: true };
+  let selectionPaused = false;
+  let pauseTimer = 0;
+  let lastPauseArm = 0;
+
+  const pauseSelectionForScroll = () => {
+    if (!shouldPauseSelection(g)) return;
+    const now = Date.now();
+    if (!selectionPaused) {
+      selectionPaused = true;
+      document.documentElement.classList.add('h5-scrolling');
+    }
+    if (now - lastPauseArm < 80) return;
+    lastPauseArm = now;
+    window.clearTimeout(pauseTimer);
+    pauseTimer = window.setTimeout(() => {
+      selectionPaused = false;
+      document.documentElement.classList.remove('h5-scrolling');
+    }, 160);
+  };
 
   const onPointerMove = (e: PointerEvent) => {
-    if (samplePointerMove(g, e.clientX, e.clientY) === 'scroll') detachMove();
+    if (samplePointerMove(g, e.clientX, e.clientY) !== 'scroll') return;
+    detachMove();
+    pauseSelectionForScroll();
   };
   const onTouchMove = (e: TouchEvent) => {
     const t = e.changedTouches[0] || e.touches[0];
     if (!t) return;
-    if (samplePointerMove(g, t.clientX, t.clientY) === 'scroll') detachMove();
+    if (samplePointerMove(g, t.clientX, t.clientY) !== 'scroll') return;
+    detachMove();
+    pauseSelectionForScroll();
   };
   const detachMove = () => {
     document.removeEventListener('pointermove', onPointerMove, true);
@@ -236,9 +283,13 @@ export function enableH5Clipboard(): void {
   document.addEventListener(
     'scroll',
     () => {
-      if (!g.pointerDown || g.scrolling) return;
-      noteScroll(g);
-      detachMove();
+      // One comparison on the hot path. Touch pans are marked once; wheel
+      // and momentum never touch the DOM.
+      if (g.pointerDown && !g.scrolling && g.pointerType !== 'mouse') {
+        noteScroll(g);
+        detachMove();
+      }
+      pauseSelectionForScroll();
     },
     passiveCapture,
   );
@@ -247,7 +298,7 @@ export function enableH5Clipboard(): void {
     'pointerdown',
     (e) => {
       const field = textEntryField(e.target);
-      beginPointer(g, e.clientX, e.clientY, !!field && !field.disabled);
+      beginPointer(g, e.clientX, e.clientY, !!field && !field.disabled, e.pointerType);
       attachMove();
       // Do not focus here. A pan often starts on the field padding; focusing
       // on pointerdown forces layout and pulls the caret into a scroll.

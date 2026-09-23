@@ -189,26 +189,37 @@ select {
 
 /* #ifdef H5 */
 /* uni-h5 base.css: html,body { height:100%; user-select:none } and
-   body { overflow-x:hidden }, so body is the scrollport. user-select:text on
-   that scroller makes WebKit run selection hit-testing on every pan — severe
-   jank on long pages (N5 sales list, sales contract, case detail). Keep the
-   scroller itself non-selectable. Copy stays on the page content below.
-   WebKit also refuses to type when an input inherits user-select:none, so the
-   native control sets user-select:text itself (not via the scroller). */
+   body { overflow-x:hidden }, so body is the scrollport on every route
+   (home, lists, N2–N9, batches, workbench). user-select:text on that shell
+   makes WebKit run selection hit-testing on every pan. The shell stays
+   non-selectable; copy stays on the page body. While html.h5-scrolling is
+   set (see h5-selection.ts) selection is dropped for the whole tree so a
+   pan does not hit-test every uni-view. WebKit refuses to type when an
+   input inherits user-select:none, so the native control sets it itself. */
 html,
-body {
+body,
+uni-app,
+uni-page,
+uni-page-wrapper {
   -webkit-user-select: none !important;
   user-select: none !important;
   touch-action: manipulation;
 }
 page,
-uni-app,
-uni-page,
-uni-page-wrapper,
 uni-page-body {
   -webkit-user-select: text;
   user-select: text;
   -webkit-touch-callout: default;
+}
+html.h5-scrolling,
+html.h5-scrolling * {
+  -webkit-user-select: none !important;
+  user-select: none !important;
+}
+html.h5-scrolling .uni-input-input,
+html.h5-scrolling .uni-textarea-textarea {
+  -webkit-user-select: text !important;
+  user-select: text !important;
 }
 
 .card,

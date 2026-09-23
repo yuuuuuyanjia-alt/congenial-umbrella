@@ -7,6 +7,7 @@ import {
   samplePointerMove,
   shouldFocusField,
   shouldFocusLabel,
+  shouldPauseSelection,
 } from './h5-selection.ts';
 
 test('pointer moves under the tap slop do not count as a drag or a scroll', () => {
@@ -56,4 +57,24 @@ test('wheel scroll without a pointer does not mark the gesture', () => {
   const g = createSelectionGesture();
   noteScroll(g);
   assert.equal(g.scrolling, false);
+  assert.equal(shouldPauseSelection(g), true);
+});
+
+test('a mouse drag stays a text selection on every page', () => {
+  const g = createSelectionGesture();
+  beginPointer(g, 0, 0, false, 'mouse');
+  assert.equal(samplePointerMove(g, 0, 80), 'track');
+  assert.equal(g.scrolling, false);
+  assert.equal(g.listenMove, true);
+  noteScroll(g);
+  assert.equal(g.scrolling, false);
+  assert.equal(shouldPauseSelection(g), false);
+});
+
+test('a touch pan pauses selection hit-testing', () => {
+  const g = createSelectionGesture();
+  beginPointer(g, 0, 0, false, 'touch');
+  assert.equal(shouldPauseSelection(g), false);
+  assert.equal(samplePointerMove(g, 0, 40), 'scroll');
+  assert.equal(shouldPauseSelection(g), true);
 });
