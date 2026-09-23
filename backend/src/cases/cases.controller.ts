@@ -16,6 +16,7 @@ import {
   SaveSettlementDto,
   SaveShipmentDto,
   SaveSinosureDto,
+  CreateShipmentBatchDto,
   SaveTaxRebateDto,
   UpsertPartyDto,
 } from './dto';
@@ -32,6 +33,20 @@ export class CasesController {
   @Get()
   list(@Query('kind') kind?: string) {
     return this.cases.list(kind);
+  }
+
+  @Get(':id/batches')
+  batches(@Param('id') id: string) {
+    return this.cases.listBatches(id);
+  }
+
+  @Post(':id/batches')
+  createBatch(
+    @Param('id') id: string,
+    @Body() dto: CreateShipmentBatchDto,
+    @Headers('x-actor-id') actorId?: string,
+  ) {
+    return this.cases.createBatch(id, dto, actorId);
   }
 
   @Get(':id')
@@ -198,6 +213,7 @@ export class CasesController {
     @UploadedFile()
     file: { originalname: string; size: number; buffer: Buffer } | undefined,
     @Body('fileName') fileName?: string,
+    @Query('batchId') batchId?: string,
     @Headers('x-actor-id') actorId?: string,
   ) {
     return this.cases.uploadNodeDocument(
@@ -207,6 +223,7 @@ export class CasesController {
       file || { originalname: '', size: 0, buffer: Buffer.alloc(0) },
       actorId,
       fileName,
+      batchId,
     );
   }
 
@@ -219,6 +236,7 @@ export class CasesController {
     @UploadedFile()
     file: { originalname: string; size: number; buffer: Buffer } | undefined,
     @Body('fileName') fileName?: string,
+    @Query('batchId') batchId?: string,
     @Headers('x-actor-id') actorId?: string,
   ) {
     return this.cases.uploadNodeDocument(
@@ -228,6 +246,7 @@ export class CasesController {
       file || { originalname: '', size: 0, buffer: Buffer.alloc(0) },
       actorId,
       fileName,
+      batchId,
     );
   }
 
@@ -235,50 +254,55 @@ export class CasesController {
   shipment(
     @Param('id') id: string,
     @Body() dto: SaveShipmentDto,
+    @Query('batchId') batchId?: string,
     @Headers('x-actor-id') actorId?: string,
   ) {
-    return this.cases.saveShipment(id, dto, actorId);
+    return this.cases.saveShipment(id, dto, actorId, batchId);
   }
 
   @Post(':id/nodes/N7/documents')
   document(
     @Param('id') id: string,
     @Body() dto: SaveDocumentDto,
+    @Query('batchId') batchId?: string,
     @Headers('x-actor-id') actorId?: string,
   ) {
-    return this.cases.saveDocument(id, dto, actorId);
+    return this.cases.saveDocument(id, dto, actorId, batchId);
   }
 
   @Post(':id/nodes/N7/fixes')
   fix(
     @Param('id') id: string,
     @Body() dto: SaveFixDto,
+    @Query('batchId') batchId?: string,
     @Headers('x-actor-id') actorId?: string,
   ) {
-    return this.cases.saveFix(id, dto, actorId);
+    return this.cases.saveFix(id, dto, actorId, batchId);
   }
 
   @Post(':id/nodes/N9/settlement')
   settlement(
     @Param('id') id: string,
     @Body() dto: SaveSettlementDto,
+    @Query('batchId') batchId?: string,
     @Headers('x-actor-id') actorId?: string,
   ) {
-    return this.cases.saveSettlement(id, dto, actorId);
+    return this.cases.saveSettlement(id, dto, actorId, batchId);
   }
 
   @Get(':id/nodes/:code/gate')
-  preview(@Param('id') id: string, @Param('code') code: string) {
-    return this.cases.previewGate(id, code);
+  preview(@Param('id') id: string, @Param('code') code: string, @Query('batchId') batchId?: string) {
+    return this.cases.previewGate(id, code, batchId);
   }
 
   @Post(':id/nodes/:code/advance')
   advance(
     @Param('id') id: string,
     @Param('code') code: string,
+    @Query('batchId') batchId?: string,
     @Headers('x-actor-id') actorId?: string,
   ) {
-    return this.cases.advance(id, code, actorId);
+    return this.cases.advance(id, code, actorId, batchId);
   }
 
   @Post(':id/tax-rebate')

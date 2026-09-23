@@ -151,11 +151,20 @@ export function tradeDocFileError(name: string, size: number): string | null {
   return null;
 }
 
-export function latestTradeDoc(evidences: any[] | null | undefined, kind: string) {
-  const rows = (evidences || []).filter(
-    (row) => row?.kind === kind && typeof row?.payload?.storageKey === 'string' && row.payload.storageKey,
-  );
+export function latestTradeDoc(evidences: any[] | null | undefined, kind: string, batchId?: string) {
+  const rows = (evidences || []).filter((row) => {
+    if (row?.kind !== kind) return false;
+    if (typeof row?.payload?.storageKey !== 'string' || !row.payload.storageKey) return false;
+    if (batchId && row.batchId !== batchId) return false;
+    return true;
+  });
   return rows.length ? rows[rows.length - 1] : null;
+}
+
+function withBatch(url: string, batchId?: string | null) {
+  if (!batchId) return url;
+  const join = url.includes('?') ? '&' : '?';
+  return `${url}${join}batchId=${encodeURIComponent(batchId)}`;
 }
 
 export async function postTradeDocUpload(
@@ -164,6 +173,7 @@ export async function postTradeDocUpload(
   slot: string,
   file: Blob,
   fileName: string,
+  batchId?: string,
 ): Promise<TradeDocUploadResult> {
   const problem = tradeDocFileError(fileName, file.size);
   if (problem) return Promise.reject({ message: problem });
@@ -173,7 +183,7 @@ export async function postTradeDocUpload(
   const fd = new FormData();
   fd.append('file', file, fileName);
   fd.append('fileName', fileName);
-  const res = await fetch(`${BASE}/cases/${caseId}/nodes/${node}/docs/${encodeURIComponent(slot)}/upload`, {
+  const res = await fetch(withBatch(`${BASE}/cases/${caseId}/nodes/${node}/docs/${encodeURIComponent(slot)}/upload`, batchId), {
     method: 'POST',
     headers: demoHeaders(false),
     body: fd,
@@ -188,26 +198,29 @@ export async function uploadDemoTradeDoc(
   caseId: string,
   node: TradeDocNode,
   slot: TradeDocSlot,
+  batchId?: string,
 ): Promise<TradeDocUploadResult> {
   const blob = await loadDemoSinosurePdf();
-  return postTradeDocUpload(caseId, node, slot.slot, blob, slot.demoName);
+  return postTradeDocUpload(caseId, node, slot.slot, blob, slot.demoName, batchId);
 }
 
 export function chooseAndUploadTradeDoc(
   caseId: string,
   node: TradeDocNode,
   slot: string,
+  batchId?: string,
 ): Promise<TradeDocUploadResult> {
   if (typeof document !== 'undefined' && typeof document.createElement === 'function') {
-    return chooseAndUploadTradeDocH5(caseId, node, slot);
+    return chooseAndUploadTradeDocH5(caseId, node, slot, batchId);
   }
-  return chooseAndUploadTradeDocMini(caseId, node, slot);
+  return chooseAndUploadTradeDocMini(caseId, node, slot, batchId);
 }
 
 function chooseAndUploadTradeDocH5(
   caseId: string,
   node: TradeDocNode,
   slot: string,
+  batchId?: string,
 ): Promise<TradeDocUploadResult> {
   return new Promise((resolve, reject) => {
     const input = document.createElement('input');
@@ -219,7 +232,7 @@ function chooseAndUploadTradeDocH5(
         reject({ message: '未选择文件' });
         return;
       }
-      postTradeDocUpload(caseId, node, slot, file, file.name).then(resolve, reject);
+      postTradeDocUpload(caseId, node, slot, file, file.name, batchId).then(resolve, reject);
     };
     input.click();
   });
@@ -229,6 +242,7 @@ function chooseAndUploadTradeDocMini(
   caseId: string,
   node: TradeDocNode,
   slot: string,
+  batchId?: string,
 ): Promise<TradeDocUploadResult> {
   return new Promise((resolve, reject) => {
     const uniAny = uni as any;
@@ -256,7 +270,7 @@ function chooseAndUploadTradeDocMini(
           return;
         }
         uni.uploadFile({
-          url: BASE + `/cases/${caseId}/nodes/${node}/docs/${encodeURIComponent(slot)}/upload`,
+          url: withBatch(BASE + `/cases/${caseId}/nodes/${node}/docs/${encodeURIComponent(slot)}/upload`, batchId),
           filePath,
           name: 'file',
           formData: { fileName },
@@ -384,14 +398,21 @@ export const api = {
     request('POST', `/cases/${id}/nodes/N4/changes/${changeId}/apply`),
   savePlan: (id: string, body: unknown) => request('POST', `/cases/${id}/nodes/N5/plan`, body),
   salesOptions: (id: string) => request('GET', `/cases/${id}/nodes/N5/sales-options`),
-  saveShipment: (id: string, body: unknown) => request('POST', `/cases/${id}/nodes/N6/shipment`, body),
-  saveDocument: (id: string, body: unknown) => request('POST', `/cases/${id}/nodes/N7/documents`, body),
-  saveFix: (id: string, body: unknown) => request('POST', `/cases/${id}/nodes/N7/fixes`, body),
-  saveSettlement: (id: string, body: unknown) => request('POST', `/cases/${id}/nodes/N9/settlement`, body),
+  saveShipment: (id: string, body: unknown, batchId?: string) =>
+    request('POST', withBatch(`/cases/${id}/nodes/N6/shipment`, batchId), body),
+  saveDocument: (id: string, body: unknown, batchId?: string) =>
+    request('POST', withBatch(`/cases/${id}/nodes/N7/documents`, batchId), body),
+  saveFix: (id: string, body: unknown, batchId?: string) =>
+    request('POST', withBatch(`/cases/${id}/nodes/N7/fixes`, batchId), body),
+  saveSettlement: (id: string, body: unknown, batchId?: string) =>
+    request('POST', withBatch(`/cases/${id}/nodes/N9/settlement`, batchId), body),
+  createBatch: (id: string, body: unknown) => request('POST', `/cases/${id}/batches`, body),
   saveTaxRebate: (id: string, body: unknown) => request('POST', `/cases/${id}/tax-rebate`, body),
   declareTaxRebate: (id: string) => request('POST', `/cases/${id}/tax-rebate/declare`),
-  gate: (id: string, code: string) => request('GET', `/cases/${id}/nodes/${code}/gate`),
-  advance: (id: string, code: string) => request('POST', `/cases/${id}/nodes/${code}/advance`),
+  gate: (id: string, code: string, batchId?: string) =>
+    request('GET', withBatch(`/cases/${id}/nodes/${code}/gate`, batchId)),
+  advance: (id: string, code: string, batchId?: string) =>
+    request('POST', withBatch(`/cases/${id}/nodes/${code}/advance`, batchId)),
   queue: () => request('GET', '/workbench/queue'),
   workbench: (caseId: string, body: unknown) => request('POST', `/workbench/${caseId}/action`, body),
   customers: () => request('GET', '/customers'),
@@ -584,9 +605,10 @@ export function formNextNodeHeading(formNode: string) {
   return '';
 }
 
-export function goToNode(caseId: string, code: string) {
+export function goToNode(caseId: string, code: string, batchId?: string) {
   const active = activePipelineNode(code);
-  uni.navigateTo({ url: `${nodePage(active)}?id=${caseId}&code=${active}` });
+  const batch = batchId ? `&batchId=${encodeURIComponent(batchId)}` : '';
+  uni.navigateTo({ url: `${nodePage(active)}?id=${caseId}&code=${active}${batch}` });
 }
 
 export function hasReachedNode(currentNode?: string | null, target = 'N3') {

@@ -3,8 +3,9 @@
     <view class="card">
       <view class="h2">装运 / 提单指示 · 硬闸门</view>
       <view class="muted">
-        须上传发票与箱单（写入证据链），并完成内部审批。CIF / CFR 等卖方出单：点选「正本提单」或「电放提单」其一即可（不必两样都有）。FOB / EXW / FAS / FCA 等买方安排运输：可不控提单，走「无提单」路径。T/T 是结算方式不是运输术语；装运规则跟随所选 Incoterm，未填运输术语时按 FOB 回退。存在未生效变更单时禁止装运。
+        须上传发票与箱单（写入证据链），并完成内部审批。CIF / CFR 等卖方出单：点选「正本提单」或「电放提单」其一即可（不必两样都有）。FOB / EXW / FAS / FCA 等买方安排运输：可不控提单，走「无提单」路径。T/T 是结算方式不是运输术语；装运规则跟随所选 Incoterm，未填运输术语时按 FOB 回退。存在未生效变更单时禁止装运。同一合同的其他批次不必先完成。
       </view>
+      <view class="muted" v-if="batchLabel" style="margin-top: 8rpx">当前批次 {{ batchLabel }}。本页只办理这一批的提单、发票和箱单。</view>
       <view class="err" v-if="!canWriteBusiness" style="margin-top: 8rpx">当前为{{ roleLabel }}，本页只读，不可保存或推进。</view>
     </view>
     <PendingChangeBlock :case-id="id" :case-data="c" />
@@ -131,6 +132,7 @@ const FORM_NODE = 'N6';
 const docSlots = N6_DOC_SLOTS;
 
 const id = ref('');
+const batchId = ref('');
 const { canWriteBusiness, roleLabel } = useDemoRole();
 const err = ref('');
 const ok = ref('');
@@ -185,6 +187,17 @@ const nextReady = computed(() => {
   const cur = c.value.currentNode || '';
   return !!cur && cur !== FORM_NODE;
 });
+const activeBatch = computed(() => {
+  const list = c.value?.shipmentBatches || [];
+  if (batchId.value) return list.find((b: any) => b.id === batchId.value) || null;
+  return list.length === 1 ? list[0] : list[0] || null;
+});
+const batchLabel = computed(() => {
+  const b = activeBatch.value;
+  if (!b) return '';
+  const qty = b.quantity != null ? ` · ${b.quantity}${b.unit || ''}` : '';
+  return `${b.batchNo}（${b.nodeLabel || '装运'}）${qty}`;
+});
 const nextHint = computed(() => {
   const t = nextTarget.value;
   if (!t) return '';
@@ -196,6 +209,7 @@ const nextHint = computed(() => {
 
 onLoad(async (q) => {
   id.value = q?.id || '';
+  batchId.value = q?.batchId || '';
   await reload();
 });
 
@@ -205,8 +219,10 @@ function fileOf(kind: string) {
 
 function hydrate(row: any) {
   c.value = row;
+  const batch = activeBatch.value;
+  if (batch?.id) batchId.value = batch.id;
   contractIncoterms.value = displayTransport(row.contract?.incoterms || '');
-  const s = row.shipment;
+  const s = batch?.shipment || row.shipment;
   if (s) {
     form.hasCustomerWrittenInstruction = !!s.hasCustomerWrittenInstruction;
     form.instructionRef = s.instructionRef || '';
@@ -221,12 +237,14 @@ function hydrate(row: any) {
     form.n6Incoterms = contractIncoterms.value;
   }
   const ct = row.contract || {};
-  form.shipmentPort = ct.shipmentPort || '';
-  form.shipmentDate = ct.shipmentDate ? String(ct.shipmentDate).slice(0, 10) : '';
-  form.etaDate = ct.etaDate ? String(ct.etaDate).slice(0, 10) : '';
-  form.arrivalPort = ct.arrivalPort || '';
+  form.shipmentPort = batch?.shipmentPort || ct.shipmentPort || '';
+  form.shipmentDate = (batch?.shipmentDate || ct.shipmentDate)
+    ? String(batch?.shipmentDate || ct.shipmentDate).slice(0, 10)
+    : '';
+  form.etaDate = (batch?.etaDate || ct.etaDate) ? String(batch?.etaDate || ct.etaDate).slice(0, 10) : '';
+  form.arrivalPort = batch?.arrivalPort || ct.arrivalPort || '';
   for (const slot of docSlots) {
-    const ev = latestTradeDoc(row.evidences, slot.kind);
+    const ev = latestTradeDoc(row.evidences, slot.kind, batch?.id);
     if (ev) files[slot.kind] = { evidenceId: ev.id, fileName: ev.payload?.fileName || slot.demoName };
     else delete files[slot.kind];
   }
@@ -284,7 +302,7 @@ function pickFile(slot: TradeDocSlot) {
   if (!id.value || uploading.value) return;
   err.value = '';
   ok.value = '';
-  chooseAndUploadTradeDoc(id.value, 'N6', slot.slot)
+  chooseAndUploadTradeDoc(id.value, 'N6', slot.slot, batchId.value || undefined)
     .then((uploaded) => rememberUpload(slot, uploaded))
     .catch((e: any) => uploadError(e, true));
 }
@@ -294,7 +312,7 @@ function useDemo(slot: TradeDocSlot) {
   err.value = '';
   ok.value = '';
   uploading.value = slot.slot;
-  uploadDemoTradeDoc(id.value, 'N6', slot)
+  uploadDemoTradeDoc(id.value, 'N6', slot, batchId.value || undefined)
     .then((uploaded) => rememberUpload(slot, uploaded))
     .catch((e: any) => uploadError(e))
     .finally(() => {
@@ -335,7 +353,7 @@ function payload() {
 }
 
 async function save() {
-  await api.saveShipment(id.value, payload());
+  await api.saveShipment(id.value, payload(), batchId.value || undefined);
   ok.value = '装运指示已保存（尚未过闸）';
 }
 
@@ -343,8 +361,8 @@ async function tryAdvance() {
   err.value = '';
   ok.value = '';
   try {
-    await api.saveShipment(id.value, payload());
-    const r = await api.advance(id.value, 'N6');
+    await api.saveShipment(id.value, payload(), batchId.value || undefined);
+    const r = await api.advance(id.value, 'N6', batchId.value || undefined);
     advancedTo.value = r.nextNode || null;
     await reload();
     const title = r.nextNode ? pipelineNodeName(r.nextNode) : '';
@@ -358,7 +376,7 @@ async function tryAdvance() {
 
 function goNext() {
   const t = nextTarget.value;
-  if (t && id.value) goToNode(id.value, t.code);
+  if (t && id.value) goToNode(id.value, t.code, batchId.value || undefined);
 }
 </script>
 

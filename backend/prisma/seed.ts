@@ -11,6 +11,7 @@ import {
   stringifyDirectPort,
   taxFinanceFingerprint,
 } from '../src/tax-finance/tax-finance';
+import { describeDefaultBatch } from '../src/cases/shipment-batch';
 
 if (!process.env.DATABASE_URL) {
   process.env.DATABASE_URL = 'file:./dev.db';
@@ -151,6 +152,8 @@ async function main() {
   await prisma.tradeDocument.deleteMany();
   await prisma.settlement.deleteMany();
   await prisma.shipment.deleteMany();
+  await prisma.shipmentBatchNode.deleteMany();
+  await prisma.shipmentBatch.deleteMany();
   await prisma.contract.deleteMany();
   await prisma.kycReport.deleteMany();
   await prisma.screeningHit.deleteMany();
@@ -207,6 +210,7 @@ async function main() {
   const portYellow = await seedDirectPortYellowCase(sales.id);
   const portRed = await seedDirectPortRedCase(sales.id);
 
+  await ensureDemoBatches();
   await attachBuyersToCustomers();
   await attachSuppliers();
   await fillPaymentDueDates();
@@ -341,7 +345,7 @@ async function seedPassCase(salesId: string, approverId: string, complianceId: s
           remittedFen: 12800000,
         },
       },
-      shipment: {
+      shipments: {
         create: {
           hasCustomerWrittenInstruction: true,
           instructionRef: 'INST-NL-2026-011',
@@ -360,7 +364,7 @@ async function seedPassCase(salesId: string, approverId: string, complianceId: s
           fieldsJson: JSON.stringify(fields),
         })),
       },
-      settlement: {
+      settlements: {
         create: {
           payerName: 'Nordlicht GmbH',
           buyerName: 'Nordlicht GmbH',
@@ -989,7 +993,7 @@ async function seedFobNoBlCase(salesId: string, approverId: string) {
           remittedFen: 0,
         },
       },
-      shipment: {
+      shipments: {
         create: {
           hasCustomerWrittenInstruction: true,
           instructionRef: 'INST-FOB-PT-2026-004',
@@ -1527,7 +1531,7 @@ async function seedNordlichtLateCase(salesId: string, approverId: string) {
           remittedFen: 2000000,
         },
       },
-      shipment: {
+      shipments: {
         create: {
           hasCustomerWrittenInstruction: true,
           instructionRef: 'INST-NL-2026-003',
@@ -1539,7 +1543,7 @@ async function seedNordlichtLateCase(salesId: string, approverId: string) {
           consigneeOnBl: 'Nordlicht GmbH',
         },
       },
-      settlement: {
+      settlements: {
         create: {
           payerName: 'Nordlicht GmbH',
           buyerName: 'Nordlicht GmbH',
@@ -1695,7 +1699,7 @@ async function seedNordlichtOpenCase(salesId: string, approverId: string) {
           remittedFen: 0,
         },
       },
-      shipment: {
+      shipments: {
         create: {
           hasCustomerWrittenInstruction: true,
           instructionRef: 'INST-NL-2026-019',
@@ -2310,6 +2314,69 @@ async function attachSuppliers() {
     await prisma.party.update({
       where: { id: row.id },
       data: { supplierId: supplier.id },
+    });
+  }
+}
+
+/** 把种子里仍挂在案件上的装运/收汇/单证归到默认批次 1。已有批次的案件不动。 */
+async function ensureDemoBatches() {
+  const cases = await prisma.tradeCase.findMany({
+    include: {
+      contract: true,
+      nodes: true,
+      shipmentBatches: true,
+      shipments: true,
+      settlements: true,
+    },
+  });
+  for (const c of cases) {
+    if (c.shipmentBatches.length) continue;
+    const described = describeDefaultBatch({
+      status: c.status,
+      currentNode: c.currentNode,
+      nodes: c.nodes,
+    });
+    const batch = await prisma.shipmentBatch.create({
+      data: {
+        caseId: c.id,
+        batchNo: '1',
+        seq: 1,
+        quantity: c.contract?.quantity ?? null,
+        unit: c.contract?.unit ?? null,
+        amountFen: c.contract?.amountFen ?? c.amountFen,
+        currency: c.contract?.currency || c.currency,
+        currentNode: described.currentNode,
+        status: described.status,
+        shipmentPort: c.contract?.shipmentPort ?? null,
+        shipmentDate: c.contract?.shipmentDate ?? null,
+        etaDate: c.contract?.etaDate ?? null,
+        arrivalPort: c.contract?.arrivalPort ?? null,
+        nodes: { create: described.nodes },
+      },
+    });
+    const shipment = c.shipments[0];
+    if (shipment && !shipment.batchId) {
+      await prisma.shipment.update({ where: { id: shipment.id }, data: { batchId: batch.id } });
+    }
+    const settlement = c.settlements[0];
+    if (settlement && !settlement.batchId) {
+      await prisma.settlement.update({ where: { id: settlement.id }, data: { batchId: batch.id } });
+    }
+    await prisma.tradeDocument.updateMany({
+      where: { caseId: c.id, batchId: null },
+      data: { batchId: batch.id },
+    });
+    await prisma.docMismatchFix.updateMany({
+      where: { caseId: c.id, batchId: null },
+      data: { batchId: batch.id },
+    });
+    await prisma.evidence.updateMany({
+      where: { caseId: c.id, nodeCode: { in: ['N6', 'N7', 'N9'] }, batchId: null },
+      data: { batchId: batch.id },
+    });
+    await prisma.gateCheck.updateMany({
+      where: { caseId: c.id, nodeCode: { in: ['N6', 'N7', 'N9'] }, batchId: null },
+      data: { batchId: batch.id },
     });
   }
 }

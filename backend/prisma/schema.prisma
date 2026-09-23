@@ -86,10 +86,8 @@ model TradeCase {
   hits              ScreeningHit[]
   kycReports        KycReport[]
   contract          Contract?
-  shipment          Shipment?
   documents         TradeDocument[]
   mismatchFixes     DocMismatchFix[]
-  settlement        Settlement?
   auditLogs         AuditLog[]
   workbench         WorkbenchAction[]
   gateChecks        GateCheck[]
@@ -104,6 +102,10 @@ model TradeCase {
   occupancyReviews        OccupancyReview[]
   taxFinanceReviews       TaxFinanceReview[]
   taxRebateChecklist      TaxRebateChecklist?
+  /// 同一销售合同下的分批出运。N6/N7/N9 按批次独立。
+  shipmentBatches         ShipmentBatch[]
+  shipments               Shipment[]
+  settlements             Settlement[]
 }
 
 model Party {
@@ -253,9 +255,61 @@ model Contract {
   case                TradeCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
 }
 
+/// 一份销售合同下的出运批次。一批次对应一条提单路径和一笔收汇。
+model ShipmentBatch {
+  id           String   @id @default(cuid())
+  caseId       String
+  /// 批次号，案件内唯一。迁移来的默认批次为 "1"
+  batchNo      String
+  seq          Int
+  quantity     Int?
+  unit         String?
+  amountFen    Int?
+  currency     String?
+  /// 本批次流程位置：N6 / N7 / N9 / DONE
+  currentNode  String   @default("N6")
+  status       String   @default("NOT_STARTED")
+  /// 本批次 CIF 装运港口、装运日期、预计到港、到达港口（与 N3 合同装运港/装运期限分开）
+  shipmentPort String?
+  shipmentDate DateTime?
+  etaDate      DateTime?
+  arrivalPort  String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  case         TradeCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  nodes        ShipmentBatchNode[]
+  shipment     Shipment?
+  documents    TradeDocument[]
+  settlement   Settlement?
+  evidences    Evidence[]
+  mismatchFixes DocMismatchFix[]
+  gateChecks   GateCheck[]
+
+  @@unique([caseId, batchNo])
+  @@unique([caseId, seq])
+  @@index([caseId])
+}
+
+/// 批次上的 N6 / N7 / N9 节点状态。推进一批不影响其他批次。
+model ShipmentBatchNode {
+  id          String    @id @default(cuid())
+  batchId     String
+  code        String
+  status      String
+  decision    String?
+  summary     String?
+  startedAt   DateTime?
+  completedAt DateTime?
+  batch       ShipmentBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+
+  @@unique([batchId, code])
+}
+
 model Shipment {
   id                            String    @id @default(cuid())
-  caseId                        String    @unique
+  caseId                        String
+  /// 一批次一条提单路径。空仅出现在迁移/种子回填之前
+  batchId                       String?   @unique
   hasCustomerWrittenInstruction Boolean   @default(false)
   instructionRef                String?
   hasInternalApproval           Boolean   @default(false)
@@ -270,35 +324,47 @@ model Shipment {
   incotermsOverride             String?
   updatedAt                     DateTime  @updatedAt
   case                          TradeCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  batch                         ShipmentBatch? @relation(fields: [batchId], references: [id], onDelete: Cascade)
   approver                      User?     @relation("ShipmentApprover", fields: [approverId], references: [id])
+
+  @@index([caseId])
 }
 
 model TradeDocument {
   id         String    @id @default(cuid())
   caseId     String
+  batchId    String?
   type       String
   isFinal    Boolean   @default(false)
   fieldsJson String
   createdAt  DateTime  @default(now())
   case       TradeCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  batch      ShipmentBatch? @relation(fields: [batchId], references: [id], onDelete: Cascade)
 
   @@index([caseId, type])
+  @@index([batchId, type])
 }
 
 model DocMismatchFix {
   id        String    @id @default(cuid())
   caseId    String
+  batchId   String?
   field     String
   fromValue String
   toValue   String
   reason    String
   createdAt DateTime  @default(now())
   case      TradeCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  batch     ShipmentBatch? @relation(fields: [batchId], references: [id], onDelete: Cascade)
+
+  @@index([batchId])
 }
 
 model Settlement {
   id                     String    @id @default(cuid())
-  caseId                 String    @unique
+  caseId                 String
+  /// 一批次一笔收汇。客户合并付款时由业务员拆成各批次入账
+  batchId                String?   @unique
   payerName              String
   buyerName              String
   isThirdParty           Boolean   @default(false)
@@ -313,6 +379,9 @@ model Settlement {
   receivedAt             DateTime?
   updatedAt              DateTime  @updatedAt
   case                   TradeCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  batch                  ShipmentBatch? @relation(fields: [batchId], references: [id], onDelete: Cascade)
+
+  @@index([caseId])
 }
 
 /// 中信保占用高风险审核（领取 / 放行 / 驳回）。超高风险不入列；中风险不入列。
@@ -424,6 +493,7 @@ model AuditLog {
 model GateCheck {
   id          String    @id @default(cuid())
   caseId      String
+  batchId     String?
   nodeCode    String
   decision    String
   canProceed  Boolean
@@ -431,6 +501,9 @@ model GateCheck {
   reasonsJson String
   createdAt   DateTime  @default(now())
   case        TradeCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  batch       ShipmentBatch? @relation(fields: [batchId], references: [id], onDelete: SetNull)
+
+  @@index([batchId])
 }
 
 /// N2 报价版本（旧版 SUPERSEDED，禁止硬删除）
@@ -658,6 +731,8 @@ model SinosurePolicy {
 model Evidence {
   id        String    @id @default(cuid())
   caseId    String
+  /// N6/N7/N9 证据挂批次；N3/N4/N5 等合同级证据为空
+  batchId   String?
   nodeCode  String
   kind      String
   ref       String?
@@ -665,6 +740,8 @@ model Evidence {
   payload   String?
   createdAt DateTime  @default(now())
   case      TradeCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  batch     ShipmentBatch? @relation(fields: [batchId], references: [id], onDelete: Cascade)
 
   @@index([caseId, nodeCode])
+  @@index([batchId, nodeCode])
 }

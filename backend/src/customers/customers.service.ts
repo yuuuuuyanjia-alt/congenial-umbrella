@@ -20,8 +20,8 @@ import {
   evaluateBuyerOccupancy,
   isExportFulfilled,
   occupancyNewContractOpts,
-  receivedFenOf,
 } from './sinosure-exposure';
+import { batchCountsAsShipped, contractOccupancyPortions, receivedFenForBatch } from '../cases/shipment-batch';
 
 @Injectable()
 export class CustomersService {
@@ -64,11 +64,14 @@ export class CustomersService {
             case: {
               include: {
                 contract: true,
-                settlement: true,
                 sinosurePolicies: { orderBy: { createdAt: 'desc' } },
                 nodes: true,
                 procurementPlan: true,
                 salesLinkedProcurements: true,
+                shipmentBatches: {
+                  orderBy: { seq: 'asc' },
+                  include: { settlement: true, nodes: true, shipment: true },
+                },
               },
             },
           },
@@ -118,13 +121,19 @@ export class CustomersService {
   private moneyOf(c: ReturnType<CustomersService['casesOf']>[number]) {
     const amountFen = c.contract?.amountFen ?? (c.contract ? c.amountFen : 0);
     const currency = c.contract?.currency || c.currency || 'USD';
-    const receivedFen = receivedFenOf(c.settlement, amountFen);
-    const unpaidFen = Math.max(0, amountFen - receivedFen);
-    return { amountFen, currency, receivedFen, unpaidFen };
+    const portions = portionsOf(c, amountFen);
+    return {
+      amountFen,
+      currency,
+      receivedFen: portions.receivedFen,
+      unpaidFen: portions.openUnpaidFen + portions.fulfilledUnpaidFen,
+      portions,
+    };
   }
 
   private toExposureRow(c: ReturnType<CustomersService['casesOf']>[number]): ExposureContractInput {
     const money = this.moneyOf(c);
+    const batches = c.shipmentBatches || [];
     return {
       id: c.id,
       caseNo: c.caseNo,
@@ -136,6 +145,13 @@ export class CustomersService {
       status: c.status,
       currentNode: c.currentNode,
       nodes: c.nodes.map((n) => ({ code: n.code, status: n.status })),
+      ...(batches.length
+        ? {
+            batchSplit: true,
+            openUnpaidFen: money.portions.openUnpaidFen,
+            fulfilledUnpaidFen: money.portions.fulfilledUnpaidFen,
+          }
+        : {}),
     };
   }
 
@@ -172,9 +188,12 @@ export class CustomersService {
       where: { id: caseId },
       include: {
         contract: true,
-        settlement: true,
         sinosurePolicies: { orderBy: { createdAt: 'desc' } },
         nodes: true,
+        shipmentBatches: {
+          orderBy: { seq: 'asc' },
+          include: { settlement: true, nodes: true, shipment: true },
+        },
       },
     });
     if (!self) throw new NotFoundException('案件不存在');
@@ -194,9 +213,12 @@ export class CustomersService {
         case: {
           include: {
             contract: true,
-            settlement: true,
             sinosurePolicies: { orderBy: { createdAt: 'desc' } },
             nodes: true,
+            shipmentBatches: {
+              orderBy: { seq: 'asc' },
+              include: { settlement: true, nodes: true, shipment: true },
+            },
           },
         },
       },
@@ -223,8 +245,8 @@ export class CustomersService {
       ...evaluateRemittance({
         kind: 'collection',
         paymentDueAt,
-        receivedAt: c.settlement?.receivedAt ?? null,
-        remainingFen: c.contract || c.settlement ? money.unpaidFen : null,
+        receivedAt: latestReceivedAt(c.shipmentBatches),
+        remainingFen: c.contract || (c.shipmentBatches || []).some((b) => b.settlement) ? money.unpaidFen : null,
       }),
       ...money,
     };
@@ -369,11 +391,7 @@ export class CustomersService {
         remittance,
         collection: remittance,
         hasContract: !!c.contract,
-        fulfillment: c.contract
-          ? isExportFulfilled({ status: c.status, currentNode: c.currentNode, nodes: c.nodes })
-            ? 'FULFILLED'
-            : 'OPEN'
-          : 'NONE',
+        fulfillment: fulfillmentOf(c, remittance.amountFen),
         contract: c.contract
           ? {
               counterparty: c.contract.counterparty,
@@ -429,4 +447,66 @@ export class CustomersService {
       evaluation,
     };
   }
+}
+
+type BatchCase = {
+  status?: string | null;
+  currentNode?: string | null;
+  nodes?: Array<{ code: string; status: string }>;
+  contract?: { amountFen?: number | null } | null;
+  amountFen?: number | null;
+  shipmentBatches?: Array<{
+    amountFen?: number | null;
+    currentNode?: string | null;
+    shipmentDate?: Date | null;
+    nodes?: Array<{ code: string; status: string }>;
+    shipment?: { blNo?: string | null; blControl?: string | null; noBlRef?: string | null; noBlReason?: string | null; noBlEvidenceStub?: string | null } | null;
+    settlement?: { receivedAt?: Date | null; hasRemittanceMemo?: boolean | null; amountFen?: number | null } | null;
+  }>;
+};
+
+function portionsOf(c: BatchCase, amountFen: number) {
+  const batches = c.shipmentBatches || [];
+  if (!batches.length) {
+    return contractOccupancyPortions({
+      amountFen,
+      legacy: {
+        receivedFen: 0,
+        fulfilled: isExportFulfilled({ status: c.status, currentNode: c.currentNode, nodes: c.nodes }),
+      },
+    });
+  }
+  const sole = batches.length === 1;
+  return contractOccupancyPortions({
+    amountFen,
+    batches: batches.map((b) => ({
+      amountFen: b.amountFen,
+      receivedFen: receivedFenForBatch(b, { contractAmountFen: amountFen, sole }),
+      shipped: batchCountsAsShipped(b),
+    })),
+  });
+}
+
+function latestReceivedAt(batches?: BatchCase['shipmentBatches']): Date | null {
+  let latest: Date | null = null;
+  for (const batch of batches || []) {
+    const at = batch.settlement?.receivedAt;
+    if (!at) continue;
+    const d = at instanceof Date ? at : new Date(at);
+    if (Number.isNaN(d.getTime())) continue;
+    if (!latest || d > latest) latest = d;
+  }
+  return latest;
+}
+
+function fulfillmentOf(c: BatchCase, amountFen: number): 'FULFILLED' | 'OPEN' | 'NONE' {
+  if (!c.contract) return 'NONE';
+  const batches = c.shipmentBatches || [];
+  if (!batches.length) {
+    return isExportFulfilled({ status: c.status, currentNode: c.currentNode, nodes: c.nodes }) ? 'FULFILLED' : 'OPEN';
+  }
+  const portions = portionsOf(c, amountFen);
+  const anyShipped = batches.some((b) => batchCountsAsShipped(b));
+  if (anyShipped && portions.unshippedBalanceFen === 0) return 'FULFILLED';
+  return 'OPEN';
 }
