@@ -115,6 +115,7 @@ import {
   api,
   chooseAndUploadTradeDoc,
   evidenceFileUrl,
+  batchPickUrl,
   goToNode,
   latestTradeDoc,
   N6_DOC_SLOTS,
@@ -210,6 +211,10 @@ const nextHint = computed(() => {
 onLoad(async (q) => {
   id.value = q?.id || '';
   batchId.value = q?.batchId || '';
+  if (id.value && !batchId.value) {
+    uni.redirectTo({ url: batchPickUrl(id.value) });
+    return;
+  }
   await reload();
 });
 

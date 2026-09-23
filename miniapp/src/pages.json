@@ -22,7 +22,7 @@
     },
     {
       "path": "pages/node/contract",
-      <style": { "navigationBarTitleText": "销售合同/订单确认" }
+      "style": { "navigationBarTitleText": "销售合同/订单确认" }
     },
     {
       "path": "pages/node/change",
@@ -31,6 +31,10 @@
     {
       "path": "pages/node/procurement",
       "style": { "navigationBarTitleText": "采购合同/国内备货" }
+    },
+    {
+      "path": "pages/node/batches",
+      "style": { "navigationBarTitleText": "选择出运批次" }
     },
     {
       "path": "pages/node/shipment",
