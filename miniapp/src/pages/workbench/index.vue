@@ -33,7 +33,9 @@
     </view>
 
     <template v-if="tab === 'occupancy'">
-      <view class="card" v-for="h in occupancyQueue" :key="'occ-' + h.id">
+      <WindowedList :items="occupancyQueue" key-field="id">
+        <template #default="{ item: h }">
+      <view class="card scroll-skip">
         <view class="line-reason">{{ occupancyReason(h) }}</view>
         <view class="line-status">
           <text>当前状态：{{ occupancyStatus(h) }}</text>
@@ -41,12 +43,14 @@
         </view>
         <view class="line-actions">
           <view class="muted">可操作：{{ occupancyActionsHint(h) }}</view>
-          <input class="input" v-if="canWriteWorkbench" v-model="comments[h.id]" placeholder="审核备注（可选）" />
+          <BoundField v-if="canWriteWorkbench" :model="comments" :field="h.id" placeholder="审核备注（可选）" />
           <view class="btn" v-if="canWriteWorkbench && (h.status === 'OPEN' || h.status === 'REJECTED')" @click="actOccupancy(h, 'CLAIM')">领取</view>
           <view class="btn" v-if="canWriteWorkbench && h.status !== 'APPROVED'" @click="actOccupancy(h, 'APPROVE')">放行</view>
           <view class="btn btn-danger" v-if="canWriteWorkbench && (h.status === 'OPEN' || h.status === 'CLAIMED')" @click="actOccupancy(h, 'REJECT')">驳回</view>
         </view>
       </view>
+        </template>
+      </WindowedList>
       <view class="card" v-if="loaded && !occupancyQueue.length">
         <view class="h2" style="margin: 0">暂无占用高风险待审</view>
         <view class="muted" style="margin-top: 8rpx">
@@ -56,7 +60,9 @@
     </template>
 
     <template v-else-if="tab === 'sanctions'">
-      <view class="card" v-for="h in hitQueue" :key="'hit-' + h.id">
+      <WindowedList :items="hitQueue" key-field="id">
+        <template #default="{ item: h }">
+      <view class="card scroll-skip">
         <view class="line-reason">{{ hitReason(h) }}</view>
         <view class="line-status">
           <text>当前状态：{{ hitStatus(h) }}</text>
@@ -70,6 +76,8 @@
           <view class="btn" v-if="canWriteWorkbench" @click="actHit(h, 'MONITOR')">持续监控</view>
         </view>
       </view>
+        </template>
+      </WindowedList>
       <view class="card" v-if="loaded && !hitQueue.length">
         <view class="h2" style="margin: 0">暂无待处置的制裁命中</view>
         <view class="muted" style="margin-top: 8rpx">
@@ -79,7 +87,9 @@
     </template>
 
     <template v-else>
-      <view class="card" v-for="h in taxQueue" :key="'tax-' + h.id">
+      <WindowedList :items="taxQueue" key-field="id">
+        <template #default="{ item: h }">
+      <view class="card scroll-skip">
         <view class="line-reason">{{ taxReason(h) }}</view>
         <view class="line-status">
           <text>当前状态：{{ taxStatus(h) }}</text>
@@ -87,10 +97,10 @@
         </view>
         <view class="line-actions">
           <view class="muted">{{ taxActionsHint(h) }}</view>
-          <input
-            class="input"
+          <BoundField
             v-if="canWriteWorkbench && !h.readOnly"
-            v-model="comments[h.id]"
+            :model="comments"
+            :field="h.id"
             placeholder="审核备注（可选）"
           />
           <view
@@ -110,6 +120,8 @@
           >驳回</view>
         </view>
       </view>
+        </template>
+      </WindowedList>
       <view class="card" v-if="loaded && !taxQueue.length">
         <view class="h2" style="margin: 0">暂无退税·融资性待审</view>
         <view class="muted" style="margin-top: 8rpx">
@@ -124,7 +136,9 @@
 import { computed, reactive, ref } from 'vue';
 import { onShow } from '@dcloudio/uni-app';
 import { api, decisionClass, decisionText, money, pipelineNodeName } from '../../api';
+import BoundField from '../../components/BoundField.vue';
 import RoleBar from '../../components/RoleBar.vue';
+import WindowedList from '../../components/WindowedList.vue';
 import { demoActorLabel, useDemoRole } from '../../role';
 
 const { canWriteWorkbench, roleLabel, refresh: refreshRole } = useDemoRole();

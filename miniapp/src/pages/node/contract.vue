@@ -18,15 +18,15 @@
 
     <view class="card">
       <view class="label">买方</view>
-      <input class="input" v-model="parties.BUYER.name" placeholder="买方名称" />
-      <input class="input" v-model="parties.BUYER.country" placeholder="国家/地区" />
+      <BoundField :model="parties.BUYER" field="name" placeholder="买方名称" />
+      <BoundField :model="parties.BUYER" field="country" placeholder="国家/地区" />
       <view class="label">收货人</view>
-      <input class="input" v-model="parties.CONSIGNEE.name" placeholder="收货人名称，可与买方不同" />
-      <input class="input" v-model="parties.CONSIGNEE.country" placeholder="国家/地区" />
+      <BoundField :model="parties.CONSIGNEE" field="name" placeholder="收货人名称，可与买方不同" />
+      <BoundField :model="parties.CONSIGNEE" field="country" placeholder="国家/地区" />
       <view class="label">货物名称</view>
-      <input class="input" v-model="form.goodsDesc" placeholder="默认可从报价带入，修改不影响采购合同" />
+      <BoundField :model="form" field="goodsDesc" placeholder="默认可从报价带入，修改不影响采购合同" />
       <view class="label">规格</view>
-      <input class="input" v-model="form.goodsSpec" placeholder="如型号、尺寸" />
+      <BoundField :model="form" field="goodsSpec" placeholder="如型号、尺寸" />
       <view class="label">运输术语（Incoterms）<text class="req">必填</text></view>
       <view class="choice-row">
         <view class="choice-btn" :class="{ 'choice-btn-on': tradeTerm === 'FOB' }" @click="selectTerm('FOB')">FOB</view>
@@ -38,21 +38,21 @@
         <view class="choice-btn" :class="{ 'choice-btn-on': form.ttTiming === 'AFTER' }" @click="selectTtTiming('AFTER')">后 T/T</view>
       </view>
       <view class="label" v-if="!form.ttTiming">付款条件</view>
-      <input
+      <BoundField
         v-if="!form.ttTiming"
-        class="input"
-        v-model="form.paymentTerms"
+        :model="form"
+        field="paymentTerms"
         placeholder="如 L/C、OA 30 days；电汇请点选上方前 T/T / 后 T/T"
       />
       <view class="label">数量</view>
-      <input class="input" type="number" v-model="form.quantity" />
+      <BoundField :model="form" field="quantity" type="number" />
       <view class="label">单位</view>
       <view class="choice-row">
         <view class="choice-btn" :class="{ 'choice-btn-on': form.unit === 'TON' }" @click="form.unit = 'TON'">吨</view>
         <view class="choice-btn" :class="{ 'choice-btn-on': form.unit === 'KG' }" @click="form.unit = 'KG'">千克</view>
       </view>
       <view class="label">合同总金额（{{ form.currency }}）</view>
-      <input class="input" type="digit" v-model="form.amountYuan" :placeholder="`${form.currency} 金额`" />
+      <BoundField :model="form" field="amountYuan" type="digit" :placeholder="`${form.currency} 金额`" />
       <view class="label">币种</view>
       <view class="choice-row">
         <view class="choice-btn" :class="{ 'choice-btn-on': form.currency === 'USD' }" @click="form.currency = 'USD'">USD</view>
@@ -66,22 +66,22 @@
       </view>
       <template v-if="form.deliveryMode === 'DIRECT_PORT'">
         <view class="label">货物仓储地点</view>
-        <input class="input" v-model="directPort.warehouseLocation" placeholder="如洋山港待装仓" />
+        <BoundField :model="directPort" field="warehouseLocation" placeholder="如洋山港待装仓" />
         <view class="label">批次号</view>
-        <input class="input" v-model="directPort.batchNo" placeholder="批次号" />
+        <BoundField :model="directPort" field="batchNo" placeholder="批次号" />
       </template>
       <view class="label">装运港</view>
-      <input class="input" v-model="form.loadingPort" placeholder="如 上海港 / Shanghai" />
+      <BoundField :model="form" field="loadingPort" placeholder="如 上海港 / Shanghai" />
       <view class="label">装运期限</view>
-      <input class="input" v-model="form.shipmentDeadline" placeholder="年-月-日，或期限，如 2026-10-31 前" />
+      <BoundField :model="form" field="shipmentDeadline" placeholder="年-月-日，或期限，如 2026-10-31 前" />
     </view>
 
     <view class="card" v-if="form.ttTiming === 'ADVANCE'">
       <view class="h2">前 T/T 收汇</view>
       <view class="label">收汇比例（%）</view>
-      <input class="input" type="digit" v-model="form.ttPercent" placeholder="如 30" @input="syncAdvanceFromPercent" />
+      <BoundField :model="form" field="ttPercent" type="digit" placeholder="如 30" @input="syncAdvanceFromPercent" />
       <view class="label">收汇金额（{{ form.currency }}）</view>
-      <input class="input" type="digit" v-model="form.ttAdvanceYuan" :placeholder="form.currency" />
+      <BoundField :model="form" field="ttAdvanceYuan" type="digit" :placeholder="form.currency" />
       <view class="label">收汇凭证</view>
       <view class="muted" v-for="(v, i) in form.ttVouchers" :key="v.ref || i">{{ v.fileName || v.ref }}</view>
       <view class="btn btn-ghost" v-if="canWriteBusiness" @click="stubVoucher">模拟上传收汇凭证</view>
@@ -90,7 +90,7 @@
     <view class="card" v-if="form.ttTiming === 'AFTER'">
       <view class="h2">后 T/T</view>
       <view class="label">装运后付款天数</view>
-      <input class="input" type="number" v-model="form.ttDays" placeholder="如 30" />
+      <BoundField :model="form" field="ttDays" type="number" placeholder="如 30" />
     </view>
 
     <view class="card">
@@ -109,21 +109,19 @@
         </view>
         <view class="muted" style="margin-top: 8rpx">{{ kycReport.summary }}</view>
       </view>
-      <view class="muted" v-for="h in customerHits" :key="h.id" style="margin-top: 12rpx">
-        {{ h.listCode }} · {{ h.listedName }}（{{ h.confidence }} / {{ decisionText(h.disposition) }}，匹配 {{ h.matchedName }}）
-      </view>
+      <WindowedList :items="customerHits" key-field="id">
+        <template #default="{ item: h }">
+          <view class="muted" style="margin-top: 12rpx">
+            {{ h.listCode }} · {{ h.listedName }}（{{ h.confidence }} / {{ decisionText(h.disposition) }}，匹配 {{ h.matchedName }}）
+          </view>
+        </template>
+      </WindowedList>
     </view>
 
     <view class="card">
       <view class="h2">中信保</view>
       <view class="muted">须先登记投保限额（美元），否则不得保存或推进合同。占用不换汇，仅美元销售计入美元占用。</view>
-      <SinosureExposure :exposure="exposureView" :show-new="true" />
-      <view class="err" v-if="occupancyNeedsReview" style="margin-top: 12rpx">
-        占用属高风险，须由风控岗在审核工作台领取并放行后再推进，无需修改合同金额。
-      </view>
-      <view class="ok" v-if="occupancyApproved" style="margin-top: 12rpx">工作台已放行该高风险占用，可以推进。</view>
-      <view class="err" v-if="occupancyRejected" style="margin-top: 12rpx">工作台已驳回该高风险占用，暂不可推进。</view>
-      <view class="btn btn-ghost" v-if="canWriteWorkbench && (occupancyNeedsReview || occupancyRejected)" @click="goWorkbench">去审核工作台</view>
+      <ExposureLive :form="form" :case-data="c" :can-write-workbench="canWriteWorkbench" @workbench="goWorkbench" />
       <view class="muted" v-if="sinosureHint" style="margin-top: 8rpx">{{ sinosureHint }}</view>
       <view class="label">中信保保单</view>
       <view class="readonly" v-if="sino.fileName">{{ sino.fileName }}</view>
@@ -135,9 +133,9 @@
         <view class="btn btn-ghost" @click="useDemoSinosure">{{ demoUploading ? '正在上传示例保单…' : '使用演示示例保单' }}</view>
       </view>
       <view class="label">保单编号（可选）</view>
-      <input class="input" v-model="sino.evidenceRef" placeholder="保单或限额批单编号，可留空" />
+      <BoundField :model="sino" field="evidenceRef" placeholder="保单或限额批单编号，可留空" />
       <view class="label">投保限额</view>
-      <input class="input" type="digit" v-model="sino.limitYuan" placeholder="须不低于计入占用的美元合同金额" />
+      <BoundField :model="sino" field="limitYuan" type="digit" placeholder="须不低于计入占用的美元合同金额" />
       <view class="label">限额币种</view>
       <view class="readonly">USD</view>
       <view class="muted">中信保限额固定美元</view>
@@ -174,13 +172,14 @@ import {
   latestSinosure,
   nextWorkNodeFromForm,
   pipelineNodeName,
-  previewExposure,
   SALES_CURRENCY,
   yuanToFen,
 } from '../../api';
 import { parseContractUnit, resolveCarriedGoods } from '../../goods-fields';
+import BoundField from '../../components/BoundField.vue';
+import ExposureLive from '../../components/ExposureLive.vue';
 import NextNodeCta from '../../components/NextNodeCta.vue';
-import SinosureExposure from '../../components/SinosureExposure.vue';
+import WindowedList from '../../components/WindowedList.vue';
 import { useDemoRole } from '../../role';
 
 type TradeTerm = 'FOB' | 'CIF';
@@ -281,34 +280,6 @@ const sinosureHint = computed(() => {
   const limit = fenToYuan(p.insuredLimitFen);
   return `已登记：限额 ${p.currency} ${limit} · ${p.fileName || p.evidenceRef || '已留存附件'}`;
 });
-
-const exposureView = computed(() => {
-  const base = c.value?.sinosureExposure;
-  return previewExposure(base, yuanToFen(form.amountYuan), form.currency) || base;
-});
-
-const occupancyReview = computed(() => {
-  const rows = (c.value?.occupancyReviews || []).filter(
-    (r: any) => r.nodeCode === 'N3' && r.status !== 'SUPERSEDED',
-  );
-  return (
-    rows.find((r: any) => r.status === 'APPROVED') ||
-    rows.find((r: any) => r.status === 'REJECTED') ||
-    rows[0]
-  );
-});
-
-const occupancyNeedsReview = computed(() => {
-  if (exposureView.value?.band !== 'HIGH') return false;
-  const st = occupancyReview.value?.status;
-  return !st || st === 'OPEN' || st === 'CLAIMED';
-});
-const occupancyApproved = computed(
-  () => exposureView.value?.band === 'HIGH' && occupancyReview.value?.status === 'APPROVED',
-);
-const occupancyRejected = computed(
-  () => exposureView.value?.band === 'HIGH' && occupancyReview.value?.status === 'REJECTED',
-);
 
 function goWorkbench() {
   uni.navigateTo({ url: '/pages/workbench/index' });

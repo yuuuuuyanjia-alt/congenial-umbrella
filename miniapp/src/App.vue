@@ -47,6 +47,13 @@ select {
   margin-bottom: 20rpx;
   box-shadow: 0 8rpx 24rpx rgba(15, 61, 46, 0.08);
 }
+/* Repeated rows (N5 sales options, contract lists). Skip layout and paint
+   while they are off-screen. contain-intrinsic-size keeps the scrollbar
+   stable; `auto` remembers the real height after the first render. */
+.scroll-skip {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 140px;
+}
 .h1 {
   font-size: var(--font-h1);
   font-weight: 700;
@@ -181,21 +188,38 @@ select {
 }
 
 /* #ifdef H5 */
-/* uni-h5 base.css: html,body { user-select: none } — inherited onto copy and,
-   on WebKit, onto inputs (user-select:none makes the field non-editable).
-   Re-enable selection on copyable text only. Do not put user-select:text on
-   the uni-input / uni-textarea host: that shell is not the editing control,
-   and a drag on it selects the page and blurs the caret. */
+/* uni-h5 base.css: html,body { height:100%; user-select:none } and
+   body { overflow-x:hidden }, so body is the scrollport on every route
+   (home, lists, N2–N9, batches, workbench). user-select:text on that shell
+   makes WebKit run selection hit-testing on every pan. The shell stays
+   non-selectable; copy stays on the page body. While html.h5-scrolling is
+   set from a wheel or touch pan (not a scroll listener) selection is dropped
+   for the whole tree so a pan does not hit-test every uni-view. WebKit refuses to type when an
+   input inherits user-select:none, so the native control sets it itself. */
 html,
 body,
-page,
 uni-app,
 uni-page,
-uni-page-wrapper,
+uni-page-wrapper {
+  -webkit-user-select: none !important;
+  user-select: none !important;
+  touch-action: manipulation;
+}
+page,
 uni-page-body {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
+}
+html.h5-scrolling,
+html.h5-scrolling * {
+  -webkit-user-select: none !important;
+  user-select: none !important;
+}
+html.h5-scrolling .uni-input-input,
+html.h5-scrolling .uni-textarea-textarea {
   -webkit-user-select: text !important;
   user-select: text !important;
-  -webkit-touch-callout: default;
 }
 
 .card,

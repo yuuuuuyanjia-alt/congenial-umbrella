@@ -54,7 +54,9 @@
     </view>
 
     <view class="h2" style="margin: 8rpx 8rpx 12rpx">每一笔采购合同 / 采购单</view>
-    <view class="card" v-for="p in s.purchases" :key="p.id" @click="openCase(p.id)">
+    <WindowedList :items="s.purchases || []" key-field="id">
+      <template #default="{ item: p }">
+    <view class="card scroll-skip" @click="openCase(p.id)">
       <view class="row">
         <view>
           <view class="muted">{{ p.caseNo }} · {{ p.poNo || '未填 PO 号' }}</view>
@@ -99,6 +101,8 @@
       <view class="muted" v-if="!(p.installments || []).length">约定付款时间 {{ p.paymentDueAt || '—' }} · 付款日 {{ p.paidAt || '—' }}</view>
       <view class="muted" v-if="p.delivery?.note">{{ p.delivery.note }}</view>
     </view>
+      </template>
+    </WindowedList>
     <view class="muted" v-if="!s.purchases?.length">暂无采购单。</view>
   </view>
 </template>
@@ -107,6 +111,7 @@
 import { onLoad } from '@dcloudio/uni-app';
 import { ref } from 'vue';
 import { api, money, remittanceClass, remittanceText } from '../../api';
+import WindowedList from '../../components/WindowedList.vue';
 
 const id = ref('');
 const s = ref<any>(null);

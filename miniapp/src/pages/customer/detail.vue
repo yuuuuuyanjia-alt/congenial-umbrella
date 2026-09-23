@@ -147,7 +147,9 @@
     </view>
 
     <view class="h2" style="margin: 8rpx 8rpx 12rpx">签过哪些合同</view>
-    <view class="card" v-for="t in c.contracts" :key="'ct-' + t.id" @click="openCase(t.id)">
+    <WindowedList :items="c.contracts || []" key-field="id">
+      <template #default="{ item: t }">
+    <view class="card scroll-skip" @click="openCase(t.id)">
       <view class="row">
         <view>
           <view class="muted">{{ t.caseNo }} · {{ t.contract?.incoterms || '合同' }}{{ t.contract?.paymentTerms ? ' · ' + t.contract.paymentTerms : '' }}</view>
@@ -165,10 +167,14 @@
         付款条件 {{ t.paymentTerms || '未填' }} · 约定收款日 {{ t.paymentDueAt || '—' }} · 到账 {{ t.receivedAt || '—' }}
       </view>
     </view>
+      </template>
+    </WindowedList>
     <view class="muted" v-if="!c.contracts?.length" style="margin-bottom: 16rpx">尚未签订出口合同。</view>
 
     <view class="h2" style="margin: 8rpx 8rpx 12rpx">历次交易记录</view>
-    <view class="card" v-for="t in c.transactions" :key="t.id" @click="openCase(t.id)">
+    <WindowedList :items="c.transactions || []" key-field="id">
+      <template #default="{ item: t }">
+    <view class="card scroll-skip" @click="openCase(t.id)">
       <view class="row">
         <view>
           <view class="muted">{{ t.caseNo }}</view>
@@ -185,6 +191,8 @@
       <view class="muted" v-else>尚未保存出口合同</view>
       <view class="muted" v-if="t.collection?.note">{{ t.collection.note }}</view>
     </view>
+      </template>
+    </WindowedList>
     <view class="muted" v-if="!c.transactions?.length">暂无交易。</view>
   </view>
 </template>
@@ -194,6 +202,7 @@ import { onLoad } from '@dcloudio/uni-app';
 import { computed, ref } from 'vue';
 import { api, gradeClass, money, pctText, remittanceClass, remittanceText } from '../../api';
 import SinosureExposure from '../../components/SinosureExposure.vue';
+import WindowedList from '../../components/WindowedList.vue';
 
 const id = ref('');
 const c = ref<any>(null);

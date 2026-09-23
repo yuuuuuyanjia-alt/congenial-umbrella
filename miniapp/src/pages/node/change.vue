@@ -11,13 +11,15 @@
         <view class="chip" :class="{ 'chip-on': form.field === f.key }" v-for="f in fields" :key="f.key" @click="form.field = f.key">{{ f.label }}</view>
       </view>
       <view class="label">新值</view>
-      <input class="input" v-model="form.newValue" />
+      <BoundField :model="form" field="newValue" />
       <view class="label">原因</view>
-      <input class="input" v-model="form.reason" />
+      <BoundField :model="form" field="reason" />
       <view class="btn" v-if="canWriteBusiness" @click="create">创建变更单</view>
     </view>
 
-    <view class="card" v-for="co in c.changeOrders || []" :key="co.id">
+    <WindowedList :items="c.changeOrders || []" key-field="id">
+      <template #default="{ item: co }">
+    <view class="card">
       <view class="row">
         <view class="h2" style="margin: 0">{{ co.changeNo }}</view>
         <view class="badge" :class="co.status === 'APPLIED' ? 'badge-pass' : 'badge-review'">{{ co.status }}</view>
@@ -26,12 +28,14 @@
       <view class="muted" v-for="d in co.diffs" :key="d.id">{{ d.fieldLabel }}：{{ d.oldValue }} → {{ d.newValue }}</view>
       <view class="muted">客户确认 {{ co.customerAckEvidenceId || '无' }} · 内部 {{ co.internalAckEvidenceId || '无' }}</view>
       <view class="label" v-if="co.status !== 'APPLIED'">客户确认编号</view>
-      <input class="input" v-if="co.status !== 'APPLIED'" v-model="ackRef[co.id]" placeholder="邮件/函件编号" />
+      <BoundField v-if="co.status !== 'APPLIED'" :model="ackRef" :field="co.id" placeholder="邮件/函件编号" />
       <view class="btn btn-ghost" v-if="canWriteBusiness && !co.customerAck" @click="ack(co, 'CUSTOMER')">客户确认</view>
       <view class="btn btn-ghost" v-if="canWriteBusiness && !co.internalAck" @click="ack(co, 'INTERNAL')">内部确认</view>
       <view class="btn btn-warn" v-if="canWriteBusiness && co.isSensitive && !co.approved" @click="ack(co, 'APPROVAL')">敏感审批</view>
       <view class="btn" v-if="canWriteBusiness && co.status !== 'APPLIED' && co.status !== 'SUPERSEDED'" @click="apply(co)">应用新版本</view>
     </view>
+      </template>
+    </WindowedList>
 
     <view class="card" v-if="(c.changeOrders || []).length">
       <view class="h2">中信保（变更后核对）</view>
@@ -51,12 +55,12 @@
       </view>
       <view v-if="sino.mode === 'reupload'">
         <view class="label">保单编号 / 附件编号</view>
-        <input class="input" v-model="sino.evidenceRef" placeholder="可手填编号，或点下方模拟上传" />
+        <BoundField :model="sino" field="evidenceRef" placeholder="可手填编号，或点下方模拟上传" />
         <view class="label">附件名称</view>
-        <input class="input" v-model="sino.fileName" placeholder="如 中信保限额批注.pdf" />
+        <BoundField :model="sino" field="fileName" placeholder="如 中信保限额批注.pdf" />
         <view class="btn btn-ghost" v-if="canWriteBusiness" @click="stubUpload">模拟上传保单</view>
         <view class="label">投保限额</view>
-        <input class="input" type="digit" v-model="sino.limitYuan" placeholder="须覆盖变更后合同金额" />
+        <BoundField :model="sino" field="limitYuan" type="digit" placeholder="须覆盖变更后合同金额" />
       <view class="label">限额币种</view>
       <view class="readonly">USD</view>
       <view class="muted">中信保占用与限额固定美元，不可更改</view>
@@ -64,12 +68,16 @@
       <view class="btn" v-if="canWriteBusiness" @click="saveSino">{{ sino.mode === 'confirm' ? '确认沿用并核对限额' : '保存中信保信息' }}</view>
     </view>
 
-    <view class="card" v-for="v in c.contractVersions || []" :key="v.id">
-      <view class="row">
-        <view class="muted">合同版本 v{{ v.version }}</view>
-        <view class="badge" :class="v.status === 'ACTIVE' ? 'badge-pass' : 'badge-stub'">{{ v.status }}</view>
-      </view>
-    </view>
+    <WindowedList :items="c.contractVersions || []" key-field="id">
+      <template #default="{ item: v }">
+        <view class="card">
+          <view class="row">
+            <view class="muted">合同版本 v{{ v.version }}</view>
+            <view class="badge" :class="v.status === 'ACTIVE' ? 'badge-pass' : 'badge-stub'">{{ v.status }}</view>
+          </view>
+        </view>
+      </template>
+    </WindowedList>
 
     <view class="btn btn-ghost" v-if="canWriteBusiness" @click="tryAdvance">无待确认变更则推进 / 校验过闸</view>
     <view class="err" v-if="err">{{ err }}</view>
@@ -81,7 +89,9 @@
 import { onLoad, onShow } from '@dcloudio/uni-app';
 import { computed, reactive, ref } from 'vue';
 import { api, fenToYuan, latestSinosure, SALES_CURRENCY, yuanToFen } from '../../api';
+import BoundField from '../../components/BoundField.vue';
 import SinosureExposure from '../../components/SinosureExposure.vue';
+import WindowedList from '../../components/WindowedList.vue';
 import { useDemoRole } from '../../role';
 
 const id = ref('');

@@ -9,20 +9,24 @@
       <view class="err" v-if="!canWriteBusiness" style="margin-top: 8rpx">当前为{{ roleLabel }}，本页只读，不可上传或推进。</view>
     </view>
     <PendingChangeBlock :case-id="id" :case-data="c" />
-    <view class="card" v-for="slot in docSlots" :key="slot.slot">
-      <view class="h2">{{ slot.label }}</view>
-      <view class="muted" v-if="slot.hint">{{ slot.hint }}</view>
-      <view class="readonly" v-if="fileOf(slot.kind)">{{ fileOf(slot.kind).fileName }}</view>
-      <view class="muted" v-else>尚未上传</view>
-      <view class="muted" v-if="fileOf(slot.kind)" style="margin-top: 8rpx">文件已写入证据链。</view>
-      <view class="btn btn-ghost" v-if="fileOf(slot.kind)" @click="openFile(slot.kind)">查看文件</view>
-      <view class="doc-actions" v-if="canWriteBusiness">
-        <view class="btn btn-ghost" @click="pickFile(slot)">{{ fileOf(slot.kind) ? '重新上传' : '上传' }}{{ slot.label }}</view>
-        <view class="btn btn-ghost" @click="useDemo(slot)">
-          {{ uploading === slot.slot ? '正在上传示例…' : '使用演示示例' }}
+    <WindowedList :items="docSlots" key-field="slot">
+      <template #default="{ item: doc }">
+        <view class="card">
+          <view class="h2">{{ doc.label }}</view>
+          <view class="muted" v-if="doc.hint">{{ doc.hint }}</view>
+          <view class="readonly" v-if="fileOf(doc.kind)">{{ fileOf(doc.kind).fileName }}</view>
+          <view class="muted" v-else>尚未上传</view>
+          <view class="muted" v-if="fileOf(doc.kind)" style="margin-top: 8rpx">文件已写入证据链。</view>
+          <view class="btn btn-ghost" v-if="fileOf(doc.kind)" @click="openFile(doc.kind)">查看文件</view>
+          <view class="doc-actions" v-if="canWriteBusiness">
+            <view class="btn btn-ghost" @click="pickFile(doc)">{{ fileOf(doc.kind) ? '重新上传' : '上传' }}{{ doc.label }}</view>
+            <view class="btn btn-ghost" @click="useDemo(doc)">
+              {{ uploading === doc.slot ? '正在上传示例…' : '使用演示示例' }}
+            </view>
+          </view>
         </view>
-      </view>
-    </view>
+      </template>
+    </WindowedList>
     <view class="btn btn-danger" v-if="canWriteBusiness" @click="tryAdvance">校验硬闸门并推进</view>
     <view class="err" v-if="err">{{ err }}</view>
     <view class="ok" v-if="ok">{{ ok }}</view>
@@ -53,6 +57,7 @@ import {
   type TradeDocSlot,
 } from '../../api';
 import NextNodeCta from '../../components/NextNodeCta.vue';
+import WindowedList from '../../components/WindowedList.vue';
 import PendingChangeBlock from '../../components/PendingChangeBlock.vue';
 import { useDemoRole } from '../../role';
 
