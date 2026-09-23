@@ -4,7 +4,7 @@
       <view class="h2">审计日志（仅追加）</view>
       <view class="muted">系统不提供修改或删除审计记录的接口。</view>
     </view>
-    <view class="card" v-for="a in logs" :key="a.id">
+    <view class="card scroll-skip" v-for="a in logs" :key="a.id">
       <view class="row">
         <view class="h2" style="margin: 0">{{ a.action }}</view>
         <view class="muted">{{ a.nodeCode }}</view>

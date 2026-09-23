@@ -47,6 +47,13 @@ select {
   margin-bottom: 20rpx;
   box-shadow: 0 8rpx 24rpx rgba(15, 61, 46, 0.08);
 }
+/* Repeated rows (N5 sales options, contract lists). Skip layout and paint
+   while they are off-screen. contain-intrinsic-size keeps the scrollbar
+   stable; `auto` remembers the real height after the first render. */
+.scroll-skip {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 140px;
+}
 .h1 {
   font-size: var(--font-h1);
   font-weight: 700;
@@ -181,20 +188,26 @@ select {
 }
 
 /* #ifdef H5 */
-/* uni-h5 base.css: html,body { user-select: none } — inherited onto copy and,
-   on WebKit, onto inputs (user-select:none makes the field non-editable).
-   Re-enable selection on copyable text only. Do not put user-select:text on
-   the uni-input / uni-textarea host: that shell is not the editing control,
-   and a drag on it selects the page and blurs the caret. */
+/* uni-h5 base.css: html,body { height:100%; user-select:none } and
+   body { overflow-x:hidden }, so body is the scrollport. user-select:text on
+   that scroller makes WebKit run selection hit-testing on every pan — severe
+   jank on long pages (N5 sales list, sales contract, case detail). Keep the
+   scroller itself non-selectable. Copy stays on the page content below.
+   WebKit also refuses to type when an input inherits user-select:none, so the
+   native control sets user-select:text itself (not via the scroller). */
 html,
-body,
+body {
+  -webkit-user-select: none !important;
+  user-select: none !important;
+  touch-action: manipulation;
+}
 page,
 uni-app,
 uni-page,
 uni-page-wrapper,
 uni-page-body {
-  -webkit-user-select: text !important;
-  user-select: text !important;
+  -webkit-user-select: text;
+  user-select: text;
   -webkit-touch-callout: default;
 }
 

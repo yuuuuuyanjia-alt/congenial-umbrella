@@ -54,7 +54,7 @@
     </view>
 
     <view class="h2" style="margin: 8rpx 8rpx 12rpx">每一笔采购合同 / 采购单</view>
-    <view class="card" v-for="p in s.purchases" :key="p.id" @click="openCase(p.id)">
+    <view class="card scroll-skip" v-for="p in s.purchases" :key="p.id" @click="openCase(p.id)">
       <view class="row">
         <view>
           <view class="muted">{{ p.caseNo }} · {{ p.poNo || '未填 PO 号' }}</view>

@@ -33,7 +33,12 @@
     </view>
 
     <template v-if="tab === 'occupancy'">
-      <view class="card" v-for="h in occupancyQueue" :key="'occ-' + h.id">
+      <view
+        class="card scroll-skip"
+        v-for="h in occupancyQueue"
+        :key="'occ-' + h.id"
+        v-memo="[h.id, h.status, comments[h.id], canWriteWorkbench]"
+      >
         <view class="line-reason">{{ occupancyReason(h) }}</view>
         <view class="line-status">
           <text>当前状态：{{ occupancyStatus(h) }}</text>
@@ -56,7 +61,12 @@
     </template>
 
     <template v-else-if="tab === 'sanctions'">
-      <view class="card" v-for="h in hitQueue" :key="'hit-' + h.id">
+      <view
+        class="card scroll-skip"
+        v-for="h in hitQueue"
+        :key="'hit-' + h.id"
+        v-memo="[h.id, h.status, h.riskLevel, canWriteWorkbench]"
+      >
         <view class="line-reason">{{ hitReason(h) }}</view>
         <view class="line-status">
           <text>当前状态：{{ hitStatus(h) }}</text>
@@ -79,7 +89,12 @@
     </template>
 
     <template v-else>
-      <view class="card" v-for="h in taxQueue" :key="'tax-' + h.id">
+      <view
+        class="card scroll-skip"
+        v-for="h in taxQueue"
+        :key="'tax-' + h.id"
+        v-memo="[h.id, h.status, h.readOnly, comments[h.id], canWriteWorkbench]"
+      >
         <view class="line-reason">{{ taxReason(h) }}</view>
         <view class="line-status">
           <text>当前状态：{{ taxStatus(h) }}</text>

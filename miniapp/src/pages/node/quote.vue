@@ -37,7 +37,12 @@
       <view class="btn" v-if="canWriteBusiness" @click="save">保存为新版本</view>
       <view class="btn btn-ghost" v-if="canWriteBusiness" @click="tryAdvance">校验并推进</view>
     </view>
-    <view class="card" v-for="q in c.quotes || []" :key="q.id">
+    <view
+      class="card scroll-skip"
+      v-for="q in c.quotes || []"
+      :key="q.id"
+      v-memo="[q.id, q.version, q.status, q.quantity, q.unit, q.unitPriceFen, q.validityUntil]"
+    >
       <view class="row">
         <view class="h2" style="margin: 0">报价 v{{ q.version }}</view>
         <view class="badge" :class="q.status === 'ACTIVE' ? 'badge-pass' : 'badge-stub'">{{ q.status }}</view>

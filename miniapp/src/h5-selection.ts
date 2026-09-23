@@ -23,9 +23,94 @@
  * No copy/cut/paste/contextmenu/keydown/beforeinput preventDefault — native
  * clipboard and typing stay intact. Do not preventDefault on pointerdown:
  * that cancels the caret.
+ *
+ * Scroll: uni-h5 scrolls `body`. A capturing pointermove that walks the DOM,
+ * or a pointerdown that focuses a field, runs on every pan and fights that
+ * scroll. Move / touchmove / scroll handlers only compare coordinates and
+ * then detach. Focus and selection walks happen on click, and only when the
+ * gesture was not a scroll.
  */
 
 const SELECT_MOVE_PX = 4;
+/** A pan this large is a scroll, not a shaky tap or a short text selection. */
+const SCROLL_MOVE_PX = 16;
+
+export type SelectionGesture = {
+  id: number;
+  pointerDown: boolean;
+  x: number;
+  y: number;
+  dragged: boolean;
+  scrolling: boolean;
+  onField: boolean;
+  listenMove: boolean;
+};
+
+export function createSelectionGesture(): SelectionGesture {
+  return {
+    id: 0,
+    pointerDown: false,
+    x: 0,
+    y: 0,
+    dragged: false,
+    scrolling: false,
+    onField: false,
+    listenMove: false,
+  };
+}
+
+export function beginPointer(g: SelectionGesture, x: number, y: number, onField: boolean): void {
+  g.id += 1;
+  g.pointerDown = true;
+  g.x = x;
+  g.y = y;
+  g.dragged = false;
+  g.scrolling = false;
+  g.onField = onField;
+  g.listenMove = true;
+}
+
+/**
+ * Distance check only. Callers must not query the DOM, selection, or focus
+ * from pointermove / touchmove / scroll — that work is what janks a pan.
+ * Returns `scroll` once the move listener should be removed.
+ */
+export function samplePointerMove(g: SelectionGesture, x: number, y: number): 'ignore' | 'track' | 'scroll' {
+  if (!g.pointerDown || !g.listenMove) return 'ignore';
+  const dx = x - g.x;
+  const dy = y - g.y;
+  const dist2 = dx * dx + dy * dy;
+  if (dist2 <= SELECT_MOVE_PX * SELECT_MOVE_PX) return 'track';
+  g.dragged = true;
+  if (dist2 >= SCROLL_MOVE_PX * SCROLL_MOVE_PX) {
+    g.scrolling = true;
+    g.listenMove = false;
+    return 'scroll';
+  }
+  return 'track';
+}
+
+/** A real scroll event during the gesture. No layout reads. */
+export function noteScroll(g: SelectionGesture): void {
+  if (!g.pointerDown) return;
+  g.dragged = true;
+  g.scrolling = true;
+  g.listenMove = false;
+}
+
+export function endPointer(g: SelectionGesture): void {
+  g.pointerDown = false;
+  g.listenMove = false;
+}
+
+export function shouldFocusField(g: SelectionGesture, hasField: boolean): boolean {
+  if (!hasField || g.scrolling) return false;
+  return g.onField || !g.dragged;
+}
+
+export function shouldFocusLabel(g: SelectionGesture, hasField: boolean): boolean {
+  return !g.scrolling && !g.dragged && !g.onField && !hasField;
+}
 
 const FIELD_HOST = 'uni-input, uni-textarea';
 
@@ -121,61 +206,93 @@ function focusField(field: HTMLInputElement | HTMLTextAreaElement) {
  * @click navigating away. Clicks and short drags on inputs still focus so
  * typing and paste work.
  */
-export function enableH5Clipboard(): void {
-  if (typeof document === 'undefined') return;
+let clipboardInstalled = false;
 
-  let pointerDown = false;
-  let pointerX = 0;
-  let pointerY = 0;
-  let dragged = false;
-  let gestureOnField = false;
+export function enableH5Clipboard(): void {
+  if (typeof document === 'undefined' || clipboardInstalled) return;
+  clipboardInstalled = true;
+
+  const g = createSelectionGesture();
+  const passiveCapture: AddEventListenerOptions = { capture: true, passive: true };
+
+  const onPointerMove = (e: PointerEvent) => {
+    if (samplePointerMove(g, e.clientX, e.clientY) === 'scroll') detachMove();
+  };
+  const onTouchMove = (e: TouchEvent) => {
+    const t = e.changedTouches[0] || e.touches[0];
+    if (!t) return;
+    if (samplePointerMove(g, t.clientX, t.clientY) === 'scroll') detachMove();
+  };
+  const detachMove = () => {
+    document.removeEventListener('pointermove', onPointerMove, true);
+    document.removeEventListener('touchmove', onTouchMove, true);
+  };
+  const attachMove = () => {
+    detachMove();
+    document.addEventListener('pointermove', onPointerMove, passiveCapture);
+    document.addEventListener('touchmove', onTouchMove, passiveCapture);
+  };
+
+  document.addEventListener(
+    'scroll',
+    () => {
+      if (!g.pointerDown || g.scrolling) return;
+      noteScroll(g);
+      detachMove();
+    },
+    passiveCapture,
+  );
 
   document.addEventListener(
     'pointerdown',
     (e) => {
-      pointerDown = true;
-      pointerX = e.clientX;
-      pointerY = e.clientY;
-      dragged = false;
       const field = textEntryField(e.target);
-      gestureOnField = !!field;
-      if (!field || field.disabled || e.target === field) return;
-      // Padding, wrapper, or placeholder overlay — not the native control.
-      focusField(field);
+      beginPointer(g, e.clientX, e.clientY, !!field && !field.disabled);
+      attachMove();
+      // Do not focus here. A pan often starts on the field padding; focusing
+      // on pointerdown forces layout and pulls the caret into a scroll.
     },
-    true,
+    passiveCapture,
   );
 
-  document.addEventListener(
-    'pointermove',
-    (e) => {
-      if (!pointerDown) return;
-      const dx = e.clientX - pointerX;
-      const dy = e.clientY - pointerY;
-      if (dx * dx + dy * dy > SELECT_MOVE_PX * SELECT_MOVE_PX) dragged = true;
-    },
-    true,
-  );
-
-  const endPointer = () => {
-    pointerDown = false;
+  const finishPointer = (e: PointerEvent) => {
+    const tapOnShell = g.onField && !g.dragged && !g.scrolling;
+    endPointer(g);
+    detachMove();
+    if (!tapOnShell) return;
+    const field = textEntryField(e.target);
+    if (!field || field.disabled || e.target === field) return;
+    focusField(field);
   };
-  document.addEventListener('pointerup', endPointer, true);
-  document.addEventListener('pointercancel', endPointer, true);
+  document.addEventListener('pointerup', finishPointer, passiveCapture);
+  document.addEventListener('pointercancel', () => {
+    endPointer(g);
+    detachMove();
+  }, passiveCapture);
 
   document.addEventListener(
     'click',
     (e) => {
-      const startedOnField = gestureOnField;
-      gestureOnField = false;
+      const startedOnField = g.onField;
+      const scrolling = g.scrolling;
+      const dragged = g.dragged;
+      g.onField = false;
+      // A pan is not a tap. Skip field walks, getSelection, and focus.
+      if (scrolling) {
+        g.scrolling = false;
+        e.stopImmediatePropagation();
+        e.stopPropagation();
+        return;
+      }
       const field = textEntryField(e.target);
+      const focusable = !!field && !field.disabled && document.activeElement !== field;
       // iOS only honors focus() from click, not pointerdown. A drag that
       // started on a label and ended on a field is a copy gesture — don't
       // focus and collapse that selection.
-      if (field && !field.disabled && document.activeElement !== field && (startedOnField || !dragged)) {
-        focusField(field);
+      if (focusable && shouldFocusField({ ...g, onField: startedOnField, scrolling, dragged }, true)) {
+        focusField(field!);
       }
-      if (!startedOnField && !field && !dragged) {
+      if (shouldFocusLabel({ ...g, onField: startedOnField, scrolling, dragged }, !!field)) {
         const labeled = fieldAfterLabel(e.target);
         if (labeled) {
           focusField(labeled);

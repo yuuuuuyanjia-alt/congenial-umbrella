@@ -22,11 +22,12 @@
       <view class="muted">请选择一笔已签订的销售合同，打开该案的采购合同（N5）。已有采购合同则进入编辑。不会新建没有销售合同的案件；保存仍须带上该销售合同关联。</view>
       <view class="muted" v-if="!signedSales.length" style="margin-top: 8rpx">暂无已签订的销售合同。请先完成销售合同签订。</view>
       <view
-        class="card"
+        class="card scroll-skip"
         style="box-shadow: none; border: 2rpx solid #c5d4cb; margin-bottom: 12rpx; margin-top: 12rpx"
         :style="pickedSalesId === opt.id ? 'border-color: #0f3d2e' : ''"
         v-for="opt in signedSales"
         :key="opt.id"
+        v-memo="[opt.id, pickedSalesId === opt.id, opt.customer, opt.title, opt.caseNo, opt.goodsDesc, opt.poNo, opt.statusLabel]"
         @click="pickedSalesId = opt.id"
       >
         <view class="row">
@@ -61,7 +62,13 @@
 
     <template v-if="kind === 'sales'">
       <view class="muted" style="margin-bottom: 12rpx">{{ activeBucket.hint }}</view>
-      <view class="card" v-for="c in activeBucket.items" :key="c.id" @click="open(c)">
+      <view
+        class="card scroll-skip"
+        v-for="c in activeBucket.items"
+        :key="c.id"
+        v-memo="[c.id, c.caseNo, c.customer, c.title, c.currentNode, c.status, c.signed, c.goodsDesc, c.amountFen, c.contract && c.contract.amountFen, nextOf(c) && nextOf(c).code]"
+        @click="open(c)"
+      >
         <view class="row">
           <view class="title-block" style="flex: 1; min-width: 0">
             <view class="muted">{{ primaryNo(c) }}</view>
@@ -79,7 +86,13 @@
     </template>
 
     <template v-else>
-      <view class="card" v-for="c in list" :key="c.id" @click="open(c)">
+      <view
+        class="card scroll-skip"
+        v-for="c in list"
+        :key="c.id"
+        v-memo="[c.id, c.caseNo, c.poNo, c.procurementTitle, c.currentNode, c.status, c.amountFen, c.procurementPlan && c.procurementPlan.amountFen, c.salesLink && c.salesLink.contractNo, nextOf(c) && nextOf(c).code]"
+        @click="open(c)"
+      >
         <view class="row">
           <view class="title-block" style="flex: 1; min-width: 0">
             <view class="muted">{{ primaryNo(c) }}</view>

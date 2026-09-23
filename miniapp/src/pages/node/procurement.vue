@@ -45,10 +45,11 @@
           共 {{ filteredSalesOptions.length }} 笔可关联，点选即可更换，不锁定本案。
         </view>
         <view
-          class="pick"
+          class="pick scroll-skip"
           :class="{ 'pick-on': form.salesCaseId === opt.id }"
           v-for="opt in filteredSalesOptions"
           :key="opt.id"
+          v-memo="[form.salesCaseId === opt.id, opt.customer, opt.contractNo, opt.goodsDesc, opt.amountFen, opt.currency, opt.statusLabel, opt.currentNodeLabel, opt.deliveryDate, opt.isCurrent]"
           @click.stop="pickSales(opt)"
         >
           <view class="row">
@@ -134,7 +135,12 @@
 
       <view v-else>
         <view class="btn btn-ghost" v-if="canWriteBusiness" @click="apply90_10">填入 90% 到货 + 10% 尾款</view>
-        <view class="inst" v-for="(row, idx) in form.installments" :key="idx">
+        <view
+          class="inst"
+          v-for="(row, idx) in form.installments"
+          :key="idx"
+          v-memo="[row.label, row.percent, row.amountYuan, row.conditionText, row.dueAt, row.paidYuan, row.paidAt, form.installments.length, idx, canWriteBusiness]"
+        >
           <view class="row">
             <view class="h2" style="margin: 0">第 {{ idx + 1 }} 期 · {{ row.label || defaultInstLabel(idx) }}</view>
             <view class="chip" @click="removeInst(idx)" v-if="canWriteBusiness && form.installments.length > 1">删除本期</view>

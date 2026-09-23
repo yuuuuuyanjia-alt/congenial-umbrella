@@ -4,7 +4,7 @@
     <view class="muted" style="margin-bottom: 16rpx">
       按国内供应商查看采购合同/PO、关联的销售合同、是否按期交货，以及货款一次性付清或分期支付（每期约定付款时间、付款比例、金额、已付未付）。
     </view>
-    <view class="card" v-for="s in list" :key="s.id" @click="open(s.id)">
+    <view class="card scroll-skip" v-for="s in list" :key="s.id" @click="open(s.id)">
       <view class="row">
         <view>
           <view class="h2" style="margin: 0">{{ s.name }}</view>

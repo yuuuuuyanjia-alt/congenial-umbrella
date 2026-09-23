@@ -60,7 +60,13 @@
       </view>
     </view>
 
-    <view class="card" v-for="n in pipelineNodes" :key="n.code" @click="openNode(n)">
+    <view
+      class="card scroll-skip"
+      v-for="n in pipelineNodes"
+      :key="n.code"
+      v-memo="[n.code, n.name, n.summary, n.decision, n.status, n.isHardGate]"
+      @click="openNode(n)"
+    >
       <view class="row">
         <view>
           <view class="h2" style="margin: 0">{{ n.code }} {{ n.name }}</view>

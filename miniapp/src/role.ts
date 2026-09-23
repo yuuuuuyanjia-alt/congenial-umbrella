@@ -175,7 +175,7 @@ export function useDemoRole() {
     }
   }
   onShow(refresh);
-  watch(demoSession, refresh, { deep: true });
+  watch(demoSession, refresh);
   refresh();
   return {
     role,

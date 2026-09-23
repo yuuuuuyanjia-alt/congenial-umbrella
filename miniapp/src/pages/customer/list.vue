@@ -5,7 +5,7 @@
     <view class="muted" style="margin-bottom: 16rpx">
       仅收录已到达销售合同（N3）的买方。同一客户的多笔订单会合并到同一档案。报价阶段不录入。可查看建议级别、中信保限额与占用、合同、已收汇/未收汇，以及约定收款日是否按期。
     </view>
-    <view class="card" v-for="c in list" :key="c.id" @click="open(c.id)">
+    <view class="card scroll-skip" v-for="c in list" :key="c.id" @click="open(c.id)">
       <view class="row">
         <view>
           <view class="h2" style="margin: 0">{{ c.name }}</view>
