@@ -24,14 +24,13 @@
  * clipboard and typing stay intact. Do not preventDefault on pointerdown:
  * that cancels the caret.
  *
- * Scroll (every H5 page, not one route): uni-h5 scrolls `body`. Selection
- * hit-testing on that scroller, or a pointermove that walks the DOM, runs on
- * each pan of the homepage, lists, node pages, and the workbench. There is
- * no page-wide scroll listener. Move listeners exist only while a pointer is
- * down, compare coordinates, then detach. A wheel event (not a scroll event)
- * and a touch pan arm `html.h5-scrolling` so selection drops for that gesture
- * and comes back when it stops. A mouse drag still selects text. Focus walks
- * happen on click, and only when the gesture was not a scroll.
+ * Scroll (every H5 page, not one route): App.vue keeps the document as the
+ * only scrollport and leaves the tree non-selectable, so a pan does not
+ * hit-test or restyle. This file does not listen for scroll or wheel, and
+ * it does not toggle a class on the document. Move listeners exist only
+ * while a pointer is down, compare coordinates, then detach once the gesture
+ * is a scroll. A mouse drag still selects text where the pointer is fine.
+ * Focus walks happen on click, and only when the gesture was not a scroll.
  */
 
 const SELECT_MOVE_PX = 4;
@@ -239,37 +238,16 @@ export function enableH5Clipboard(): void {
 
   const g = createSelectionGesture();
   const passiveCapture: AddEventListenerOptions = { capture: true, passive: true };
-  let selectionPaused = false;
-  let pauseTimer = 0;
-  let lastPauseArm = 0;
-
-  const pauseSelectionForScroll = () => {
-    if (!shouldPauseSelection(g)) return;
-    const now = Date.now();
-    if (!selectionPaused) {
-      selectionPaused = true;
-      document.documentElement.classList.add('h5-scrolling');
-    }
-    if (now - lastPauseArm < 80) return;
-    lastPauseArm = now;
-    window.clearTimeout(pauseTimer);
-    pauseTimer = window.setTimeout(() => {
-      selectionPaused = false;
-      document.documentElement.classList.remove('h5-scrolling');
-    }, 160);
-  };
 
   const onPointerMove = (e: PointerEvent) => {
     if (samplePointerMove(g, e.clientX, e.clientY) !== 'scroll') return;
     detachMove();
-    pauseSelectionForScroll();
   };
   const onTouchMove = (e: TouchEvent) => {
     const t = e.changedTouches[0] || e.touches[0];
     if (!t) return;
     if (samplePointerMove(g, t.clientX, t.clientY) !== 'scroll') return;
     detachMove();
-    pauseSelectionForScroll();
   };
   const detachMove = () => {
     document.removeEventListener('pointermove', onPointerMove, true);
@@ -280,14 +258,6 @@ export function enableH5Clipboard(): void {
     document.addEventListener('pointermove', onPointerMove, passiveCapture);
     document.addEventListener('touchmove', onTouchMove, passiveCapture);
   };
-
-  document.addEventListener(
-    'wheel',
-    () => {
-      pauseSelectionForScroll();
-    },
-    passiveCapture,
-  );
 
   document.addEventListener(
     'pointerdown',

@@ -47,12 +47,11 @@ select {
   margin-bottom: 20rpx;
   box-shadow: 0 8rpx 24rpx rgba(15, 61, 46, 0.08);
 }
-/* Repeated rows (N5 sales options, contract lists). Skip layout and paint
-   while they are off-screen. contain-intrinsic-size keeps the scrollbar
-   stable; `auto` remembers the real height after the first render. */
+/* List rows used to set content-visibility:auto. The intrinsic size was
+   wrong, so each row that entered the viewport reflowed the shared
+   scrollport. WindowedList already limits how many rows mount. */
 .scroll-skip {
-  content-visibility: auto;
-  contain-intrinsic-size: auto 140px;
+  content-visibility: visible;
 }
 .h1 {
   font-size: var(--font-h1);
@@ -188,40 +187,73 @@ select {
 }
 
 /* #ifdef H5 */
-/* uni-h5 base.css: html,body { height:100%; user-select:none } and
-   body { overflow-x:hidden }, so body is the scrollport on every route
-   (home, lists, N2–N9, batches, workbench). user-select:text on that shell
-   makes WebKit run selection hit-testing on every pan. The shell stays
-   non-selectable; copy stays on the page body. While html.h5-scrolling is
-   set from a wheel or touch pan (not a scroll listener) selection is dropped
-   for the whole tree so a pan does not hit-test every uni-view. WebKit refuses to type when an
-   input inherits user-select:none, so the native control sets it itself. */
+/*
+ * One scrollport for every route.
+ *
+ * uni-h5 base.css sets height:100% on html, body, uni-app, uni-page, and
+ * uni-page-wrapper, and overflow-x:hidden on body. That is a second
+ * scrollport on every route. A classic scrollbar then changes clientWidth,
+ * the rpx hook writes html font-size on resize, and every rem reflows.
+ * .card's 24rpx blur repaints with that scroll on the homepage, lists, and
+ * long forms. body::after also preloads navbar shadow bitmaps from a CDN.
+ *
+ * #57 toggled a class on every element to drop selection hit-testing. That
+ * restyle ran on the scroll path, and a touch pan cleared the class 160ms
+ * later while the finger was still down. Selection stays off the tree here.
+ * A fine pointer can still select text. The native input sets user-select
+ * itself — WebKit will not type into a control that inherits none.
+ */
+html {
+  height: 100%;
+  overflow-x: clip;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  background: #f4f1ea;
+  touch-action: manipulation;
+}
+body {
+  height: auto !important;
+  min-height: 100%;
+  overflow: visible !important;
+  background: #f4f1ea;
+  touch-action: manipulation;
+}
+#app,
+uni-app,
+uni-page,
+uni-page-wrapper,
+uni-page-body,
+uni-page-head[uni-page-head-type='default'] ~ uni-page-wrapper {
+  height: auto !important;
+}
+/* The fixed title bar sets transition-property:all. Keep it from
+   interpolating while the page scrolls, and do not blur it.
+   body::after is uni's shadow-bitmap preload (a fixed layer plus a CDN
+   fetch). These pages do not use that shadow. */
+.uni-page-head,
+.uni-tabbar {
+  transition: none !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+body::after {
+  content: none !important;
+  animation: none !important;
+}
+.card {
+  box-shadow: none;
+  border: 1px solid rgba(15, 61, 46, 0.08);
+}
+
 html,
 body,
 uni-app,
 uni-page,
-uni-page-wrapper {
-  -webkit-user-select: none !important;
-  user-select: none !important;
-  touch-action: manipulation;
-}
+uni-page-wrapper,
+uni-page-body,
 page,
-uni-page-body {
-  -webkit-user-select: text;
-  user-select: text;
-  -webkit-touch-callout: default;
-}
-html.h5-scrolling,
-html.h5-scrolling * {
-  -webkit-user-select: none !important;
-  user-select: none !important;
-}
-html.h5-scrolling .uni-input-input,
-html.h5-scrolling .uni-textarea-textarea {
-  -webkit-user-select: text !important;
-  user-select: text !important;
-}
-
+uni-view,
+uni-text,
 .card,
 .h1,
 .h2,
@@ -230,11 +262,28 @@ html.h5-scrolling .uni-textarea-textarea {
 .readonly,
 .err,
 .ok,
-.wrap,
-uni-view,
-uni-text {
-  -webkit-user-select: text;
-  user-select: text;
+.wrap {
+  -webkit-user-select: none;
+  user-select: none;
+}
+@media (hover: hover) and (pointer: fine) {
+  page,
+  uni-page-body,
+  uni-view,
+  uni-text,
+  .card,
+  .h1,
+  .h2,
+  .muted,
+  .label,
+  .readonly,
+  .err,
+  .ok,
+  .wrap {
+    -webkit-user-select: text;
+    user-select: text;
+    -webkit-touch-callout: default;
+  }
 }
 
 /* Host stays non-selectable so a short drag cannot steal focus. The native
