@@ -34,12 +34,16 @@
     <view class="card">
       <view class="h2">退税就绪清单</view>
       <view class="muted">FT4：报关放行与 N9 收汇由系统读取；进项发票号可手填；四流闭环须勾选。完成后方可模拟申报退税。本阶段不做自动票证匹配或电子口岸对接。</view>
-      <view class="muted" v-for="item in rebateItems" :key="item.code" style="margin-top: 8rpx">
-        {{ item.ok ? '✓' : '○' }} {{ item.label }}
-        <text v-if="item.source === 'auto'">（系统）</text>
-      </view>
+      <WindowedList :items="rebateItems" key-field="code">
+        <template #default="{ item }">
+          <view class="muted" style="margin-top: 8rpx">
+            {{ item.ok ? '✓' : '○' }} {{ item.label }}
+            <text v-if="item.source === 'auto'">（系统）</text>
+          </view>
+        </template>
+      </WindowedList>
       <view class="label" style="margin-top: 16rpx">进项发票号</view>
-      <input class="input" v-model="rebate.inputInvoiceNo" placeholder="可手填，如 12345678" />
+      <BoundField :model="rebate" field="inputInvoiceNo" placeholder="可手填，如 12345678" />
       <view class="label">四流闭环</view>
       <view class="choice-row">
         <view class="choice-btn" :class="{ 'choice-btn-on': rebate.flowGoods }" @click="rebate.flowGoods = !rebate.flowGoods">货物流</view>
@@ -55,18 +59,16 @@
 
     <view class="card">
       <view class="h2">当事方</view>
-      <view v-for="p in c.parties" :key="p.id" class="muted">
-        {{ role(p.role) }}：{{ p.name }}（{{ p.country || '—' }}）
-      </view>
+      <WindowedList :items="c.parties || []" key-field="id">
+        <template #default="{ item: p }">
+          <view class="muted">{{ role(p.role) }}：{{ p.name }}（{{ p.country || '—' }}）</view>
+        </template>
+      </WindowedList>
     </view>
 
-    <view
-      class="card scroll-skip"
-      v-for="n in pipelineNodes"
-      :key="n.code"
-      v-memo="[n.code, n.name, n.summary, n.decision, n.status, n.isHardGate]"
-      @click="openNode(n)"
-    >
+    <WindowedList :items="pipelineNodes" key-field="code">
+      <template #default="{ item: n }">
+    <view class="card scroll-skip" @click="openNode(n)">
       <view class="row">
         <view>
           <view class="h2" style="margin: 0">{{ n.code }} {{ n.name }}</view>
@@ -80,6 +82,8 @@
         </view>
       </view>
     </view>
+      </template>
+    </WindowedList>
 
     <view class="btn btn-ghost" @click="go(`/pages/audit/index?id=${c.id}`)">查看审计日志</view>
     <view class="btn btn-ghost" v-if="isRisk" @click="go('/pages/workbench/index')">审核工作台</view>
@@ -91,7 +95,9 @@
 import { onLoad, onShow } from '@dcloudio/uni-app';
 import { computed, reactive, ref } from 'vue';
 import { api, batchPickUrl, decisionClass, decisionText, goToNode, money, nodePage } from '../../api';
+import BoundField from '../../components/BoundField.vue';
 import RoleBar from '../../components/RoleBar.vue';
+import WindowedList from '../../components/WindowedList.vue';
 import { useDemoRole } from '../../role';
 
 const { canWriteBusiness, isRisk } = useDemoRole();

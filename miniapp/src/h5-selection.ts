@@ -26,11 +26,12 @@
  *
  * Scroll (every H5 page, not one route): uni-h5 scrolls `body`. Selection
  * hit-testing on that scroller, or a pointermove that walks the DOM, runs on
- * each pan of the homepage, lists, node pages, and the workbench. Move /
- * touchmove / scroll handlers only compare coordinates. While the page is
- * actually scrolling, `html.h5-scrolling` turns selection off for the whole
- * shell and turns it back on when the pan stops. A mouse drag still selects
- * text. Focus walks happen on click, and only when the gesture was not a scroll.
+ * each pan of the homepage, lists, node pages, and the workbench. There is
+ * no page-wide scroll listener. Move listeners exist only while a pointer is
+ * down, compare coordinates, then detach. A wheel event (not a scroll event)
+ * and a touch pan arm `html.h5-scrolling` so selection drops for that gesture
+ * and comes back when it stops. A mouse drag still selects text. Focus walks
+ * happen on click, and only when the gesture was not a scroll.
  */
 
 const SELECT_MOVE_PX = 4;
@@ -281,14 +282,8 @@ export function enableH5Clipboard(): void {
   };
 
   document.addEventListener(
-    'scroll',
+    'wheel',
     () => {
-      // One comparison on the hot path. Touch pans are marked once; wheel
-      // and momentum never touch the DOM.
-      if (g.pointerDown && !g.scrolling && g.pointerType !== 'mouse') {
-        noteScroll(g);
-        detachMove();
-      }
       pauseSelectionForScroll();
     },
     passiveCapture,

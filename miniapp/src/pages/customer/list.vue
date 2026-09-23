@@ -5,7 +5,9 @@
     <view class="muted" style="margin-bottom: 16rpx">
       仅收录已到达销售合同（N3）的买方。同一客户的多笔订单会合并到同一档案。报价阶段不录入。可查看建议级别、中信保限额与占用、合同、已收汇/未收汇，以及约定收款日是否按期。
     </view>
-    <view class="card scroll-skip" v-for="c in list" :key="c.id" @click="open(c.id)">
+    <WindowedList :items="list" key-field="id">
+      <template #default="{ item: c }">
+    <view class="card scroll-skip" @click="open(c.id)">
       <view class="row">
         <view>
           <view class="h2" style="margin: 0">{{ c.name }}</view>
@@ -35,6 +37,8 @@
         已收汇 {{ money(b.settledFen, b.currency) }} · 未收汇 {{ money(b.openFen, b.currency) }}
       </view>
     </view>
+      </template>
+    </WindowedList>
     <view class="muted" v-if="!list.length">暂无已录入客户。买方在销售合同填写后，案件到达合同确认（N3）时自动录入或合并到已有档案。</view>
   </view>
 </template>
@@ -44,6 +48,7 @@ import { onShow } from '@dcloudio/uni-app';
 import { ref } from 'vue';
 import { api, gradeClass, money, remittanceClass, remittanceText } from '../../api';
 import RoleBar from '../../components/RoleBar.vue';
+import WindowedList from '../../components/WindowedList.vue';
 
 const list = ref<any[]>([]);
 

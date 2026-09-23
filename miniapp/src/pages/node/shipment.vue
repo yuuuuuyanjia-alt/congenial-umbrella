@@ -11,43 +11,51 @@
     <PendingChangeBlock :case-id="id" :case-data="c" />
     <view class="card">
       <view class="label">本节点用于闸门的运输术语（可改）</view>
-      <input
-        class="input"
-        v-model="form.n6Incoterms"
+      <BoundField
+        :model="form"
+        field="n6Incoterms"
         placeholder="默认带出合同术语，必要时改为 FOB / CIF 等；不要填 T/T"
       />
-      <view class="muted" v-if="buyerFreight">
-        已识别为买方安排运输（FOB / EXW / FAS / FCA）：不强制正本或电放，请走「无提单」或仍选择其一。
-      </view>
-      <view class="muted" v-else>卖方出单路径：须点选正本或电放其一；无提单须先把本节点术语改为 FOB 等。</view>
+      <DraftGate :open="() => buyerFreight">
+        <view class="muted">
+          已识别为买方安排运输（FOB / EXW / FAS / FCA）：不强制正本或电放，请走「无提单」或仍选择其一。
+        </view>
+      </DraftGate>
+      <DraftGate :open="() => !buyerFreight">
+        <view class="muted">卖方出单路径：须点选正本或电放其一；无提单须先把本节点术语改为 FOB 等。</view>
+      </DraftGate>
 
-      <template v-if="showCifShipping">
+      <DraftGate :open="() => showCifShipping">
         <view class="h2" style="margin-top: 24rpx">CIF 装运</view>
         <view class="label">装运港口</view>
-        <input class="input" v-model="form.shipmentPort" placeholder="如 Shanghai" />
+        <BoundField :model="form" field="shipmentPort" placeholder="如 Shanghai" />
         <view class="label">装运日期</view>
-        <input class="input" v-model="form.shipmentDate" placeholder="年-月-日，如 2026-08-15" />
+        <BoundField :model="form" field="shipmentDate" placeholder="年-月-日，如 2026-08-15" />
         <view class="h2" style="margin-top: 24rpx">货物状态</view>
         <view class="label">预计到达日期</view>
-        <input class="input" v-model="form.etaDate" placeholder="年-月-日，如 2026-09-20" />
+        <BoundField :model="form" field="etaDate" placeholder="年-月-日，如 2026-09-20" />
         <view class="label">到达港口</view>
-        <input class="input" v-model="form.arrivalPort" placeholder="预计到达的港口，如 Hamburg" />
-      </template>
+        <BoundField :model="form" field="arrivalPort" placeholder="预计到达的港口，如 Hamburg" />
+      </DraftGate>
 
       <view class="h2" style="margin-top: 24rpx">商业发票与箱单</view>
       <view class="muted">两份都要上传后才能过闸。没有文件时可用演示示例，无需打开本机文件选择器。</view>
-      <view v-for="slot in docSlots" :key="slot.slot" style="margin-top: 16rpx">
-        <view class="label">{{ slot.label }}</view>
-        <view class="readonly" v-if="fileOf(slot.kind)">{{ fileOf(slot.kind).fileName }}</view>
-        <view class="muted" v-if="fileOf(slot.kind)" style="margin-top: 8rpx">文件已写入证据链。</view>
-        <view class="btn btn-ghost" v-if="fileOf(slot.kind)" @click="openFile(slot.kind)">查看{{ slot.label }}</view>
-        <view class="doc-actions" v-if="canWriteBusiness">
-          <view class="btn btn-ghost" @click="pickFile(slot)">{{ fileOf(slot.kind) ? '重新' : '' }}上传{{ slot.label }}</view>
-          <view class="btn btn-ghost" @click="useDemo(slot)">
-            {{ uploading === slot.slot ? '正在上传示例…' : '使用演示示例' }}
+      <WindowedList :items="docSlots" key-field="slot">
+        <template #default="{ item: doc }">
+          <view style="margin-top: 16rpx">
+            <view class="label">{{ doc.label }}</view>
+            <view class="readonly" v-if="fileOf(doc.kind)">{{ fileOf(doc.kind).fileName }}</view>
+            <view class="muted" v-if="fileOf(doc.kind)" style="margin-top: 8rpx">文件已写入证据链。</view>
+            <view class="btn btn-ghost" v-if="fileOf(doc.kind)" @click="openFile(doc.kind)">查看{{ doc.label }}</view>
+            <view class="doc-actions" v-if="canWriteBusiness">
+              <view class="btn btn-ghost" @click="pickFile(doc)">{{ fileOf(doc.kind) ? '重新' : '' }}上传{{ doc.label }}</view>
+              <view class="btn btn-ghost" @click="useDemo(doc)">
+                {{ uploading === doc.slot ? '正在上传示例…' : '使用演示示例' }}
+              </view>
+            </view>
           </view>
-        </view>
-      </view>
+        </template>
+      </WindowedList>
 
       <view class="label">内部审批已完成</view>
       <switch
@@ -78,7 +86,7 @@
 
       <view v-if="blTypeSelected">
         <view class="label">提单号（可选）</view>
-        <input class="input" v-model="form.blNo" placeholder="卖方控单时填写；无提单路径不必填" />
+        <BoundField :model="form" field="blNo" placeholder="卖方控单时填写；无提单路径不必填" />
       </view>
 
       <view class="label">无提单路径</view>
@@ -89,7 +97,7 @@
 
       <view v-if="isNoBl">
         <view class="label">无提单原因说明（可选）</view>
-        <input class="input" v-model="form.noBlReason" placeholder="如：FOB 买方自行订舱，卖方不控提单" />
+        <BoundField :model="form" field="noBlReason" placeholder="如：FOB 买方自行订舱，卖方不控提单" />
       </view>
 
       <view class="btn" v-if="canWriteBusiness" @click="save">保存指示</view>
@@ -124,6 +132,9 @@ import {
   uploadDemoTradeDoc,
   type TradeDocSlot,
 } from '../../api';
+import BoundField from '../../components/BoundField.vue';
+import DraftGate from '../../components/DraftGate.vue';
+import WindowedList from '../../components/WindowedList.vue';
 import NextNodeCta from '../../components/NextNodeCta.vue';
 import PendingChangeBlock from '../../components/PendingChangeBlock.vue';
 import { useDemoRole } from '../../role';

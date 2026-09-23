@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import {
   beginPointer,
@@ -69,6 +70,11 @@ test('a mouse drag stays a text selection on every page', () => {
   noteScroll(g);
   assert.equal(g.scrolling, false);
   assert.equal(shouldPauseSelection(g), false);
+});
+
+test('the clipboard helper does not register a page scroll listener', () => {
+  const src = readFileSync(new URL('./h5-selection.ts', import.meta.url), 'utf8');
+  assert.equal(/addEventListener\(\s*['"]scroll['"]/.test(src), false);
 });
 
 test('a touch pan pauses selection hit-testing', () => {

@@ -18,25 +18,29 @@
       <view class="card" v-if="!batches.length">
         <view class="muted">还没有出运批次。请新建一批后再进入装运。</view>
       </view>
-      <view class="card" v-for="b in batches" :key="b.id">
-        <view>批次 {{ b.batchNo }} · {{ b.nodeLabel || '装运' }}</view>
-        <view class="muted" style="margin-top: 8rpx">
-          数量 {{ b.quantity ?? '—' }} {{ b.unit || '' }} · 金额 {{ money(b.amountFen, b.currency || currency) }} · 已收汇 {{ money(b.receivedFen, b.currency || currency) }}
-        </view>
-        <view class="muted" v-if="requested === 'N6' && b.currentNode && b.currentNode !== 'N6'" style="margin-top: 8rpx">
-          本批当前在{{ b.nodeLabel }}。进入装运后可用「进入下一步」继续该批次的单证或收汇。
-        </view>
-        <view class="btn" @click="openBatch(b)">{{ openLabel(b) }}</view>
-      </view>
+      <WindowedList :items="batches" key-field="id">
+        <template #default="{ item: b }">
+          <view class="card">
+            <view>批次 {{ b.batchNo }} · {{ b.nodeLabel || '装运' }}</view>
+            <view class="muted" style="margin-top: 8rpx">
+              数量 {{ b.quantity ?? '—' }} {{ b.unit || '' }} · 金额 {{ money(b.amountFen, b.currency || currency) }} · 已收汇 {{ money(b.receivedFen, b.currency || currency) }}
+            </view>
+            <view class="muted" v-if="requested === 'N6' && b.currentNode && b.currentNode !== 'N6'" style="margin-top: 8rpx">
+              本批当前在{{ b.nodeLabel }}。进入装运后可用「进入下一步」继续该批次的单证或收汇。
+            </view>
+            <view class="btn" @click="openBatch(b)">{{ openLabel(b) }}</view>
+          </view>
+        </template>
+      </WindowedList>
 
       <view class="card" v-if="canWriteBusiness">
         <view class="h2">新建批次</view>
         <view class="label">批次号（可空，按顺序生成）</view>
-        <input class="input" v-model="batchForm.batchNo" placeholder="如 2" />
+        <BoundField :model="batchForm" field="batchNo" placeholder="如 2" />
         <view class="label">本批数量</view>
-        <input class="input" v-model="batchForm.quantity" placeholder="如 4" />
+        <BoundField :model="batchForm" field="quantity" placeholder="如 4" />
         <view class="label">本批金额（元，与合同币种一致）</view>
-        <input class="input" v-model="batchForm.amountYuan" :placeholder="`如 40000.00 ${currency}`" />
+        <BoundField :model="batchForm" field="amountYuan" :placeholder="`如 40000.00 ${currency}`" />
         <view class="btn" @click="createBatch">新建并进入装运</view>
         <view class="err" v-if="batchErr">{{ batchErr }}</view>
       </view>
@@ -48,6 +52,8 @@
 import { onLoad, onShow } from '@dcloudio/uni-app';
 import { computed, reactive, ref } from 'vue';
 import { api, batchOpenCode, money, nodeEntryUrl, yuanToFen } from '../../api';
+import BoundField from '../../components/BoundField.vue';
+import WindowedList from '../../components/WindowedList.vue';
 import { useDemoRole } from '../../role';
 
 const { canWriteBusiness, roleLabel } = useDemoRole();

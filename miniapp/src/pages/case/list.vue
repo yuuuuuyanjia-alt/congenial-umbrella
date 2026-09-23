@@ -8,9 +8,9 @@
       <view class="h2">新建销售合同</view>
       <view class="muted">将创建出口案并打开报价。请先完成报价，再在销售合同填写买方、收货人并完成筛查。不能跳过报价。</view>
       <view class="label">标题</view>
-      <input class="input" v-model="draft.title" :placeholder="DEMO_CREATE.salesTitle" />
+      <BoundField :model="draft" field="title" :placeholder="DEMO_CREATE.salesTitle" />
       <view class="label">金额</view>
-      <input class="input" type="digit" v-model="draft.amountYuan" placeholder="25000.00" />
+      <BoundField :model="draft" field="amountYuan" type="digit" placeholder="25000.00" />
       <view class="label">币种</view>
       <view class="readonly">USD</view>
       <view class="muted">演示新建默认美元。签订销售合同时可选 CNY / USD。</view>
@@ -21,13 +21,12 @@
       <view class="h2">新建采购合同</view>
       <view class="muted">请选择一笔已签订的销售合同，打开该案的采购合同（N5）。已有采购合同则进入编辑。不会新建没有销售合同的案件；保存仍须带上该销售合同关联。</view>
       <view class="muted" v-if="!signedSales.length" style="margin-top: 8rpx">暂无已签订的销售合同。请先完成销售合同签订。</view>
+      <WindowedList :items="signedSales" key-field="id">
+        <template #default="{ item: opt }">
       <view
         class="card scroll-skip"
         style="box-shadow: none; border: 2rpx solid #c5d4cb; margin-bottom: 12rpx; margin-top: 12rpx"
         :style="pickedSalesId === opt.id ? 'border-color: #0f3d2e' : ''"
-        v-for="opt in signedSales"
-        :key="opt.id"
-        v-memo="[opt.id, pickedSalesId === opt.id, opt.customer, opt.title, opt.caseNo, opt.goodsDesc, opt.poNo, opt.statusLabel]"
         @click="pickedSalesId = opt.id"
       >
         <view class="row">
@@ -43,6 +42,8 @@
           </view>
         </view>
       </view>
+        </template>
+      </WindowedList>
       <view class="btn" :class="{ 'btn-ghost': !pickedSalesId }" @click="openPickedProcurement">
         {{ pickedSalesBtn }}
       </view>
@@ -62,13 +63,9 @@
 
     <template v-if="kind === 'sales'">
       <view class="muted" style="margin-bottom: 12rpx">{{ activeBucket.hint }}</view>
-      <view
-        class="card scroll-skip"
-        v-for="c in activeBucket.items"
-        :key="c.id"
-        v-memo="[c.id, c.caseNo, c.customer, c.title, c.currentNode, c.status, c.signed, c.goodsDesc, c.amountFen, c.contract && c.contract.amountFen, nextOf(c) && nextOf(c).code]"
-        @click="open(c)"
-      >
+      <WindowedList :items="activeBucket.items" key-field="id">
+        <template #default="{ item: c }">
+      <view class="card scroll-skip" @click="open(c)">
         <view class="row">
           <view class="title-block" style="flex: 1; min-width: 0">
             <view class="muted">{{ primaryNo(c) }}</view>
@@ -83,16 +80,14 @@
           @click.stop="openNext(c)"
         >{{ nextCtaLabel(c) }}</view>
       </view>
+        </template>
+      </WindowedList>
     </template>
 
     <template v-else>
-      <view
-        class="card scroll-skip"
-        v-for="c in list"
-        :key="c.id"
-        v-memo="[c.id, c.caseNo, c.poNo, c.procurementTitle, c.currentNode, c.status, c.amountFen, c.procurementPlan && c.procurementPlan.amountFen, c.salesLink && c.salesLink.contractNo, nextOf(c) && nextOf(c).code]"
-        @click="open(c)"
-      >
+      <WindowedList :items="list" key-field="id">
+        <template #default="{ item: c }">
+      <view class="card scroll-skip" @click="open(c)">
         <view class="row">
           <view class="title-block" style="flex: 1; min-width: 0">
             <view class="muted">{{ primaryNo(c) }}</view>
@@ -108,6 +103,8 @@
           @click.stop="openNext(c)"
         >{{ nextCtaLabel(c) }}</view>
       </view>
+        </template>
+      </WindowedList>
     </template>
 
     <view class="muted" v-if="!loaded">正在加载合同…</view>
@@ -144,7 +141,9 @@ import {
   salesCreateLandingPage,
   signedSalesPicks,
 } from '../../create-flow';
+import BoundField from '../../components/BoundField.vue';
 import RoleBar from '../../components/RoleBar.vue';
+import WindowedList from '../../components/WindowedList.vue';
 import { useDemoRole } from '../../role';
 
 const kind = ref<'sales' | 'procurement' | ''>('');

@@ -193,8 +193,8 @@ select {
    (home, lists, N2–N9, batches, workbench). user-select:text on that shell
    makes WebKit run selection hit-testing on every pan. The shell stays
    non-selectable; copy stays on the page body. While html.h5-scrolling is
-   set (see h5-selection.ts) selection is dropped for the whole tree so a
-   pan does not hit-test every uni-view. WebKit refuses to type when an
+   set from a wheel or touch pan (not a scroll listener) selection is dropped
+   for the whole tree so a pan does not hit-test every uni-view. WebKit refuses to type when an
    input inherits user-select:none, so the native control sets it itself. */
 html,
 body,

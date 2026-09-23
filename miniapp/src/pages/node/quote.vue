@@ -8,9 +8,9 @@
     </view>
     <view class="card">
       <view class="label">货物名称</view>
-      <input class="input" v-model="form.goodsDesc" placeholder="货物名称，可改" />
+      <BoundField :model="form" field="goodsDesc" placeholder="货物名称，可改" />
       <view class="label">规格</view>
-      <input class="input" v-model="form.goodsSpec" placeholder="如型号、尺寸" />
+      <BoundField :model="form" field="goodsSpec" placeholder="如型号、尺寸" />
       <view class="label">所含项目</view>
       <view class="choice-row">
         <view
@@ -22,34 +22,33 @@
         >{{ item.label }}</view>
       </view>
       <view class="label">有效期（YYYY-MM-DD）</view>
-      <input class="input" v-model="form.validityUntil" placeholder="2026-12-31" />
+      <BoundField :model="form" field="validityUntil" placeholder="2026-12-31" />
       <view class="label">单价</view>
-      <input class="input" type="digit" v-model="form.unitPriceUsd" placeholder="美元金额" />
+      <BoundField :model="form" field="unitPriceUsd" type="digit" placeholder="美元金额" />
       <view class="label">单价单位</view>
       <view class="choice-row">
         <view class="choice-btn" :class="{ 'choice-btn-on': form.unit === 'TON' }" @click="form.unit = 'TON'">吨</view>
         <view class="choice-btn" :class="{ 'choice-btn-on': form.unit === 'KG' }" @click="form.unit = 'KG'">千克</view>
       </view>
-      <view class="label">数量（{{ unitLabel }}）</view>
-      <input class="input" type="number" v-model="form.quantity" />
+      <view class="label">数量（<DraftText :text="() => unitLabel" />）</view>
+      <BoundField :model="form" field="quantity" type="number" />
       <view class="label">备注</view>
-      <input class="input" v-model="form.notes" placeholder="禁止填写价格待定/费用另议" />
+      <BoundField :model="form" field="notes" placeholder="禁止填写价格待定/费用另议" />
       <view class="btn" v-if="canWriteBusiness" @click="save">保存为新版本</view>
       <view class="btn btn-ghost" v-if="canWriteBusiness" @click="tryAdvance">校验并推进</view>
     </view>
-    <view
-      class="card scroll-skip"
-      v-for="q in c.quotes || []"
-      :key="q.id"
-      v-memo="[q.id, q.version, q.status, q.quantity, q.unit, q.unitPriceFen, q.validityUntil]"
-    >
-      <view class="row">
-        <view class="h2" style="margin: 0">报价 v{{ q.version }}</view>
-        <view class="badge" :class="q.status === 'ACTIVE' ? 'badge-pass' : 'badge-stub'">{{ q.status }}</view>
-      </view>
-      <view class="muted">所含 {{ includedLabel(q) }} · 有效期 {{ dateOnly(q.validityUntil) }}</view>
-      <view class="muted">单价 {{ money(q.unitPriceFen) }} / {{ unitText(q.unit || q.snapshot?.unit) }} × {{ q.quantity }}</view>
-    </view>
+    <WindowedList :items="c.quotes || []" key-field="id">
+      <template #default="{ item: q }">
+        <view class="card scroll-skip">
+          <view class="row">
+            <view class="h2" style="margin: 0">报价 v{{ q.version }}</view>
+            <view class="badge" :class="q.status === 'ACTIVE' ? 'badge-pass' : 'badge-stub'">{{ q.status }}</view>
+          </view>
+          <view class="muted">所含 {{ includedLabel(q) }} · 有效期 {{ dateOnly(q.validityUntil) }}</view>
+          <view class="muted">单价 {{ money(q.unitPriceFen) }} / {{ unitText(q.unit || q.snapshot?.unit) }} × {{ q.quantity }}</view>
+        </view>
+      </template>
+    </WindowedList>
     <view class="err" v-if="err">{{ err }}</view>
     <view class="ok" v-if="ok">{{ ok }}</view>
     <NextNodeCta
@@ -67,6 +66,9 @@
 import { onLoad } from '@dcloudio/uni-app';
 import { computed, reactive, ref } from 'vue';
 import { api, fenToYuan, goToNode, money, nextWorkNodeFromForm, pipelineNodeName, yuanToFen } from '../../api';
+import BoundField from '../../components/BoundField.vue';
+import DraftText from '../../components/DraftText.vue';
+import WindowedList from '../../components/WindowedList.vue';
 import { resolveCarriedGoods } from '../../goods-fields';
 import NextNodeCta from '../../components/NextNodeCta.vue';
 import { useDemoRole } from '../../role';

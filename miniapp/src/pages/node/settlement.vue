@@ -9,18 +9,18 @@
     <PendingChangeBlock :case-id="id" :case-data="c" />
     <view class="card">
       <view class="label">买方名称</view>
-      <input class="input" v-model="form.buyerName" />
+      <BoundField :model="form" field="buyerName" />
       <view class="label">实际付款人</view>
-      <input class="input" v-model="form.payerName" />
+      <BoundField :model="form" field="payerName" />
       <view class="label">汇款附言 / 水单编号</view>
-      <input class="input" v-model="form.remittanceMemoRef" />
+      <BoundField :model="form" field="remittanceMemoRef" />
       <view class="label">实际到账日期（年-月-日）</view>
-      <input class="input" v-model="form.receivedAt" placeholder="用于判断是否按期回款" />
+      <BoundField :model="form" field="receivedAt" placeholder="用于判断是否按期回款" />
       <view class="label">已收汇金额</view>
-      <input class="input" v-model="form.amountYuan" :placeholder="`与合同币种一致（${currency}）。留空且已填到账日则按本批金额`" />
+      <BoundField :model="form" field="amountYuan" :placeholder="`与合同币种一致（${currency}）。留空且已填到账日则按本批金额`" />
       <view class="label">本批未收汇金额</view>
       <view class="muted">本批金额减本批已收汇（{{ currency }}）。本批已回款须未收汇为 0。</view>
-      <input class="input" disabled :value="unpaidYuan" />
+      <view class="readonly"><DraftText :text="() => unpaidYuan" /></view>
       <view class="label">已附汇款附言</view>
       <switch :checked="form.hasRemittanceMemo" @change="(e: any) => (form.hasRemittanceMemo = e.detail.value)" />
       <view class="label">单证一致证明</view>
@@ -41,6 +41,8 @@
 import { onLoad } from '@dcloudio/uni-app';
 import { computed, reactive, ref } from 'vue';
 import { api, fenToYuan, SALES_CURRENCY, yuanToFen } from '../../api';
+import BoundField from '../../components/BoundField.vue';
+import DraftText from '../../components/DraftText.vue';
 import PendingChangeBlock from '../../components/PendingChangeBlock.vue';
 import { useDemoRole } from '../../role';
 
