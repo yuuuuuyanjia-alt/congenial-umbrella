@@ -181,7 +181,11 @@ select {
 }
 
 /* #ifdef H5 */
-/* uni-h5 base.css: html,body { user-select: none } — inherited onto all copy and inputs. */
+/* uni-h5 base.css: html,body { user-select: none } — inherited onto copy and,
+   on WebKit, onto inputs (user-select:none makes the field non-editable).
+   Re-enable selection on copyable text only. Do not put user-select:text on
+   the uni-input / uni-textarea host: that shell is not the editing control,
+   and a drag on it selects the page and blurs the caret. */
 html,
 body,
 page,
@@ -209,16 +213,59 @@ uni-text {
   user-select: text;
 }
 
-input,
-textarea,
+/* Host stays non-selectable so a short drag cannot steal focus. The native
+   control must set user-select itself — WebKit inherits `none` and then
+   refuses to type. */
 uni-input,
-uni-textarea,
+uni-textarea {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Do not select `input` / `textarea` here. The H5 compiler rewrites those
+   element selectors to `uni-input` / `uni-textarea`, which would put
+   user-select:text !important back on the host and undo the rule above. */
 .uni-input-input,
-.uni-textarea-textarea,
-.input {
+.uni-textarea-textarea {
   -webkit-user-select: text !important;
   user-select: text !important;
   -webkit-touch-callout: default !important;
+}
+
+/* uni-components input.css: uni-input { height: 1.4em; overflow: hidden }.
+   `.input` padding is on that host, so clicks on the gray box miss the
+   native <input> (contract, batches, shipment, and every other `.input`).
+   Move the padding onto the native control so the whole field takes typing.
+   Textarea's placeholder is a full-size overlay without pointer-events:none;
+   keep it from covering the control. */
+uni-input.input {
+  height: auto;
+  min-height: 0;
+  overflow: visible;
+  padding: 0;
+}
+uni-input.input > .uni-input-wrapper {
+  height: auto;
+  min-height: 0;
+}
+uni-input.input .uni-input-input {
+  /* border-box so width:100% includes the padding. min-height adds the
+     vertical padding on top of the 1.4em line; a 1.4em min-height with
+     border-box would crush the line and hide typed text. */
+  box-sizing: border-box;
+  width: 100%;
+  height: auto;
+  min-height: calc(1.4em + 36rpx);
+  padding: 18rpx 20rpx;
+}
+uni-input.input .uni-input-placeholder,
+.uni-textarea-placeholder {
+  pointer-events: none;
+}
+uni-input.input .uni-input-placeholder {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 18rpx 20rpx;
 }
 
 /* Buttons/chips can stay non-select; do not put this on .card / .chips wrappers. */
