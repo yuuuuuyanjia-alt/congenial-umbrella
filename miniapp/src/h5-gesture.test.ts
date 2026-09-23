@@ -75,6 +75,23 @@ test('a mouse drag stays a text selection on every page', () => {
 test('the clipboard helper does not register a page scroll listener', () => {
   const src = readFileSync(new URL('./h5-selection.ts', import.meta.url), 'utf8');
   assert.equal(/addEventListener\(\s*['"]scroll['"]/.test(src), false);
+  assert.equal(/addEventListener\(\s*['"]wheel['"]/.test(src), false);
+  assert.equal(/classList/.test(src), false);
+  assert.equal(/h5-scrolling/.test(src), false);
+});
+
+test('the shared shell does not restyle the tree while scrolling', () => {
+  const css = readFileSync(new URL('./App.vue', import.meta.url), 'utf8');
+  assert.equal(css.includes('h5-scrolling'), false);
+  assert.equal(css.includes('content-visibility: auto'), false);
+  assert.equal(css.includes('scrollbar-gutter: stable'), true);
+  assert.equal(css.includes('overflow-x: clip'), true);
+  assert.equal(css.includes('overflow: visible'), true);
+  assert.equal(/box-shadow:\s*0 8rpx 24rpx/.test(css), true);
+  const h5 = css.slice(css.indexOf('#ifdef H5'));
+  assert.equal(h5.includes('box-shadow: none'), true);
+  assert.equal(h5.includes('backdrop-filter: none'), true);
+  assert.equal(h5.includes('content: none'), true);
 });
 
 test('a touch pan pauses selection hit-testing', () => {

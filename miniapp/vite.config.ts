@@ -6,6 +6,14 @@ export default defineConfig({
   define: {
     'import.meta.env.VITE_API_BASE': JSON.stringify(process.env.VITE_API_BASE || '/api'),
   },
+  // Daily `npm run miniapp` is dev:h5 on purpose. The Docker demo serves
+  // `build:h5`. Do not ship source maps with that build.
+  css: {
+    devSourcemap: false,
+  },
+  build: {
+    sourcemap: false,
+  },
   server: {
     host: '0.0.0.0',
     port: 5173,
