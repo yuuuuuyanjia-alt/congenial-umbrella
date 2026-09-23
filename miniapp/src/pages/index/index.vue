@@ -14,7 +14,7 @@
       <view class="h2">工作入口</view>
       <view class="muted">{{ entryHint }}</view>
       <template v-for="(block, i) in entryBlocks" :key="i + '-' + block.items[0].url">
-        <view class="choice-row" v-if="block.type === 'contracts'" style="margin-top: 16rpx">
+        <view class="choice-row" v-if="block.type === 'pair'" style="margin-top: 16rpx">
           <view class="choice-btn" v-for="e in block.items" :key="e.url" @click="go(e.url)">{{ e.label }}</view>
         </view>
         <view class="btn" v-else @click="go(block.items[0].url)">{{ block.items[0].label }}</view>
@@ -47,7 +47,7 @@ const entryBlocks = computed(() => homeEntryBlocks(role.value));
 const entryHint = computed(() => {
   if (role.value === 'RISK') return '本岗默认先进入审核工作台；销售/采购合同也可进入。';
   if (role.value === 'MANAGER') return '本岗只读：先看客户评估与合同列表，不可审批、推进或新建合同。';
-  return '本岗可新建并录入销售合同、采购合同并推进 N2–N9。';
+  return '本岗可新建并录入销售合同、采购合同，并从出运管理、单证管理办理装运与单证。收汇仍在出运批次内办理。';
 });
 function syncNavTitle() {
   uni.setNavigationBarTitle({

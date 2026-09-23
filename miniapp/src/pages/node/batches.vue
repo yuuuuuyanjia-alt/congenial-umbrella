@@ -5,18 +5,17 @@
     </view>
     <template v-else>
       <view class="card">
-        <view class="h2">选择出运批次</view>
-        <view class="muted">
-          进入装运前请选择已有批次，或新建一批。选定后打开该批次的装运（N6），再用「进入下一步」办理单证（N7）和收汇（N9）。一份销售合同可以多批同时在途。
-        </view>
+        <view class="h2">{{ heading }}</view>
+        <view class="muted">{{ intro }}</view>
         <view class="muted" style="margin-top: 8rpx">
           {{ c.caseNo }} · {{ c.customer || c.title }} · {{ money(c.contract?.amountFen ?? c.amountFen, currency) }}
         </view>
-        <view class="err" v-if="!canWriteBusiness" style="margin-top: 8rpx">当前为{{ roleLabel }}，不能新建批次。</view>
+        <view class="err" v-if="!canWriteBusiness && allowsCreate" style="margin-top: 8rpx">当前为{{ roleLabel }}，不能新建批次。</view>
       </view>
 
       <view class="card" v-if="!batches.length">
-        <view class="muted">还没有出运批次。请新建一批后再进入装运。</view>
+        <view class="muted">{{ emptyText }}</view>
+        <view class="btn" v-if="!allowsCreate" @click="goShipment">去办出运</view>
       </view>
       <WindowedList :items="batches" key-field="id">
         <template #default="{ item: b }">
@@ -25,15 +24,18 @@
             <view class="muted" style="margin-top: 8rpx">
               数量 {{ b.quantity ?? '—' }} {{ b.unit || '' }} · 金额 {{ money(b.amountFen, b.currency || currency) }} · 已收汇 {{ money(b.receivedFen, b.currency || currency) }}
             </view>
-            <view class="muted" v-if="requested === 'N6' && b.currentNode && b.currentNode !== 'N6'" style="margin-top: 8rpx">
+            <view class="muted" v-if="lane === 'shipment' && b.currentNode && b.currentNode !== 'N6'" style="margin-top: 8rpx">
               本批当前在{{ b.nodeLabel }}。进入装运后可用「进入下一步」继续该批次的单证或收汇。
+            </view>
+            <view class="muted" v-else-if="lane === 'remit' && openCode(b) !== 'N9'" style="margin-top: 8rpx">
+              本批尚未到收汇，将打开本批当前的{{ b.nodeLabel || '装运' }}。
             </view>
             <view class="btn" @click="openBatch(b)">{{ openLabel(b) }}</view>
           </view>
         </template>
       </WindowedList>
 
-      <view class="card" v-if="canWriteBusiness">
+      <view class="card" v-if="canWriteBusiness && allowsCreate">
         <view class="h2">新建批次</view>
         <view class="label">批次号（可空，按顺序生成）</view>
         <BoundField :model="batchForm" field="batchNo" placeholder="如 2" />
@@ -51,14 +53,15 @@
 <script setup lang="ts">
 import { onLoad, onShow } from '@dcloudio/uni-app';
 import { computed, reactive, ref } from 'vue';
-import { api, batchOpenCode, money, nodeEntryUrl, yuanToFen } from '../../api';
+import { api, batchOpenCode, batchPickUrl, money, nodeEntryUrl, yuanToFen } from '../../api';
+import { laneAllowsCreate, resolveBatchLane, type BatchLane } from '../../lane-nav';
 import BoundField from '../../components/BoundField.vue';
 import WindowedList from '../../components/WindowedList.vue';
 import { useDemoRole } from '../../role';
 
 const { canWriteBusiness, roleLabel } = useDemoRole();
 const id = ref('');
-const requested = ref('N6');
+const lane = ref<BatchLane>('shipment');
 const c = ref<any>(null);
 const loadErr = ref('');
 const batchForm = reactive({ batchNo: '', quantity: '', amountYuan: '' });
@@ -66,17 +69,48 @@ const batchErr = ref('');
 
 const batches = computed(() => c.value?.shipmentBatches || []);
 const currency = computed(() => c.value?.contract?.currency || c.value?.currency || 'USD');
+const allowsCreate = computed(() => laneAllowsCreate(lane.value));
+const heading = computed(() => {
+  if (lane.value === 'docs') return '选择已有批次 · 单证';
+  if (lane.value === 'remit') return '选择已有批次 · 收汇';
+  return '选择出运批次';
+});
+const intro = computed(() => {
+  if (lane.value === 'docs') {
+    return '请选择这份销售合同已有的出运批次，进入该批次的单证（N7）。这里不能新建批次。还没有批次时，请先去出运管理。';
+  }
+  if (lane.value === 'remit') {
+    return '收汇留在出运批次上办理，不从首页单独进入。请选择已有批次。该批尚未到收汇时，会停在本批当前节点。';
+  }
+  return '进入装运前请选择已有批次，或新建一批。选定后打开该批次的装运（N6），再用「进入下一步」办理单证（N7）和收汇（N9）。一份销售合同可以多批同时在途。';
+});
+const emptyText = computed(() => {
+  if (lane.value === 'docs') return '这份销售合同还没有出运批次。请先办理出运，选择或新建批次后再回来做单证。不会从这里新建空批次或打开空白单证页。';
+  if (lane.value === 'remit') return '这份销售合同还没有出运批次。请先办理出运，再在该批次上登记收汇。';
+  return '还没有出运批次。请新建一批后再进入装运。';
+});
 
 onLoad((q) => {
   id.value = q?.id || '';
-  const code = String(q?.code || '').toUpperCase();
-  requested.value = code === 'N7' || code === 'N9' ? code : 'N6';
+  lane.value = resolveBatchLane({ lane: q?.lane, code: q?.code });
+  const titles: Record<BatchLane, string> = {
+    shipment: '选择出运批次',
+    docs: '选择单证批次',
+    remit: '选择收汇批次',
+  };
+  uni.setNavigationBarTitle({ title: titles[lane.value] });
 });
 
 onShow(load);
 
+function openCode(b: any) {
+  if (lane.value === 'docs') return 'N7';
+  if (lane.value === 'shipment') return 'N6';
+  return batchOpenCode(b, 'N9');
+}
+
 function openLabel(b: any) {
-  const code = batchOpenCode(b, requested.value);
+  const code = openCode(b);
   if (code === 'N7') return '进入单证 N7';
   if (code === 'N9') return '进入收汇 N9';
   return '进入装运 N6';
@@ -84,8 +118,12 @@ function openLabel(b: any) {
 
 function openBatch(b: any) {
   if (!id.value || !b?.id) return;
-  const code = batchOpenCode(b, requested.value);
-  uni.navigateTo({ url: nodeEntryUrl(id.value, code, b.id) });
+  uni.navigateTo({ url: nodeEntryUrl(id.value, openCode(b), b.id) });
+}
+
+function goShipment() {
+  if (!id.value) return;
+  uni.navigateTo({ url: batchPickUrl(id.value, 'N6') });
 }
 
 async function load() {
@@ -102,7 +140,7 @@ async function load() {
 }
 
 async function createBatch() {
-  if (!id.value || !canWriteBusiness.value) return;
+  if (!allowsCreate.value || !id.value || !canWriteBusiness.value) return;
   batchErr.value = '';
   const quantity = batchForm.quantity.trim() ? Number(batchForm.quantity) : undefined;
   if (batchForm.quantity.trim() && !Number.isFinite(quantity as number)) {

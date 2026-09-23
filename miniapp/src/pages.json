@@ -33,6 +33,10 @@
       "style": { "navigationBarTitleText": "采购合同/国内备货" }
     },
     {
+      "path": "pages/export/pick",
+      "style": { "navigationBarTitleText": "出运 / 单证" }
+    },
+    {
       "path": "pages/node/batches",
       "style": { "navigationBarTitleText": "选择出运批次" }
     },

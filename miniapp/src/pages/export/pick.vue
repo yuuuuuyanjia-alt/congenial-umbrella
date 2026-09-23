@@ -1,0 +1,75 @@
+<template>
+  <view class="wrap">
+    <view class="h1" style="margin-bottom: 8rpx">{{ title }}</view>
+    <view class="muted" style="margin-bottom: 16rpx">{{ hint }}</view>
+    <view class="muted" v-if="!loaded">正在加载销售合同…</view>
+    <view class="card" v-else-if="!list.length">
+      <view class="muted">暂无销售合同。请先签订销售合同，再办理{{ lane === 'docs' ? '单证' : '出运' }}。</view>
+      <view class="btn" @click="goSales">去销售合同</view>
+    </view>
+    <WindowedList v-else :items="list" key-field="id">
+      <template #default="{ item: c }">
+        <view class="card scroll-skip" @click="pick(c)">
+          <view class="row">
+            <view style="flex: 1; min-width: 0">
+              <view class="muted">销售合同 {{ c.caseNo }}</view>
+              <view class="h2" style="margin: 6rpx 0 0; line-height: 1.4">{{ c.customer || c.title }}</view>
+            </view>
+            <view class="badge" :class="salesShipmentBadgeClass(c)">{{ c.shipmentBucketLabel || salesShipmentBucketLabel(c) }}</view>
+          </view>
+          <view class="muted" style="margin-top: 8rpx">
+            {{ c.goodsDesc || '' }} · {{ c.currentNodeLabel || c.currentNode || '' }} ·
+            {{ money(c.contract?.amountFen ?? c.amountFen, c.contract?.currency || c.currency) }}
+          </view>
+          <view class="btn">{{ pickLabel }}</view>
+        </view>
+      </template>
+    </WindowedList>
+  </view>
+</template>
+
+<script setup lang="ts">
+import { onLoad, onShow } from '@dcloudio/uni-app';
+import { computed, ref } from 'vue';
+import { api, batchPickUrl, isSalesListCase, money, salesShipmentBadgeClass, salesShipmentBucketLabel } from '../../api';
+import type { ExportLane } from '../../lane-nav';
+import WindowedList from '../../components/WindowedList.vue';
+
+const lane = ref<ExportLane>('shipment');
+const raw = ref<any[]>([]);
+const loaded = ref(false);
+
+const title = computed(() => (lane.value === 'docs' ? '单证管理' : '出运管理'));
+const hint = computed(() =>
+  lane.value === 'docs'
+    ? '先选择销售合同，再选择该合同已有的出运批次，进入这一批的单证一致性。没有批次时请先去出运管理，这里不会新建批次，也不会打开空白单证页。'
+    : '先选择销售合同，再选择或新建出运批次，进入这一批的装运/提单指示。单证与收汇从该批次继续办理。',
+);
+const pickLabel = computed(() => (lane.value === 'docs' ? '选择已有批次' : '选择或新建批次'));
+const list = computed(() => raw.value.filter(isSalesListCase));
+
+onLoad((q) => {
+  lane.value = q?.lane === 'docs' ? 'docs' : 'shipment';
+  uni.setNavigationBarTitle({ title: title.value });
+});
+
+onShow(async () => {
+  try {
+    raw.value = await api.cases('sales');
+  } catch {
+    raw.value = [];
+    uni.showToast({ title: '无法加载销售合同，请先启动后端', icon: 'none' });
+  } finally {
+    loaded.value = true;
+  }
+});
+
+function pick(c: any) {
+  if (!c?.id) return;
+  uni.navigateTo({ url: batchPickUrl(c.id, lane.value === 'docs' ? 'N7' : 'N6') });
+}
+
+function goSales() {
+  uni.navigateTo({ url: '/pages/case/list?kind=sales' });
+}
+</script>

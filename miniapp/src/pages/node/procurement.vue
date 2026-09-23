@@ -95,13 +95,9 @@
 
       <view v-if="form.paymentMode === 'FULL'">
         <view class="label">约定付款时间</view>
-        <BoundField :model="form" field="paymentDueAt" placeholder="YYYY-MM-DD 约定付款日期" />
+        <BoundField :model="form" field="paymentDueAt" placeholder="YYYY-MM-DD" />
         <view class="label">付款条件（可选）</view>
         <BoundField :model="form" field="paymentConditionText" placeholder="一次性付清" />
-        <view class="label">已付货款（CNY）</view>
-        <BoundField :model="form" field="paidYuan" type="digit" placeholder="已付给供应商的金额" />
-        <view class="label">付款日期（付清日）</view>
-        <BoundField :model="form" field="paidAt" placeholder="YYYY-MM-DD" />
       </view>
 
       <view v-else>
@@ -263,9 +259,7 @@ const form = reactive({
   actualArrival: '',
   amountYuan: '',
   currency: PROCUREMENT_CURRENCY,
-  paidYuan: '',
   paymentDueAt: '',
-  paidAt: '',
   paymentMode: 'FULL' as 'FULL' | 'STAGED',
   paymentConditionText: '一次性付清',
   installments: [emptyInst(1), emptyInst(2)],
@@ -505,9 +499,7 @@ async function reload() {
     form.actualArrival = String(p.actualArrival || '').slice(0, 10);
     form.amountYuan = fenToYuan(p.amountFen);
     form.currency = PROCUREMENT_CURRENCY;
-    form.paidYuan = fenToYuan(p.paidFen);
     form.paymentDueAt = String(p.paymentDueAt || '').slice(0, 10);
-    form.paidAt = String(p.paidAt || '').slice(0, 10);
     form.poEvidenceStub = p.poEvidenceStub || '';
     form.delayRegistered = !!p.delayRegistered;
     form.delayTriggerCode = p.delayTriggerCode || '';
@@ -579,10 +571,8 @@ async function save(silent = false) {
   const payload: any = {
     ...form,
     amountFen: form.amountYuan === '' ? undefined : yuanToFen(form.amountYuan),
-    paidFen: form.paidYuan === '' ? undefined : yuanToFen(form.paidYuan),
     actualArrival: form.actualArrival || undefined,
     paymentDueAt: form.paymentDueAt || undefined,
-    paidAt: form.paidAt || undefined,
     paymentMode: form.paymentMode,
     paymentConditionText: form.paymentConditionText || undefined,
     salesCaseId: form.salesCaseId,
@@ -600,7 +590,10 @@ async function save(silent = false) {
       paidAt: row.paidAt || undefined,
     }));
   } else {
-    payload.installments = undefined;
+    // 一次性付清不提交已付货款、付款日期，也不提交分期明细。省略后后端保留已有账，不把它们当必填。
+    delete payload.installments;
+    delete payload.paidFen;
+    delete payload.paidAt;
   }
   try {
     await api.savePlan(id.value, payload);

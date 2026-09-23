@@ -94,7 +94,7 @@
 <script setup lang="ts">
 import { onLoad, onShow } from '@dcloudio/uni-app';
 import { computed, reactive, ref } from 'vue';
-import { api, batchPickUrl, decisionClass, decisionText, goToNode, money, nodePage } from '../../api';
+import { api, decisionClass, decisionText, goToNode, money } from '../../api';
 import BoundField from '../../components/BoundField.vue';
 import RoleBar from '../../components/RoleBar.vue';
 import WindowedList from '../../components/WindowedList.vue';
@@ -144,15 +144,7 @@ function role(r: string) {
 }
 
 function openNode(n: any) {
-  if (n.code === 'N6') {
-    goToNode(id.value, 'N6');
-    return;
-  }
-  if (n.code === 'N7' || n.code === 'N9') {
-    uni.navigateTo({ url: batchPickUrl(id.value, n.code) });
-    return;
-  }
-  uni.navigateTo({ url: `${nodePage(n.code)}?id=${id.value}&code=${n.code}` });
+  goToNode(id.value, n.code);
 }
 
 function go(url: string) {

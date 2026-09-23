@@ -143,6 +143,35 @@ describe('采购货款分期', () => {
     );
   });
 
+  it('一次性付清不要求已付货款与付款日期，省略时保留原账', () => {
+    const fresh = buildInstallmentRecords({
+      paymentMode: PaymentMode.FULL,
+      amountFen: 21000000,
+      paymentDueAt: '2026-12-01',
+    });
+    expect(fresh.paymentMode).toBe(PaymentMode.FULL);
+    expect(fresh.resolved).toHaveLength(1);
+    expect(fresh.rollup.paidFen).toBe(0);
+    expect(fresh.rollup.paidAt).toBeNull();
+
+    const kept = buildInstallmentRecords(
+      {
+        paymentMode: PaymentMode.FULL,
+        amountFen: 21000000,
+        paymentDueAt: '2026-12-01',
+      },
+      {
+        paymentMode: PaymentMode.FULL,
+        amountFen: 21000000,
+        paidFen: 500,
+        paidAt: '2026-08-01',
+        paymentDueAt: '2026-12-01',
+      },
+    );
+    expect(kept.rollup.paidFen).toBe(500);
+    expect(kept.resolved[0].paidAt).toBe('2026-08-01');
+  });
+
   it('保存一次性付清时合成单期并回写已付总额', () => {
     const built = buildInstallmentRecords({
       paymentMode: PaymentMode.FULL,

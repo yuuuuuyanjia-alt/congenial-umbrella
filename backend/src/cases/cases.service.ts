@@ -1242,6 +1242,7 @@ export class CasesService {
         });
       }
     }
+    // 一次性付清不要求已付货款、付款日期。未传时 buildInstallmentRecords 保留原账，分期规则不变。
     const schedule = buildInstallmentRecords(
       {
         paymentMode: dto.paymentMode,
