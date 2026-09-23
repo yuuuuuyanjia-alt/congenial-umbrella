@@ -11,7 +11,7 @@
     <PendingChangeBlock :case-id="id" :case-data="c" />
     <WindowedList :items="docSlots" key-field="slot">
       <template #default="{ item: doc }">
-        <view class="card">
+        <view class="card scroll-skip">
           <view class="h2">{{ doc.label }}</view>
           <view class="muted" v-if="doc.hint">{{ doc.hint }}</view>
           <view class="readonly" v-if="fileOf(doc.kind)">{{ fileOf(doc.kind).fileName }}</view>

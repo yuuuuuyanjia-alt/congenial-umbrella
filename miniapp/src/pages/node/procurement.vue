@@ -21,7 +21,7 @@
       @go="goNext"
     />
 
-    <view class="card">
+    <view class="card scroll-section">
       <view class="h2">关联销售合同</view>
       <view class="muted">
         请从已签订的销售合同中<text style="font-weight: 650">任选一笔</text>关联，不限于本案出口合同。列表来自全部已签销售合同（客户、合同号、金额）。未选择则不得保存或推进。
@@ -48,7 +48,7 @@
       <view class="err" v-if="!form.salesCaseId" style="margin-top: 12rpx">尚未选择销售合同，不得保存采购合同。</view>
     </view>
 
-    <view class="card">
+    <view class="card scroll-section">
       <view class="h2">国内供应商</view>
       <view class="label">供应商名称</view>
       <BoundField :model="form" field="supplierName" placeholder="如 苏州精工机械有限公司" />
@@ -62,7 +62,7 @@
       <BoundField :model="form" field="supplierAddress" placeholder="选填" />
     </view>
 
-    <view class="card">
+    <view class="card scroll-section">
       <view class="h2">采购合同 / 备货</view>
       <view class="label">采购订单 / 采购合同编号</view>
       <BoundField :model="form" field="poNo" placeholder="如 PO-2026-011" />
@@ -83,7 +83,10 @@
       <view class="label">币种</view>
       <view class="readonly">CNY</view>
       <view class="muted">采购合同 / PO 金额固定人民币，不可更改</view>
-      <view class="h2" style="margin-top: 24rpx">付款方式</view>
+    </view>
+
+    <view class="card scroll-section">
+      <view class="h2">付款方式</view>
       <view class="muted">请选择：一次性付清，或分期支付。分期支付时，每一期须填写约定付款时间、付款比例、金额。</view>
       <view class="choice-row">
         <view class="choice-btn" :class="{ 'choice-btn-on': form.paymentMode === 'FULL' }" @click="setMode('FULL')">一次性付清</view>
@@ -106,7 +109,7 @@
 
       <view v-else>
         <view class="btn btn-ghost" v-if="canWriteBusiness" @click="apply90_10">填入 90% 到货 + 10% 尾款</view>
-        <view class="inst" v-for="(row, idx) in form.installments" :key="idx">
+        <view class="inst scroll-section" v-for="(row, idx) in form.installments" :key="idx">
           <view class="row">
             <view class="h2" style="margin: 0">第 {{ idx + 1 }} 期 · <DraftText :text="() => row.label || defaultInstLabel(idx)" /></view>
             <view class="chip" @click="removeInst(idx)" v-if="canWriteBusiness && form.installments.length > 1">删除本期</view>
@@ -129,6 +132,9 @@
         </view>
         <view class="btn btn-ghost" v-if="canWriteBusiness" @click="addInst">再加一期</view>
       </view>
+    </view>
+
+    <view class="card scroll-section">
       <view class="label">采购合同/PO 附件（可选，模拟上传）</view>
       <BoundField :model="form" field="poEvidenceStub" placeholder="如 PO-2026-011.pdf" />
       <view class="btn btn-ghost" v-if="canWriteBusiness" @click="stubUpload">模拟上传采购合同</view>

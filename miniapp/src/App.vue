@@ -45,7 +45,9 @@ select {
   border-radius: 16rpx;
   padding: 28rpx;
   margin-bottom: 20rpx;
-  box-shadow: 0 8rpx 24rpx rgba(15, 61, 46, 0.08);
+  /* Tight shadow. A wide blur on a tall card expands the paint rect and
+     gets re-rasterized when the nested scroller invalidates the page. */
+  box-shadow: 0 2px 6px rgba(15, 61, 46, 0.06);
 }
 /* Repeated rows (N5 sales options, contract lists). Skip layout and paint
    while they are off-screen. contain-intrinsic-size keeps the scrollbar
@@ -53,6 +55,14 @@ select {
 .scroll-skip {
   content-visibility: auto;
   contain-intrinsic-size: auto 140px;
+}
+/* Long form chunks (N3 sales contract, N5 procurement, other node forms).
+   Windowing list rows does not skip a single card full of inputs. Each
+   chunk is its own box so off-screen fields are not laid out or painted.
+   `auto` locks the measured height so the scrollbar does not jump. */
+.scroll-section {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 280px;
 }
 .h1 {
   font-size: var(--font-h1);
@@ -188,14 +198,47 @@ select {
 }
 
 /* #ifdef H5 */
-/* uni-h5 base.css: html,body { height:100%; user-select:none } and
-   body { overflow-x:hidden }, so body is the scrollport on every route
-   (home, lists, N2–N9, batches, workbench). user-select:text on that shell
-   makes WebKit run selection hit-testing on every pan. The shell stays
-   non-selectable; copy stays on the page body. While html.h5-scrolling is
-   set from a wheel or touch pan (not a scroll listener) selection is dropped
-   for the whole tree so a pan does not hit-test every uni-view. WebKit refuses to type when an
-   input inherits user-select:none, so the native control sets it itself. */
+/* uni-h5 base.css sets html, body, #app, uni-app, uni-page, uni-page-wrapper
+   to height:100% and body { overflow-x:hidden }. overflow-x:hidden pairs
+   with overflow-y:visible and computes overflow-y to auto, so body becomes
+   a nested scrollport. The nav (.uni-page-head) is position:fixed with
+   transition-property:all, so every pan of that scroller restyles the bar
+   and repaints the long form under it. Height:auto lets the document
+   (window) scroll — the path uni-h5 reads via window.scrollY. overflow-x:clip
+   clips sideways without turning the other axis into a scrollport. */
+html,
+body,
+#app,
+uni-app,
+uni-page,
+uni-page-wrapper,
+uni-page-body {
+  height: auto !important;
+}
+body,
+uni-page-wrapper,
+uni-page-body {
+  overflow-x: clip !important;
+  overflow-y: visible !important;
+}
+uni-page {
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+uni-page-body {
+  min-height: calc(100vh - 44px);
+  min-height: calc(100dvh - 44px - env(safe-area-inset-top));
+}
+.uni-page-head {
+  transition: none !important;
+}
+
+/* user-select:text on every uni-view makes WebKit hit-test the whole tree
+   on each pan. Copy inherits from the page body. While html.h5-scrolling
+   is set, that one element drops selection; descendants must not set
+   user-select themselves or the pause cannot inherit (a `*` rule would
+   restyle every node mid-scroll). WebKit refuses to type when an input
+   inherits user-select:none, so the native control sets it itself. */
 html,
 body,
 uni-app,
@@ -203,7 +246,7 @@ uni-page,
 uni-page-wrapper {
   -webkit-user-select: none !important;
   user-select: none !important;
-  touch-action: manipulation;
+  touch-action: pan-y pinch-zoom;
 }
 page,
 uni-page-body {
@@ -211,8 +254,7 @@ uni-page-body {
   user-select: text;
   -webkit-touch-callout: default;
 }
-html.h5-scrolling,
-html.h5-scrolling * {
+html.h5-scrolling uni-page-body {
   -webkit-user-select: none !important;
   user-select: none !important;
 }
@@ -220,21 +262,6 @@ html.h5-scrolling .uni-input-input,
 html.h5-scrolling .uni-textarea-textarea {
   -webkit-user-select: text !important;
   user-select: text !important;
-}
-
-.card,
-.h1,
-.h2,
-.muted,
-.label,
-.readonly,
-.err,
-.ok,
-.wrap,
-uni-view,
-uni-text {
-  -webkit-user-select: text;
-  user-select: text;
 }
 
 /* Host stays non-selectable so a short drag cannot steal focus. The native

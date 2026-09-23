@@ -1,5 +1,5 @@
 <template>
-  <view class="picker-panel" @click.stop>
+  <view class="picker-panel scroll-section" @click.stop>
     <BoundField :model="query" field="q" placeholder="筛选客户、合同号或品名" @click.stop />
     <view class="muted" style="margin-top: 8rpx">共 {{ filtered.length }} 笔可关联，点选即可更换，不锁定本案。</view>
     <WindowedList :items="filtered" key-field="id">

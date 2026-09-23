@@ -5,7 +5,7 @@
       <view class="muted">交货期 / 数量 / 收货人 / 付款条件变更必须出变更单。客户确认 + 内部确认后生效。未生效变更会硬拦截采购（N5）及装运及后续节点（N6–N9）。进入本节点时须再次确认中信保：按变更后金额重算占用（未履行完毕未回款 + 已履行完毕未回款 + 本笔合同金额）。无变更单时可直接推进，无需重复登记中信保。</view>
       <view class="err" v-if="!canWriteBusiness" style="margin-top: 8rpx">当前为{{ roleLabel }}，本页只读，不可保存或推进。</view>
     </view>
-    <view class="card">
+    <view class="card scroll-section">
       <view class="label">变更字段</view>
       <view class="chips">
         <view class="chip" :class="{ 'chip-on': form.field === f.key }" v-for="f in fields" :key="f.key" @click="form.field = f.key">{{ f.label }}</view>
@@ -19,7 +19,7 @@
 
     <WindowedList :items="c.changeOrders || []" key-field="id">
       <template #default="{ item: co }">
-    <view class="card">
+    <view class="card scroll-skip">
       <view class="row">
         <view class="h2" style="margin: 0">{{ co.changeNo }}</view>
         <view class="badge" :class="co.status === 'APPLIED' ? 'badge-pass' : 'badge-review'">{{ co.status }}</view>
@@ -37,7 +37,7 @@
       </template>
     </WindowedList>
 
-    <view class="card" v-if="(c.changeOrders || []).length">
+    <view class="card scroll-section" v-if="(c.changeOrders || []).length">
       <view class="h2">中信保（变更后核对）</view>
       <view class="muted">有变更单时须再次上传保单，或确认沿用当前保单，并按变更后合同金额重算买方占用。</view>
       <SinosureExposure :exposure="c.sinosureExposure" :show-new="true" />
@@ -70,7 +70,7 @@
 
     <WindowedList :items="c.contractVersions || []" key-field="id">
       <template #default="{ item: v }">
-        <view class="card">
+        <view class="card scroll-skip">
           <view class="row">
             <view class="muted">合同版本 v{{ v.version }}</view>
             <view class="badge" :class="v.status === 'ACTIVE' ? 'badge-pass' : 'badge-stub'">{{ v.status }}</view>

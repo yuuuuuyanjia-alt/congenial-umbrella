@@ -16,7 +16,7 @@
       <view class="err" v-if="!canWriteBusiness" style="margin-top: 12rpx">当前为{{ roleLabel }}，合同只读，不可保存或推进。</view>
     </view>
 
-    <view class="card">
+    <view class="card scroll-section">
       <view class="label">买方</view>
       <BoundField :model="parties.BUYER" field="name" placeholder="买方名称" />
       <BoundField :model="parties.BUYER" field="country" placeholder="国家/地区" />
@@ -27,6 +27,9 @@
       <BoundField :model="form" field="goodsDesc" placeholder="默认可从报价带入，修改不影响采购合同" />
       <view class="label">规格</view>
       <BoundField :model="form" field="goodsSpec" placeholder="如型号、尺寸" />
+    </view>
+
+    <view class="card scroll-section">
       <view class="label">运输术语（Incoterms）<text class="req">必填</text></view>
       <view class="choice-row">
         <view class="choice-btn" :class="{ 'choice-btn-on': tradeTerm === 'FOB' }" @click="selectTerm('FOB')">FOB</view>
@@ -76,7 +79,7 @@
       <BoundField :model="form" field="shipmentDeadline" placeholder="年-月-日，或期限，如 2026-10-31 前" />
     </view>
 
-    <view class="card" v-if="form.ttTiming === 'ADVANCE'">
+    <view class="card scroll-section" v-if="form.ttTiming === 'ADVANCE'">
       <view class="h2">前 T/T 收汇</view>
       <view class="label">收汇比例（%）</view>
       <BoundField :model="form" field="ttPercent" type="digit" placeholder="如 30" @input="syncAdvanceFromPercent" />
@@ -87,7 +90,7 @@
       <view class="btn btn-ghost" v-if="canWriteBusiness" @click="stubVoucher">模拟上传收汇凭证</view>
     </view>
 
-    <view class="card" v-if="form.ttTiming === 'AFTER'">
+    <view class="card scroll-section" v-if="form.ttTiming === 'AFTER'">
       <view class="h2">后 T/T</view>
       <view class="label">装运后付款天数</view>
       <BoundField :model="form" field="ttDays" type="number" placeholder="如 30" />
@@ -98,7 +101,7 @@
       <view class="muted" v-if="canWriteBusiness && !hasLimit" style="margin-top: 8rpx">须先保存中信保限额，否则保存销售合同将被拒绝。</view>
     </view>
 
-    <view class="card">
+    <view class="card scroll-section">
       <view class="h2">买方 / 收货人筛查</view>
       <view class="muted">须确认买方、收货人，并对 OFAC / UN / EU / UK 与中国不可靠实体清单做模拟筛查。高置信命中不得推进销售合同。付款人不是必填项。改名后请重新筛查。</view>
       <view class="btn" v-if="canWriteBusiness" @click="runScreen">执行模拟筛查</view>
@@ -118,7 +121,7 @@
       </WindowedList>
     </view>
 
-    <view class="card">
+    <view class="card scroll-section">
       <view class="h2">中信保</view>
       <view class="muted">须先登记投保限额（美元），否则不得保存或推进合同。占用不换汇，仅美元销售计入美元占用。</view>
       <ExposureLive :form="form" :case-data="c" :can-write-workbench="canWriteWorkbench" @workbench="goWorkbench" />

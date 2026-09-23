@@ -9,7 +9,7 @@
       <view class="err" v-if="!canWriteBusiness" style="margin-top: 8rpx">当前为{{ roleLabel }}，本页只读，不可保存或推进。</view>
     </view>
     <PendingChangeBlock :case-id="id" :case-data="c" />
-    <view class="card">
+    <view class="card scroll-section">
       <view class="label">本节点用于闸门的运输术语（可改）</view>
       <BoundField
         :model="form"
@@ -38,6 +38,7 @@
         <BoundField :model="form" field="arrivalPort" placeholder="预计到达的港口，如 Hamburg" />
       </DraftGate>
 
+      <view class="scroll-section">
       <view class="h2" style="margin-top: 24rpx">商业发票与箱单</view>
       <view class="muted">两份都要上传后才能过闸。没有文件时可用演示示例，无需打开本机文件选择器。</view>
       <WindowedList :items="docSlots" key-field="slot">
@@ -102,6 +103,7 @@
 
       <view class="btn" v-if="canWriteBusiness" @click="save">保存指示</view>
       <view class="btn btn-danger" v-if="canWriteBusiness" @click="tryAdvance">校验硬闸门并推进</view>
+      </view>
     </view>
     <view class="err" v-if="err">{{ err }}</view>
     <view class="ok" v-if="ok">{{ ok }}</view>

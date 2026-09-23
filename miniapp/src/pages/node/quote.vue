@@ -6,7 +6,7 @@
       <view class="ok" v-if="fromCreate" style="margin-top: 12rpx">已创建销售合同案，请先完成报价，再进入销售合同填写买方、收货人并完成筛查。</view>
       <view class="err" v-if="!canWriteBusiness" style="margin-top: 8rpx">当前为{{ roleLabel }}，本页只读，不可保存或推进。</view>
     </view>
-    <view class="card">
+    <view class="card scroll-section">
       <view class="label">货物名称</view>
       <BoundField :model="form" field="goodsDesc" placeholder="货物名称，可改" />
       <view class="label">规格</view>

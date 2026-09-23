@@ -6,6 +6,7 @@ import {
   createSelectionGesture,
   noteScroll,
   samplePointerMove,
+  scrollPauseHold,
   shouldFocusField,
   shouldFocusLabel,
   shouldPauseSelection,
@@ -83,4 +84,11 @@ test('a touch pan pauses selection hit-testing', () => {
   assert.equal(shouldPauseSelection(g), false);
   assert.equal(samplePointerMove(g, 0, 40), 'scroll');
   assert.equal(shouldPauseSelection(g), true);
+});
+
+test('a touch pan holds selection off until the pointer ends', () => {
+  assert.equal(scrollPauseHold('touch'), 'pointer');
+  assert.equal(scrollPauseHold('pen'), 'pointer');
+  assert.equal(scrollPauseHold('wheel'), 'idle');
+  assert.equal(scrollPauseHold('mouse'), 'none');
 });

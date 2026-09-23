@@ -7,7 +7,7 @@
       <view class="err" v-if="!canWriteBusiness" style="margin-top: 8rpx">当前为{{ roleLabel }}，本页只读，不可保存或放行。</view>
     </view>
     <PendingChangeBlock :case-id="id" :case-data="c" />
-    <view class="card">
+    <view class="card scroll-section">
       <view class="label">买方名称</view>
       <BoundField :model="form" field="buyerName" />
       <view class="label">实际付款人</view>

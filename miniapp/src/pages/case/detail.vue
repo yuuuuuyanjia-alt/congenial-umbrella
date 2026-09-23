@@ -14,7 +14,7 @@
       </view>
     </view>
 
-    <view class="card" v-if="c.procurementPlan?.salesLink">
+    <view class="card scroll-section" v-if="c.procurementPlan?.salesLink">
       <view class="h2">关联销售合同</view>
       <view class="muted">{{ c.procurementPlan.salesLink.customer }} · {{ c.procurementPlan.salesLink.contractNo }}</view>
       <view class="muted" style="margin-top: 8rpx">
@@ -31,7 +31,7 @@
       >打开关联销售案件</view>
     </view>
 
-    <view class="card">
+    <view class="card scroll-section">
       <view class="h2">退税就绪清单</view>
       <view class="muted">FT4：报关放行与 N9 收汇由系统读取；进项发票号可手填；四流闭环须勾选。完成后方可模拟申报退税。本阶段不做自动票证匹配或电子口岸对接。</view>
       <WindowedList :items="rebateItems" key-field="code">
@@ -57,7 +57,7 @@
       <view class="err" v-if="rebateErr">{{ rebateErr }}</view>
     </view>
 
-    <view class="card">
+    <view class="card scroll-section">
       <view class="h2">当事方</view>
       <WindowedList :items="c.parties || []" key-field="id">
         <template #default="{ item: p }">

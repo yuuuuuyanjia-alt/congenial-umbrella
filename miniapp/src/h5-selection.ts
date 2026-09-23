@@ -24,14 +24,17 @@
  * clipboard and typing stay intact. Do not preventDefault on pointerdown:
  * that cancels the caret.
  *
- * Scroll (every H5 page, not one route): uni-h5 scrolls `body`. Selection
- * hit-testing on that scroller, or a pointermove that walks the DOM, runs on
- * each pan of the homepage, lists, node pages, and the workbench. There is
- * no page-wide scroll listener. Move listeners exist only while a pointer is
- * down, compare coordinates, then detach. A wheel event (not a scroll event)
- * and a touch pan arm `html.h5-scrolling` so selection drops for that gesture
- * and comes back when it stops. A mouse drag still selects text. Focus walks
- * happen on click, and only when the gesture was not a scroll.
+ * Scroll (every H5 page, not one route): the document scrolls, not a nested
+ * body scroller. Selection hit-testing on that scroller runs on each pan of
+ * the homepage, lists, node pages, and the workbench. There is no page-wide
+ * scroll listener. Move listeners exist only while a pointer is down, compare
+ * coordinates, then detach. A wheel event (not a scroll event) and a touch
+ * pan arm `html.h5-scrolling` so selection drops for that gesture. A touch
+ * pan keeps it until the pointer ends (then momentum); a 160ms timer used to
+ * turn selection back on while the finger was still down. A mouse drag still
+ * selects text. Focus walks happen on click, and only when the gesture was
+ * not a scroll. `scrollend` fires once when the pan stops — it is not a
+ * per-frame scroll listener.
  */
 
 const SELECT_MOVE_PX = 4;
@@ -121,6 +124,17 @@ export function shouldPauseSelection(g: SelectionGesture): boolean {
   if (!g.pointerDown) return true;
   if (g.pointerType === 'mouse') return false;
   return g.scrolling;
+}
+
+/**
+ * Touch and pen pans must keep selection off until pointerup. A short timer
+ * drops it mid-drag and the next frames hit-test every label. Wheel and
+ * trackpad use an idle timer, cleared earlier by `scrollend`.
+ */
+export function scrollPauseHold(reason: 'wheel' | 'touch' | 'pen' | 'mouse'): 'pointer' | 'idle' | 'none' {
+  if (reason === 'mouse') return 'none';
+  if (reason === 'wheel') return 'idle';
+  return 'pointer';
 }
 
 export function endPointer(g: SelectionGesture): void {
@@ -240,36 +254,44 @@ export function enableH5Clipboard(): void {
   const g = createSelectionGesture();
   const passiveCapture: AddEventListenerOptions = { capture: true, passive: true };
   let selectionPaused = false;
-  let pauseTimer = 0;
-  let lastPauseArm = 0;
+  let resumeTimer = 0;
 
-  const pauseSelectionForScroll = () => {
+  const releaseScrollPause = () => {
+    window.clearTimeout(resumeTimer);
+    resumeTimer = 0;
+    if (!selectionPaused) return;
+    selectionPaused = false;
+    document.documentElement.classList.remove('h5-scrolling');
+  };
+  const scheduleIdleRelease = () => {
+    window.clearTimeout(resumeTimer);
+    resumeTimer = window.setTimeout(releaseScrollPause, 1200);
+  };
+  const armScrollPause = (hold: 'pointer' | 'idle') => {
     if (!shouldPauseSelection(g)) return;
-    const now = Date.now();
     if (!selectionPaused) {
       selectionPaused = true;
       document.documentElement.classList.add('h5-scrolling');
     }
-    if (now - lastPauseArm < 80) return;
-    lastPauseArm = now;
-    window.clearTimeout(pauseTimer);
-    pauseTimer = window.setTimeout(() => {
-      selectionPaused = false;
-      document.documentElement.classList.remove('h5-scrolling');
-    }, 160);
+    if (hold === 'idle') scheduleIdleRelease();
+    else {
+      window.clearTimeout(resumeTimer);
+      resumeTimer = 0;
+    }
   };
 
   const onPointerMove = (e: PointerEvent) => {
     if (samplePointerMove(g, e.clientX, e.clientY) !== 'scroll') return;
     detachMove();
-    pauseSelectionForScroll();
+    const hold = scrollPauseHold(g.pointerType === 'pen' ? 'pen' : 'touch');
+    if (hold !== 'none') armScrollPause(hold);
   };
   const onTouchMove = (e: TouchEvent) => {
     const t = e.changedTouches[0] || e.touches[0];
     if (!t) return;
     if (samplePointerMove(g, t.clientX, t.clientY) !== 'scroll') return;
     detachMove();
-    pauseSelectionForScroll();
+    armScrollPause('pointer');
   };
   const detachMove = () => {
     document.removeEventListener('pointermove', onPointerMove, true);
@@ -284,7 +306,19 @@ export function enableH5Clipboard(): void {
   document.addEventListener(
     'wheel',
     () => {
-      pauseSelectionForScroll();
+      if (g.pointerDown && g.pointerType !== 'mouse') {
+        armScrollPause('pointer');
+        return;
+      }
+      armScrollPause('idle');
+    },
+    passiveCapture,
+  );
+  document.addEventListener(
+    'scrollend',
+    () => {
+      if (g.pointerDown && g.pointerType !== 'mouse') return;
+      releaseScrollPause();
     },
     passiveCapture,
   );
@@ -305,6 +339,7 @@ export function enableH5Clipboard(): void {
     const tapOnShell = g.onField && !g.dragged && !g.scrolling;
     endPointer(g);
     detachMove();
+    if (selectionPaused) scheduleIdleRelease();
     if (!tapOnShell) return;
     const field = textEntryField(e.target);
     if (!field || field.disabled || e.target === field) return;
@@ -314,6 +349,7 @@ export function enableH5Clipboard(): void {
   document.addEventListener('pointercancel', () => {
     endPointer(g);
     detachMove();
+    if (selectionPaused) scheduleIdleRelease();
   }, passiveCapture);
 
   document.addEventListener(
