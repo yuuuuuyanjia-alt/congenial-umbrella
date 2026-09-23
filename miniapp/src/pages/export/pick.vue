@@ -45,7 +45,7 @@ const hint = computed(() =>
     ? '先选择销售合同，再选择该合同已有的出运批次，进入这一批的单证一致性。没有批次时请先去出运管理，这里不会新建批次，也不会打开空白单证页。'
     : '先选择销售合同，再选择或新建出运批次，进入这一批的装运/提单指示。单证与收汇从该批次继续办理。',
 );
-const pickLabel = computed(() => (lane.value === 'docs' ? '选择已有批次' : '选择或新建批次'));
+const pickLabel = computed(() => (lane.value === 'docs' ? '选择已有批次' : '选择并新建批次'));
 const list = computed(() => raw.value.filter(isSalesListCase));
 
 onLoad((q) => {
