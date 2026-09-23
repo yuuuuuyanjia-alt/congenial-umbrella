@@ -605,10 +605,40 @@ export function formNextNodeHeading(formNode: string) {
   return '';
 }
 
-export function goToNode(caseId: string, code: string, batchId?: string) {
+export const BATCH_PICK_PAGE = '/pages/node/batches';
+
+/** 进入装运前的批次选择页。code 为 N7/N9 时，选定批次后打开该节点（未到达则仍从装运进入）。 */
+export function batchPickUrl(caseId: string, openCode?: string | null) {
+  const code = String(openCode || '').toUpperCase();
+  const extra = code === 'N7' || code === 'N9' ? `&code=${code}` : '';
+  return `${BATCH_PICK_PAGE}?id=${caseId}${extra}`;
+}
+
+const BATCH_NODE_ORDER = ['N6', 'N7', 'N9'];
+
+/** 选定批次后要打开的节点。默认进入该批 N6；若指定了更后的节点且本批尚未到达，则停在本批当前节点。 */
+export function batchOpenCode(batch: { currentNode?: string | null } | null | undefined, requested?: string | null) {
+  const raw = String(batch?.currentNode || 'N6').toUpperCase();
+  const current = raw === 'DONE' ? 'N9' : BATCH_NODE_ORDER.includes(raw) ? raw : 'N6';
+  const wanted = String(requested || 'N6').toUpperCase();
+  const target = BATCH_NODE_ORDER.includes(wanted) ? wanted : 'N6';
+  if (BATCH_NODE_ORDER.indexOf(target) > BATCH_NODE_ORDER.indexOf(current)) return current;
+  return target;
+}
+
+/**
+ * 未带 batchId 的装运（N6）先进入批次选择/新建页，避免打开空白装运页。
+ * 已选定批次后才进入该批的 N6，再由此到 N7、N9。
+ */
+export function nodeEntryUrl(caseId: string, code: string, batchId?: string | null) {
   const active = activePipelineNode(code);
+  if (active === 'N6' && !batchId) return batchPickUrl(caseId);
   const batch = batchId ? `&batchId=${encodeURIComponent(batchId)}` : '';
-  uni.navigateTo({ url: `${nodePage(active)}?id=${caseId}&code=${active}${batch}` });
+  return `${nodePage(active)}?id=${caseId}&code=${active}${batch}`;
+}
+
+export function goToNode(caseId: string, code: string, batchId?: string) {
+  uni.navigateTo({ url: nodeEntryUrl(caseId, code, batchId) });
 }
 
 export function hasReachedNode(currentNode?: string | null, target = 'N3') {
