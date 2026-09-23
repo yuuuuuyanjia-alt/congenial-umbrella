@@ -112,9 +112,9 @@ export type TradeDocSlot = {
   hint?: string;
 };
 
-/** N6：上传发票、上传箱单。与 N7 的商业发票/发票/箱单不是同一份证据。 */
+/** N6：上传商业发票、上传箱单。槽位键仍为 invoice。与 N7 的商业发票/发票/箱单不是同一份证据。 */
 export const N6_DOC_SLOTS: TradeDocSlot[] = [
-  { slot: 'invoice', kind: 'N6_INVOICE', label: '发票', demoName: '演示发票.pdf' },
+  { slot: 'invoice', kind: 'N6_INVOICE', label: '商业发票', demoName: '演示商业发票.pdf' },
   { slot: 'packing', kind: 'N6_PACKING', label: '箱单', demoName: '演示箱单.pdf' },
 ];
 

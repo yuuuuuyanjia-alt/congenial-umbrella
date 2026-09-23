@@ -38,7 +38,7 @@ export const NODE_CATALOG = [
     mvp: true,
     isHardGate: true,
     isStub: false,
-    summary: '硬闸门：上传发票 + 上传箱单（写入证据链）+ 内部审批。不再要求客户书面指示或订舱/装船通知编号。存在未生效变更单时硬拦截，禁止装运。CIF 填装运港、装运日期、预计到港与到达港口。装运规则跟随所选运输术语：CIF/CFR 等须正本或电放其一；FOB/EXW/FAS/FCA 可走无提单路径。T/T 是结算方式不是 Incoterm；无有效运输术语时回退按 FOB（买方安排运输）执行。',
+    summary: '硬闸门：上传商业发票 + 上传箱单（写入证据链）+ 内部审批。不再要求客户书面指示或订舱/装船通知编号。存在未生效变更单时硬拦截，禁止装运。CIF 填装运港、装运日期、预计到港与到达港口。装运规则跟随所选运输术语：CIF/CFR 等须正本或电放其一；FOB/EXW/FAS/FCA 可走无提单路径。T/T 是结算方式不是 Incoterm；无有效运输术语时回退按 FOB（买方安排运输）执行。',
   },
   {
     code: 'N7',
@@ -503,9 +503,9 @@ export const EvidenceKind = {
   N7_ORIGIN_CERT: 'N7_ORIGIN_CERT',
 } as const;
 
-/** N6 装运证据：发票与箱单，须真实上传（证据链 storageKey）。 */
+/** N6 装运证据：商业发票与箱单，须真实上传（证据链 storageKey）。槽位键仍为 invoice。 */
 export const N6_UPLOADS = [
-  { slot: 'invoice', kind: EvidenceKind.N6_INVOICE, label: '发票', missing: 'N6_INVOICE' },
+  { slot: 'invoice', kind: EvidenceKind.N6_INVOICE, label: '商业发票', missing: 'N6_INVOICE' },
   { slot: 'packing', kind: EvidenceKind.N6_PACKING, label: '箱单', missing: 'N6_PACKING' },
 ] as const;
 

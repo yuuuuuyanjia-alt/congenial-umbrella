@@ -293,7 +293,7 @@ export interface CaseSnapshot {
   caseGoodsDesc?: string | null;
   taxFinanceReviews?: TaxFinanceReviewSnap[] | null;
   taxRebate?: TaxRebateSnap | null;
-  /** N6 发票/箱单与 N7 六份单证。缺省视为均未上传。 */
+  /** N6 商业发票/箱单与 N7 六份单证。缺省视为均未上传。 */
   evidences?: EvidenceFileSnap[] | null;
 }
 

@@ -690,7 +690,7 @@ describe('闸门引擎 MVP 节点', () => {
     expect(r.canProceed).toBe(true);
   });
 
-  it('N6 缺少发票/箱单/审批/提单控制拒绝推进', () => {
+  it('N6 缺少商业发票/箱单/审批/提单控制拒绝推进', () => {
     const r = evaluateN6(baseSnap({ shipment: null }));
     expect(r.canProceed).toBe(false);
     expect(r.decision).toBe(Decision.HARD_BLOCK);
@@ -712,9 +712,12 @@ describe('闸门引擎 MVP 节点', () => {
     );
     expect(r2.missing).not.toContain('N6_CUSTOMER_WRITTEN_INSTRUCTION');
     expect(r2.missing).not.toContain('N6_NO_BL_JUSTIFICATION');
+    expect(r2.reasons).toEqual(
+      expect.arrayContaining(['硬闸门：缺少商业发票上传', '硬闸门：缺少箱单上传']),
+    );
   });
 
-  it('N6 只缺箱单时拒绝，发票不能顶替箱单', () => {
+  it('N6 只缺箱单时拒绝，商业发票不能顶替箱单', () => {
     const r = evaluateN6(
       baseSnap({
         evidences: (baseSnap().evidences || []).filter((e) => e.kind !== 'N6_PACKING'),
@@ -739,7 +742,7 @@ describe('闸门引擎 MVP 节点', () => {
     expect(r.missing).not.toContain('N6_PACKING');
   });
 
-  it('N6 无书面指示、无订舱号，发票箱单齐全且正本即可过闸', () => {
+  it('N6 无书面指示、无订舱号，商业发票箱单齐全且正本即可过闸', () => {
     const r = evaluateN6(
       baseSnap({
         shipment: {
@@ -756,6 +759,7 @@ describe('闸门引擎 MVP 节点', () => {
     expect(r.canProceed).toBe(true);
     expect(r.missing).not.toContain('N6_CUSTOMER_WRITTEN_INSTRUCTION');
     expect(r.missing).not.toContain('N6_NO_BL_JUSTIFICATION');
+    expect(r.reasons.some((x) => x.includes('商业发票、箱单'))).toBe(true);
   });
 
   it('N6 正本或电放任一即可过闸（不必同时具备）', () => {
@@ -1090,6 +1094,7 @@ describe('闸门引擎 MVP 节点', () => {
     );
     expect(withoutCommercial.missing).toEqual(['N7_COMMERCIAL_INVOICE']);
     expect(withoutCommercial.missing).not.toContain('N7_INVOICE');
+    expect(withoutCommercial.reasons).toContain('硬闸门：缺少商业发票上传');
 
     const withoutInvoice = evaluateN7(
       baseSnap({
@@ -1098,6 +1103,7 @@ describe('闸门引擎 MVP 节点', () => {
     );
     expect(withoutInvoice.missing).toEqual(['N7_INVOICE']);
     expect(withoutInvoice.missing).not.toContain('N7_COMMERCIAL_INVOICE');
+    expect(withoutInvoice.reasons).toContain('硬闸门：缺少发票上传');
   });
 
   it('N7 CIF 必填单证都缺时一次列出六份加原产地证', () => {

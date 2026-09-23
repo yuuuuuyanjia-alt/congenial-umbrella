@@ -101,7 +101,7 @@
     <view class="card">
       <view class="h2">买方 / 收货人筛查</view>
       <view class="muted">须确认买方、收货人，并对 OFAC / UN / EU / UK 与中国不可靠实体清单做模拟筛查。高置信命中不得推进销售合同。付款人不是必填项。改名后请重新筛查。</view>
-      <view class="btn" v-if="canWriteBusiness" @click="runScreen">执行模拟筛查并生成 KYC 报告</view>
+      <view class="btn" v-if="canWriteBusiness" @click="runScreen">执行模拟筛查</view>
       <view class="card" v-if="kycReport" style="box-shadow: none; margin-top: 16rpx">
         <view class="row">
           <view>风险评分 {{ kycReport.score }}</view>

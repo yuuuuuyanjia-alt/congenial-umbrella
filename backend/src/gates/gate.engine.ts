@@ -636,11 +636,11 @@ export function evaluateN6(snap: CaseSnapshot): GateResult {
 
   if (!r.missing.length) {
     if (noBl) {
-      r.reasons.push(`硬闸门证据齐全：发票、箱单、内部审批、无提单路径（${incoterms || '买方安排运输'}）`);
+      r.reasons.push(`硬闸门证据齐全：商业发票、箱单、内部审批、无提单路径（${incoterms || '买方安排运输'}）`);
     } else if (s.blControl === BlControl.TELEX_RELEASE) {
-      r.reasons.push('硬闸门证据齐全：发票、箱单、内部审批、电放提单');
+      r.reasons.push('硬闸门证据齐全：商业发票、箱单、内部审批、电放提单');
     } else {
-      r.reasons.push('硬闸门证据齐全：发票、箱单、内部审批、正本提单');
+      r.reasons.push('硬闸门证据齐全：商业发票、箱单、内部审批、正本提单');
     }
   }
 
