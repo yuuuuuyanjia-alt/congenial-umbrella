@@ -21,15 +21,6 @@
       </template>
     </view>
 
-    <view class="h2" style="margin: 8rpx 8rpx 16rpx">演示路径</view>
-    <view class="card" v-for="item in paths" :key="item.caseNo" @click="openByNo(item.caseNo)">
-      <view class="row">
-        <view class="h2" style="margin: 0">{{ item.title }}</view>
-        <view class="badge" :class="item.cls">{{ item.tag }}</view>
-      </view>
-      <view class="muted">{{ item.desc }}</view>
-    </view>
-
     <view class="debug-footer">
       <view class="debug-version" @click="onVersionTap">v{{ appVersion }}</view>
       <view class="debug-link" @click="onDebugSwitch">切换演示角色</view>
@@ -38,8 +29,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
-import { api } from '../../api';
+import { computed, onMounted } from 'vue';
 import RoleBar from '../../components/RoleBar.vue';
 import {
   APP_VERSION,
@@ -51,7 +41,6 @@ import {
   useDemoRole,
 } from '../../role';
 
-const cases = ref<any[]>([]);
 const { role } = useDemoRole();
 const appVersion = APP_VERSION;
 const entryBlocks = computed(() => homeEntryBlocks(role.value));
@@ -75,106 +64,13 @@ function onVersionTap() {
 function onDebugSwitch() {
   toggleDebugRolePicker();
 }
-const paths = [
-  {
-    caseNo: 'DEMO-PASS',
-    title: '绿灯通过',
-    tag: 'PASS',
-    cls: 'badge-pass',
-    desc: '买方=付款人=收货人，模拟清单未命中，条款与硬闸门证据齐全，收汇放行。',
-  },
-  {
-    caseNo: 'DEMO-SOFT',
-    title: '软提示',
-    tag: 'SOFT ALERT',
-    cls: 'badge-soft',
-    desc: '名称近似命中（低置信），提示关注但不阻断销售合同推进。',
-  },
-  {
-    caseNo: 'DEMO-BLOCK',
-    title: '硬拦截',
-    tag: 'HARD BLOCK',
-    cls: 'badge-block',
-    desc: '高置信命中 OFAC 模拟清单，销售合同买方筛查拒绝推进。',
-  },
-  {
-    caseNo: 'DEMO-FOB',
-    title: 'FOB 无提单',
-    tag: 'NO BL',
-    cls: 'badge-pass',
-    desc: '买方安排运输，N6 走无提单路径（发票、箱单与内部审批）；N7 须再上传六份单证后才能推进。',
-  },
-  {
-    caseNo: 'DEMO-LIMIT',
-    title: '中信保超额',
-    tag: 'GATE REFUSED',
-    cls: 'badge-block',
-    desc: '占用测算超额 50,000 USD（满 5 万），超高风险，合同确认硬拦截。',
-  },
-  {
-    caseNo: 'DEMO-LIMIT-MED',
-    title: '中信保中风险',
-    tag: 'SOFT ALERT',
-    cls: 'badge-soft',
-    desc: 'Helios 未履行/已履行未回款加新签，超额约 1.3 万美元，中风险软提示，可推进。',
-  },
-  {
-    caseNo: 'DEMO-LIMIT-HIGH',
-    title: '中信保高风险',
-    tag: 'REVIEW',
-    cls: 'badge-review',
-    desc: '新签使占用超额 2.5 万美元，高风险进入工作台（领取/放行/驳回）。放行后可推进，无需改金额；驳回后仍阻断。',
-  },
-  {
-    caseNo: 'DEMO-NOLIMIT',
-    title: '中信保未登记',
-    tag: 'GATE REFUSED',
-    cls: 'badge-block',
-    desc: '买方尚未登记中信保限额，合同确认节点拒绝保存与推进。',
-  },
-  {
-    caseNo: 'DEMO-SUPPLIER',
-    title: '供应商硬拦截',
-    tag: 'N5 BLOCK',
-    cls: 'badge-block',
-    desc: '国外买方筛查通过，国内供应商命中不可靠实体清单；采购合同已关联销售合同 DEMO-SUPPLIER，采购节点硬拦截。',
-  },
-  {
-    caseNo: 'DEMO-PORT-YELLOW',
-    title: '港口直出黄灯',
-    tag: 'TAX REVIEW',
-    cls: 'badge-review',
-    desc: '港口直出已填仓储地点与批次号；购销薄利进入工作台第三页领取/通过/驳回。',
-  },
-  {
-    caseNo: 'DEMO-PORT-RED',
-    title: '港口直出红线',
-    tag: 'HARD BLOCK',
-    cls: 'badge-block',
-    desc: '港口直出自答像空转/假出口，红线硬拦截；工作台第三页只读。',
-  },
-];
 
-onMounted(async () => {
+onMounted(() => {
   syncNavTitle();
-  try {
-    cases.value = await api.cases();
-  } catch (e) {
-    uni.showToast({ title: '后端未启动，请先运行 backend', icon: 'none' });
-  }
 });
 
 function go(url: string) {
   uni.navigateTo({ url });
-}
-
-function openByNo(caseNo: string) {
-  const hit = cases.value.find((c) => c.caseNo === caseNo);
-  if (!hit) {
-    uni.showToast({ title: '未找到种子案件，请先 seed', icon: 'none' });
-    return;
-  }
-  uni.navigateTo({ url: `/pages/case/detail?id=${hit.id}` });
 }
 </script>
 
