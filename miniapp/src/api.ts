@@ -4,6 +4,7 @@ import {
   demoSinosurePdfBytes,
   isPdfBytes,
 } from './demo-sinosure-sample';
+import { guardedNodeEntryUrl } from './lane-nav';
 
 // #ifdef H5
 const BASE = import.meta.env.VITE_API_BASE || '/api';
@@ -605,14 +606,17 @@ export function formNextNodeHeading(formNode: string) {
   return '';
 }
 
-export const BATCH_PICK_PAGE = '/pages/node/batches';
-
-/** 进入装运前的批次选择页。code 为 N7/N9 时，选定批次后打开该节点（未到达则仍从装运进入）。 */
-export function batchPickUrl(caseId: string, openCode?: string | null) {
-  const code = String(openCode || '').toUpperCase();
-  const extra = code === 'N7' || code === 'N9' ? `&code=${code}` : '';
-  return `${BATCH_PICK_PAGE}?id=${caseId}${extra}`;
-}
+export {
+  BATCH_PICK_PAGE,
+  DOCS_HOME_URL,
+  SHIPMENT_HOME_URL,
+  batchPickUrl,
+  exportHomeUrl,
+  laneAllowsCreate,
+  resolveBatchLane,
+} from './lane-nav';
+export { guardedNodeEntryUrl };
+export type { BatchLane, ExportLane } from './lane-nav';
 
 const BATCH_NODE_ORDER = ['N6', 'N7', 'N9'];
 
@@ -627,14 +631,12 @@ export function batchOpenCode(batch: { currentNode?: string | null } | null | un
 }
 
 /**
- * 未带 batchId 的装运（N6）先进入批次选择/新建页，避免打开空白装运页。
- * 已选定批次后才进入该批的 N6，再由此到 N7、N9。
+ * 未带 batchId 的装运（N6）、单证（N7）、收汇（N9）先进入批次选择，避免空白节点页。
+ * N6 可新建批次；N7 只选已有批次；N9 留在批次主链，不从首页进入。
+ * 列表「下一步」与首页出运/单证在选定销售合同后走同一函数。
  */
 export function nodeEntryUrl(caseId: string, code: string, batchId?: string | null) {
-  const active = activePipelineNode(code);
-  if (active === 'N6' && !batchId) return batchPickUrl(caseId);
-  const batch = batchId ? `&batchId=${encodeURIComponent(batchId)}` : '';
-  return `${nodePage(active)}?id=${caseId}&code=${active}${batch}`;
+  return guardedNodeEntryUrl(caseId, activePipelineNode(code), batchId, nodePage);
 }
 
 export function goToNode(caseId: string, code: string, batchId?: string) {

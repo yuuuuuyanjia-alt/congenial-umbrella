@@ -1,5 +1,5 @@
 <template>
-  <view class="wrap">
+  <view class="wrap" v-if="ready">
     <view class="card">
       <view class="h2">装运 / 提单指示 · 硬闸门</view>
       <view class="muted">
@@ -125,6 +125,7 @@ import {
   evidenceFileUrl,
   batchPickUrl,
   goToNode,
+  SHIPMENT_HOME_URL,
   latestTradeDoc,
   N6_DOC_SLOTS,
   nextWorkNodeFromForm,
@@ -145,6 +146,7 @@ const docSlots = N6_DOC_SLOTS;
 
 const id = ref('');
 const batchId = ref('');
+const ready = ref(false);
 const { canWriteBusiness, roleLabel } = useDemoRole();
 const err = ref('');
 const ok = ref('');
@@ -222,10 +224,11 @@ const nextHint = computed(() => {
 onLoad(async (q) => {
   id.value = q?.id || '';
   batchId.value = q?.batchId || '';
-  if (id.value && !batchId.value) {
-    uni.redirectTo({ url: batchPickUrl(id.value) });
+  if (!batchId.value) {
+    uni.redirectTo({ url: id.value ? batchPickUrl(id.value, 'N6') : SHIPMENT_HOME_URL });
     return;
   }
+  ready.value = true;
   await reload();
 });
 

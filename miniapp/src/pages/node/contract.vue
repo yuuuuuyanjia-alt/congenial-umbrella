@@ -89,8 +89,9 @@
 
     <view class="card" v-if="form.ttTiming === 'AFTER'">
       <view class="h2">后 T/T</view>
-      <view class="label">装运后付款天数</view>
-      <BoundField :model="form" field="ttDays" type="number" placeholder="如 30" />
+      <view class="label">{{ POST_TT_DAYS_LABEL }}</view>
+      <view class="muted">{{ POST_TT_DAYS_HINT }}</view>
+      <BoundField :model="form" field="ttDays" type="number" :placeholder="POST_TT_DAYS_PLACEHOLDER" />
     </view>
 
     <view class="card">
@@ -181,6 +182,7 @@ import ExposureLive from '../../components/ExposureLive.vue';
 import NextNodeCta from '../../components/NextNodeCta.vue';
 import WindowedList from '../../components/WindowedList.vue';
 import { useDemoRole } from '../../role';
+import { POST_TT_DAYS_HINT, POST_TT_DAYS_LABEL, POST_TT_DAYS_PLACEHOLDER } from '../../sales-copy';
 
 type TradeTerm = 'FOB' | 'CIF';
 type TtTiming = 'ADVANCE' | 'AFTER';

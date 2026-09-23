@@ -1,5 +1,5 @@
 <template>
-  <view class="wrap">
+  <view class="wrap" v-if="ready">
     <view class="card">
       <view class="h2">收汇对账 · 硬闸门</view>
       <view class="muted">付款人≠买方时必须有第三方关系证明；另需汇款附言、单证一致证明与放行审批。水单/到账金额是已回款唯一账本：保存后销售列表「已完成」与中信保占用「已回款」同步更新。一批次只记一笔收汇；客户合并付款时请按批次拆开录入。存在未生效变更单时禁止放行。</view>
@@ -40,7 +40,7 @@
 <script setup lang="ts">
 import { onLoad } from '@dcloudio/uni-app';
 import { computed, reactive, ref } from 'vue';
-import { api, fenToYuan, SALES_CURRENCY, yuanToFen } from '../../api';
+import { api, batchPickUrl, fenToYuan, SALES_CURRENCY, yuanToFen } from '../../api';
 import BoundField from '../../components/BoundField.vue';
 import DraftText from '../../components/DraftText.vue';
 import PendingChangeBlock from '../../components/PendingChangeBlock.vue';
@@ -48,6 +48,7 @@ import { useDemoRole } from '../../role';
 
 const id = ref('');
 const batchId = ref('');
+const ready = ref(false);
 const { canWriteBusiness, roleLabel } = useDemoRole();
 const err = ref('');
 const ok = ref('');
@@ -84,6 +85,11 @@ const unpaidYuan = computed(() => {
 onLoad(async (q) => {
   id.value = q?.id || '';
   batchId.value = q?.batchId || '';
+  if (!batchId.value) {
+    if (id.value) uni.redirectTo({ url: batchPickUrl(id.value, 'N9') });
+    return;
+  }
+  ready.value = true;
   c.value = await api.case(id.value);
   const batch = activeBatch.value;
   if (batch?.id) batchId.value = batch.id;

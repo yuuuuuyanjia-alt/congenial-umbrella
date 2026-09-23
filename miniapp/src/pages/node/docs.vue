@@ -1,5 +1,5 @@
 <template>
-  <view class="wrap">
+  <view class="wrap" v-if="ready">
     <view class="card">
       <view class="h2">单证一致性 · 硬闸门</view>
       <view class="muted">
@@ -46,7 +46,9 @@ import { onLoad } from '@dcloudio/uni-app';
 import { computed, reactive, ref } from 'vue';
 import {
   api,
+  batchPickUrl,
   chooseAndUploadTradeDoc,
+  DOCS_HOME_URL,
   evidenceFileUrl,
   goToNode,
   latestTradeDoc,
@@ -66,6 +68,7 @@ const docSlots = N7_DOC_SLOTS;
 
 const id = ref('');
 const batchId = ref('');
+const ready = ref(false);
 const { canWriteBusiness, roleLabel } = useDemoRole();
 const err = ref('');
 const ok = ref('');
@@ -107,6 +110,11 @@ const nextHint = computed(() => {
 onLoad(async (q) => {
   id.value = q?.id || '';
   batchId.value = q?.batchId || '';
+  if (!batchId.value) {
+    uni.redirectTo({ url: id.value ? batchPickUrl(id.value, 'N7') : DOCS_HOME_URL });
+    return;
+  }
+  ready.value = true;
   await reload();
 });
 
