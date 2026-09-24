@@ -1,4 +1,6 @@
-/** 费用页金额：界面按元录入，接口按分。留空是 null，不是 0。 */
+/** 费用页金额：界面按人民币元录入，接口按分。币种固定 CNY。留空是 null，不是 0。 */
+
+export const FEE_CURRENCY = 'CNY';
 
 const MAX_FEN = 2_147_483_647;
 
@@ -28,6 +30,7 @@ export type FeeCustomDraft = { name: string; amountYuan: string };
 
 export function feeSaveBody(form: FeeDraft, rows: FeeCustomDraft[]) {
   return {
+    currency: FEE_CURRENCY,
     oceanFreightFen: optionalYuanToFen(form.oceanYuan),
     inlandFreightFen: optionalYuanToFen(form.inlandYuan),
     portChargesFen: optionalYuanToFen(form.portYuan),

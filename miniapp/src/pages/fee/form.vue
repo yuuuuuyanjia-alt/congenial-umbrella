@@ -10,27 +10,27 @@
       <view class="card">
         <view class="h2">费用管理</view>
         <view class="muted">{{ caseLine }}</view>
-        <view class="muted" style="margin-top: 8rpx">币种 {{ currencyLabel }}。费用按销售合同登记，不按出运批次。全部可以留空，保存后也不阻挡后续节点。</view>
+        <view class="muted" style="margin-top: 8rpx">币种固定 CNY（人民币），不跟随销售合同。费用按销售合同登记，不按出运批次。全部可以留空，保存后也不阻挡后续节点。</view>
         <view class="muted" v-if="quoteHint" style="margin-top: 8rpx">报价所含项目：{{ quoteHint }}。此处只作提示，不改报价勾选，也不自动填入金额。</view>
         <view class="err" v-if="!canWriteBusiness" style="margin-top: 8rpx">当前为{{ roleLabel }}，本页只读，不可保存。</view>
       </view>
 
       <view class="card">
-        <view class="label">海运费（{{ currencyCode }}，可空）</view>
-        <BoundField :model="form" field="oceanYuan" type="digit" :placeholder="amountPlaceholder" :disabled="!canWriteBusiness" @input="markDirty" />
-        <view class="label">陆运费（{{ currencyCode }}，可空）</view>
-        <BoundField :model="form" field="inlandYuan" type="digit" :placeholder="amountPlaceholder" :disabled="!canWriteBusiness" @input="markDirty" />
-        <view class="label">港杂（{{ currencyCode }}，可空）</view>
-        <BoundField :model="form" field="portYuan" type="digit" :placeholder="amountPlaceholder" :disabled="!canWriteBusiness" @input="markDirty" />
-        <view class="label">保险（{{ currencyCode }}，可空）</view>
-        <BoundField :model="form" field="insuranceYuan" type="digit" :placeholder="amountPlaceholder" :disabled="!canWriteBusiness" @input="markDirty" />
+        <view class="label">海运费（CNY，可空）</view>
+        <BoundField :model="form" field="oceanYuan" type="digit" placeholder="CNY 金额，可留空" :disabled="!canWriteBusiness" @input="markDirty" />
+        <view class="label">陆运费（CNY，可空）</view>
+        <BoundField :model="form" field="inlandYuan" type="digit" placeholder="CNY 金额，可留空" :disabled="!canWriteBusiness" @input="markDirty" />
+        <view class="label">港杂（CNY，可空）</view>
+        <BoundField :model="form" field="portYuan" type="digit" placeholder="CNY 金额，可留空" :disabled="!canWriteBusiness" @input="markDirty" />
+        <view class="label">保险（CNY，可空）</view>
+        <BoundField :model="form" field="insuranceYuan" type="digit" placeholder="CNY 金额，可留空" :disabled="!canWriteBusiness" @input="markDirty" />
       </view>
 
       <view class="card" v-for="row in customRows" :key="row.key">
         <view class="label">费用名称（可空）</view>
         <BoundField :model="row" field="name" placeholder="如文件费、仓储费" :disabled="!canWriteBusiness" @input="markDirty" />
-        <view class="label">金额（{{ currencyCode }}，可空）</view>
-        <BoundField :model="row" field="amountYuan" type="digit" :placeholder="amountPlaceholder" :disabled="!canWriteBusiness" @input="markDirty" />
+        <view class="label">金额（CNY，可空）</view>
+        <BoundField :model="row" field="amountYuan" type="digit" placeholder="CNY 金额，可留空" :disabled="!canWriteBusiness" @input="markDirty" />
         <view class="btn btn-ghost" v-if="canWriteBusiness" @click="removeRow(row.key)">删除</view>
       </view>
 
@@ -44,7 +44,7 @@
 
 <script setup lang="ts">
 import { onLoad, onShow } from '@dcloudio/uni-app';
-import { computed, nextTick, reactive, ref } from 'vue';
+import { nextTick, reactive, ref } from 'vue';
 import { api, toastErr } from '../../api';
 import BoundField from '../../components/BoundField.vue';
 import { feeSaveBody, yuanInputFromFen } from '../../fee-form';
@@ -61,8 +61,6 @@ const err = ref('');
 const ok = ref('');
 const dirty = ref(false);
 const caseLine = ref('');
-const currencyCode = ref('USD');
-const currencyLabel = ref('USD（跟随销售合同）');
 const quoteHint = ref('');
 const form = reactive({
   oceanYuan: '',
@@ -75,8 +73,6 @@ let rowSeq = 0;
 let req = 0;
 let applying = false;
 
-const amountPlaceholder = computed(() => `${currencyCode.value} 金额，可留空`);
-
 function markDirty() {
   if (applying) return;
   dirty.value = true;
@@ -86,8 +82,6 @@ function markDirty() {
 async function applyView(data: any) {
   applying = true;
   caseLine.value = [data?.caseNo, data?.customer || data?.title].filter(Boolean).join(' · ') || '销售合同';
-  currencyCode.value = data?.currency === 'CNY' ? 'CNY' : 'USD';
-  currencyLabel.value = data?.currencyLabel || currencyCode.value;
   quoteHint.value = data?.quoteIncludedLabels || '';
   form.oceanYuan = yuanInputFromFen(data?.oceanFreightFen);
   form.inlandYuan = yuanInputFromFen(data?.inlandFreightFen);

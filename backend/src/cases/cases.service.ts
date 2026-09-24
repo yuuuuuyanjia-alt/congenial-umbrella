@@ -69,7 +69,7 @@ import {
   supplierNameOf,
 } from './sales-link';
 import { demoPartiesFromBuyer } from './create-flow';
-import { contractFeeInputError, normalizeContractFees, presentContractFees } from './contract-fees';
+import { CONTRACT_FEE_CURRENCY, contractFeeInputError, normalizeContractFees, presentContractFees } from './contract-fees';
 import { SaveContractFeesDto } from './dto';
 import { advanceResponseNextNode, laterNode, resolveAdvance } from './advance-guard';
 import {
@@ -2594,6 +2594,7 @@ export class CasesService {
         portChargesFen: normalized.portChargesFen,
         insuranceFen: normalized.insuranceFen,
         customJson: normalized.customJson,
+        currency: CONTRACT_FEE_CURRENCY,
       },
       update: {
         oceanFreightFen: normalized.oceanFreightFen,
@@ -2601,6 +2602,7 @@ export class CasesService {
         portChargesFen: normalized.portChargesFen,
         insuranceFen: normalized.insuranceFen,
         customJson: normalized.customJson,
+        currency: CONTRACT_FEE_CURRENCY,
       },
     });
     await this.audit.append({
@@ -2612,6 +2614,7 @@ export class CasesService {
         inlandFreightFen: saved.inlandFreightFen,
         portChargesFen: saved.portChargesFen,
         insuranceFen: saved.insuranceFen,
+        currency: CONTRACT_FEE_CURRENCY,
         custom: normalized.custom,
       },
     });

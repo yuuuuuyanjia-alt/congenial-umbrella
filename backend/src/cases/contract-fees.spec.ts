@@ -1,9 +1,9 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import {
+  CONTRACT_FEE_CURRENCY,
   normalizeContractFees,
   presentContractFees,
-  resolveFeeCurrency,
 } from './contract-fees';
 
 describe('销售合同费用', () => {
@@ -13,6 +13,7 @@ describe('销售合同费用', () => {
       inlandFreightFen: null,
       portChargesFen: null,
       insuranceFen: null,
+      currency: 'CNY',
       custom: [],
       customJson: '[]',
     });
@@ -53,13 +54,11 @@ describe('销售合同费用', () => {
     expect(() => normalizeContractFees({ custom: [{ name: '费'.repeat(41), amountFen: 1 }] })).toThrow(/40/);
   });
 
-  it('币种跟随销售合同，否则标明 USD 或 CNY', () => {
-    expect(resolveFeeCurrency('CNY', 'USD')).toMatchObject({ code: 'CNY', source: 'contract' });
-    expect(resolveFeeCurrency('cny', null).label).toContain('跟随销售合同');
-    expect(resolveFeeCurrency(null, 'CNY')).toMatchObject({ code: 'CNY', source: 'case' });
-    expect(resolveFeeCurrency('', 'USD').label).toContain('美元');
-    expect(resolveFeeCurrency(null, null)).toMatchObject({ code: 'USD', source: 'default' });
-    expect(resolveFeeCurrency('EUR', 'JPY').label).toContain('按美元');
+  it('费用币种固定 CNY，不跟随销售合同', () => {
+    expect(normalizeContractFees({ currency: 'cny' }).currency).toBe(CONTRACT_FEE_CURRENCY);
+    expect(normalizeContractFees({}).currency).toBe('CNY');
+    expect(() => normalizeContractFees({ currency: 'USD' })).toThrow(/固定为 CNY/);
+    expect(() => normalizeContractFees({ currency: 'EUR', oceanFreightFen: 100 })).toThrow(/不跟随销售合同/);
   });
 
   it('再次打开还原已存金额；报价所含项目只作提示，不写入金额', () => {
@@ -68,7 +67,7 @@ describe('销售合同费用', () => {
       caseNo: 'SC-1',
       title: '演示',
       currency: 'USD',
-      contract: { currency: 'CNY', counterparty: '北欧客户' },
+      contract: { currency: 'USD', counterparty: '北欧客户' },
       quotes: [
         { version: 1, includedItems: '["INLAND_FREIGHT"]' },
         { version: 3, includedItems: '["OCEAN_FREIGHT","PORT_CHARGES"]' },
@@ -83,7 +82,7 @@ describe('销售合同费用', () => {
     });
     expect(view.customer).toBe('北欧客户');
     expect(view.currency).toBe('CNY');
-    expect(view.currencySource).toBe('contract');
+    expect(view.currencyLabel).toContain('不跟随销售合同');
     expect(view.inlandFreightFen).toBe(200);
     expect(view.insuranceFen).toBe(300);
     expect(view.oceanFreightFen).toBeNull();
@@ -104,7 +103,8 @@ describe('销售合同费用', () => {
     expect(view.oceanFreightFen).toBeNull();
     expect(view.custom).toEqual([]);
     expect(view.quoteIncludedLabels).toBeNull();
-    expect(view.currencySource).toBe('case');
+    expect(view.currency).toBe('CNY');
+    expect(view.currencyLabel).not.toContain('USD');
     expect(view.customer).toBe('演示销售');
   });
 

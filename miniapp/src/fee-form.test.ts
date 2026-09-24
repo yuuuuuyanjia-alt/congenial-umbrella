@@ -16,6 +16,7 @@ test('费用金额可留空，0 与空不同', () => {
 
 test('整单可空、可部分、可含自定义行', () => {
   assert.deepEqual(feeSaveBody({ oceanYuan: '', inlandYuan: '', portYuan: '', insuranceYuan: '' }, []), {
+    currency: 'CNY',
     oceanFreightFen: null,
     inlandFreightFen: null,
     portChargesFen: null,
@@ -31,6 +32,7 @@ test('整单可空、可部分、可含自定义行', () => {
       ],
     ),
     {
+      currency: 'CNY',
       oceanFreightFen: 10000,
       inlandFreightFen: null,
       portChargesFen: 0,

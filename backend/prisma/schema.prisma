@@ -271,6 +271,8 @@ model ContractFee {
   insuranceFen     Int?
   /// JSON 数组：{ name, amountFen }。名称与金额都空的行不入库。
   customJson       String    @default("[]")
+  /// 费用币种固定人民币，不跟随销售合同。
+  currency         String    @default("CNY")
   updatedAt        DateTime  @updatedAt
   case             TradeCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
 }

@@ -354,4 +354,10 @@ export class SaveContractFeesDto {
   @ValidateNested({ each: true })
   @Type(() => CustomContractFeeDto)
   custom?: CustomContractFeeDto[];
+
+  /** 省略视为 CNY。不能改成销售合同的美元。 */
+  @IsOptional()
+  @ToCurrency()
+  @IsIn(['CNY'], { message: '费用币种固定为 CNY，不跟随销售合同' })
+  currency?: string;
 }

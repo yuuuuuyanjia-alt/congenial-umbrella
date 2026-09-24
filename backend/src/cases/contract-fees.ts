@@ -1,7 +1,10 @@
 import { BadRequestException } from '@nestjs/common';
-import { isSalesCurrency, normalizeCurrency, SALES_CURRENCY } from '../common/currencies';
 import { salesCustomerOf, type SalesLinkCaseInput } from './sales-link';
 import { parseQuoteIncludedItems, quoteIncludedItemLabels } from './quote-fields';
+
+/** 国内运费、港杂、保险固定人民币，不跟随销售合同的 USD/CNY。 */
+export const CONTRACT_FEE_CURRENCY = 'CNY' as const;
+export const CONTRACT_FEE_CURRENCY_LABEL = 'CNY（人民币，不跟随销售合同）';
 
 /** 金额以分存储，与销售合同 amountFen 相同。超过 32 位整数则拒绝。 */
 export const CONTRACT_FEE_MAX_FEN = 2_147_483_647;
@@ -21,6 +24,7 @@ export type CustomContractFee = {
 };
 
 export type NormalizedContractFees = ContractFeeAmounts & {
+  currency: typeof CONTRACT_FEE_CURRENCY;
   custom: CustomContractFee[];
   customJson: string;
 };
@@ -31,29 +35,11 @@ export class ContractFeeInputError extends Error {
   }
 }
 
-export type FeeCurrencySource = 'contract' | 'case' | 'default';
-
-export type FeeCurrency = {
-  code: 'USD' | 'CNY';
-  source: FeeCurrencySource;
-  label: string;
-};
-
-/**
- * 币种跟随销售合同。合同未登记时用案件币种；都没有则标明按美元。
- * 不在费用页另选币种。
- */
-export function resolveFeeCurrency(contractCurrency?: string | null, caseCurrency?: string | null): FeeCurrency {
-  const fromContract = normalizeCurrency(contractCurrency);
-  if (isSalesCurrency(fromContract)) {
-    return { code: fromContract, source: 'contract', label: `${fromContract}（跟随销售合同）` };
-  }
-  const fromCase = normalizeCurrency(caseCurrency);
-  if (isSalesCurrency(fromCase)) {
-    const word = fromCase === 'CNY' ? '人民币' : '美元';
-    return { code: fromCase, source: 'case', label: `${fromCase}（销售合同未登记币种，按案件${word}）` };
-  }
-  return { code: SALES_CURRENCY, source: 'default', label: 'USD（销售合同未登记币种，按美元）' };
+/** 省略币种视为 CNY。传入其他币种则拒绝，避免美元销售合同把运费记成美元。 */
+export function assertContractFeeCurrency(raw?: unknown): typeof CONTRACT_FEE_CURRENCY {
+  if (raw == null || String(raw).trim() === '') return CONTRACT_FEE_CURRENCY;
+  if (String(raw).trim().toUpperCase() === CONTRACT_FEE_CURRENCY) return CONTRACT_FEE_CURRENCY;
+  throw new ContractFeeInputError('费用币种固定为 CNY，不跟随销售合同');
 }
 
 function optionalFen(raw: unknown, label: string): number | null {
@@ -76,8 +62,10 @@ export function normalizeContractFees(input?: {
   inlandFreightFen?: unknown;
   portChargesFen?: unknown;
   insuranceFen?: unknown;
+  currency?: unknown;
   custom?: Array<{ name?: unknown; amountFen?: unknown }> | null;
 } | null): NormalizedContractFees {
+  const currency = assertContractFeeCurrency(input?.currency);
   const customIn = input?.custom ?? [];
   if (!Array.isArray(customIn)) throw new ContractFeeInputError('自定义费用须为列表');
   if (customIn.length > CONTRACT_FEE_MAX_CUSTOM) {
@@ -99,7 +87,7 @@ export function normalizeContractFees(input?: {
     portChargesFen: optionalFen(input?.portChargesFen, '港杂'),
     insuranceFen: optionalFen(input?.insuranceFen, '保险'),
   };
-  return { ...amounts, custom, customJson: JSON.stringify(custom) };
+  return { ...amounts, currency, custom, customJson: JSON.stringify(custom) };
 }
 
 export function parseCustomFees(raw?: string | null): CustomContractFee[] {
@@ -119,8 +107,7 @@ export type ContractFeeView = ContractFeeAmounts & {
   caseNo: string;
   title: string;
   customer: string;
-  currency: 'USD' | 'CNY';
-  currencySource: FeeCurrencySource;
+  currency: typeof CONTRACT_FEE_CURRENCY;
   currencyLabel: string;
   custom: CustomContractFee[];
   /** 报价所含项目原文标签。只提示，不写入费用金额。 */
@@ -137,7 +124,6 @@ export function presentContractFees(input: {
   quotes?: Array<{ includedItems?: string | null; version?: number | null }> | null;
   contractFee?: (ContractFeeAmounts & { customJson?: string | null }) | null;
 }): ContractFeeView {
-  const currency = resolveFeeCurrency(input.contract?.currency, input.currency);
   const fee = input.contractFee;
   const latest = [...(input.quotes || [])].sort((a, b) => (b.version || 0) - (a.version || 0))[0];
   const quoteIncludedLabels = latest ? quoteIncludedItemLabels(parseQuoteIncludedItems(latest.includedItems)) : '';
@@ -150,7 +136,7 @@ export function presentContractFees(input: {
     goodsDesc: '',
     destination: '',
     amountFen: 0,
-    currency: currency.code,
+    currency: input.currency || CONTRACT_FEE_CURRENCY,
     contract: input.contract,
     parties: input.parties || [],
   } as SalesLinkCaseInput);
@@ -159,9 +145,8 @@ export function presentContractFees(input: {
     caseNo: input.caseNo,
     title: input.title,
     customer,
-    currency: currency.code,
-    currencySource: currency.source,
-    currencyLabel: currency.label,
+    currency: CONTRACT_FEE_CURRENCY,
+    currencyLabel: CONTRACT_FEE_CURRENCY_LABEL,
     oceanFreightFen: fee?.oceanFreightFen ?? null,
     inlandFreightFen: fee?.inlandFreightFen ?? null,
     portChargesFen: fee?.portChargesFen ?? null,
