@@ -66,12 +66,22 @@ export const RiskStatusLabel: Record<string, string> = {
   SYSTEM_CLOSED: '系统关闭',
 };
 
-/** 人工处置过的状态。规则重算不能把它改回待处置或系统关闭。补件逾期升橙是单独的一步。 */
+/**
+ * 人工处置过的状态。颜色没变或变轻时，重算保持这个状态，也不系统关闭。
+ * 规则颜色比处置当时更严重时，要重新打开为待处置。补件逾期升橙不走这一步。
+ */
 export const PROTECTED_STATUSES = new Set<string>([
   RiskStatus.CONDITIONAL_RELEASE,
   RiskStatus.REJECTED,
   RiskStatus.RESOLVED,
 ]);
+
+/** 系统因规则升级把已处置风险重新打开。处理人显示为「系统」。 */
+export const RiskConclusion = {
+  REOPENED: 'REOPENED',
+} as const;
+
+export const SEVERITY_REOPEN_CODE = 'SEVERITY_REOPEN';
 
 export type RiskLine = {
   code: string;
@@ -109,11 +119,19 @@ export type StoredRisk = {
   firstSeenAt: string;
   lastHitAt: string;
   escalatedAt: string | null;
+  /** 处置当时的展示颜色。空表示还没处置过，比较时回退到 color。 */
+  dispositionSeverity: string | null;
+  /** 处置后规则升级重新打开的时间。和补件逾期的 escalatedAt 分开。 */
+  reopenedAt: string | null;
   isSample: boolean;
   preserveOnRecalc: boolean;
 };
 
-export type SyncedRisk = StoredRisk & { op: 'create' | 'update' | 'unchanged' };
+export type SyncedRisk = StoredRisk & {
+  op: 'create' | 'update' | 'unchanged';
+  /** 这次重算因为规则颜色升级，把已处置记录重新打开。 */
+  reopened?: boolean;
+};
 
 const SUSPECT_DISPOSITIONS = new Set(['OPEN', 'MONITORING', 'SUPPLEMENTED']);
 
@@ -395,6 +413,20 @@ export function docMissingFinding(input: {
   };
 }
 
+/** 规则颜色是否比处置当时更严重。红 > 橙 > 黄 > 灰。只比规则色，不比补件逾期抬上去的展示色。 */
+export function isRuleMoreSevere(ruleColor: string, dispositionColor: string): boolean {
+  return (COLOR_RANK[ruleColor] ?? 9) < (COLOR_RANK[dispositionColor] ?? 9);
+}
+
+export function severityReopenLine(fromColor: string, toColor: string): RiskLine {
+  const from = RiskColorLabel[fromColor] || fromColor;
+  const to = RiskColorLabel[toColor] || toColor;
+  return {
+    code: SEVERITY_REOPEN_CODE,
+    text: `处置后风险升级：从${from}升到${to}`,
+  };
+}
+
 /** 黄色补件逾期升橙。橙色保持橙色。红色和其他颜色不变。任何路径都不能自动变成红色。 */
 export function escalateDisplayColor(color: string): string {
   if (color === RiskColor.YELLOW) return RiskColor.ORANGE;
@@ -457,8 +489,49 @@ function materialChange(prev: StoredRisk, next: StoredRisk): boolean {
     (prev.supplierId || null) !== (next.supplierId || null) ||
     prev.lastHitAt !== next.lastHitAt ||
     (prev.escalatedAt || null) !== (next.escalatedAt || null) ||
+    (prev.reopenedAt || null) !== (next.reopenedAt || null) ||
+    (prev.dispositionSeverity || null) !== (next.dispositionSeverity || null) ||
     !sameJson(prev.lines, next.lines)
   );
+}
+
+function carryReopenLine(prevLines: RiskLine[], findingLines: RiskLine[]): RiskLine[] {
+  const carried = prevLines.filter((line) => line.code === SEVERITY_REOPEN_CODE);
+  const base = findingLines.filter((line) => line.code !== SEVERITY_REOPEN_CODE);
+  return carried.length ? [...base, ...carried] : base;
+}
+
+/** 已处置记录的规则颜色变得更严重。补件逾期造成的展示色变化不算。 */
+function ruleSeverityRose(prev: StoredRisk, finding: RiskFinding): boolean {
+  if (!PROTECTED_STATUSES.has(prev.status)) return false;
+  const baseline = prev.dispositionSeverity || prev.color;
+  if (!baseline) return false;
+  return isRuleMoreSevere(finding.ruleColor, baseline);
+}
+
+function reopenAfterSeverityRise(prev: StoredRisk, finding: RiskFinding, nowIso: string): StoredRisk {
+  const baseline = prev.dispositionSeverity || prev.color;
+  const line = severityReopenLine(baseline, finding.ruleColor);
+  const lines = finding.lines.filter((item) => item.code !== SEVERITY_REOPEN_CODE);
+  lines.push(line);
+  return {
+    ...prev,
+    type: finding.type,
+    color: finding.ruleColor,
+    ruleColor: finding.ruleColor,
+    status: RiskStatus.PENDING,
+    title: finding.title,
+    subjectLabel: finding.subjectLabel,
+    caseId: finding.caseId ?? null,
+    batchId: finding.batchId ?? null,
+    customerId: finding.customerId ?? null,
+    supplierId: finding.supplierId ?? null,
+    lines,
+    lastHitAt: nowIso,
+    escalatedAt: null,
+    reopenedAt: nowIso,
+    dispositionSeverity: null,
+  };
 }
 
 function applyOverdueEscalation(
@@ -483,8 +556,12 @@ function applyOverdueEscalation(
 }
 
 function fromFinding(prev: StoredRisk, finding: RiskFinding, nowIso: string, overdue: boolean): SyncedRisk {
-  const protectedStatus = prev.status === RiskStatus.REJECTED || prev.status === RiskStatus.RESOLVED;
-  if (protectedStatus) {
+  if (ruleSeverityRose(prev, finding)) {
+    const next = reopenAfterSeverityRise(prev, finding, nowIso);
+    return { ...next, op: 'update', reopened: true };
+  }
+  const protectedTerminal = prev.status === RiskStatus.REJECTED || prev.status === RiskStatus.RESOLVED;
+  if (protectedTerminal) {
     const next: StoredRisk = {
       ...prev,
       type: finding.type,
@@ -495,7 +572,7 @@ function fromFinding(prev: StoredRisk, finding: RiskFinding, nowIso: string, ove
       batchId: finding.batchId ?? null,
       customerId: finding.customerId ?? null,
       supplierId: finding.supplierId ?? null,
-      lines: finding.lines,
+      lines: finding.lines.filter((line) => line.code !== SEVERITY_REOPEN_CODE),
       lastHitAt: nowIso,
     };
     return { ...next, op: materialChange(prev, next) ? 'update' : 'unchanged' };
@@ -519,7 +596,7 @@ function fromFinding(prev: StoredRisk, finding: RiskFinding, nowIso: string, ove
     batchId: finding.batchId ?? null,
     customerId: finding.customerId ?? null,
     supplierId: finding.supplierId ?? null,
-    lines: finding.lines,
+    lines: carryReopenLine(prev.lines, finding.lines),
     lastHitAt: nowIso,
     escalatedAt,
   };
@@ -529,9 +606,10 @@ function fromFinding(prev: StoredRisk, finding: RiskFinding, nowIso: string, ove
 /**
  * 按指纹合并发现与已有记录。
  * 规则不再成立且仍是待处置 → 系统关闭。
- * 有条件放行、已驳回、已解决不被这次关闭覆盖。
+ * 有条件放行、已驳回、已解决：规则颜色没变或变轻时保持原状态。
+ * 规则颜色比处置当时更严重时重新打开为待处置，并排到同色最前。
+ * 补件逾期只升黄到橙，不算「处置后风险升级」，也不能自动变红。
  * preserveOnRecalc 的示例提醒（灰色评分下滑）也不关闭。
- * 补件逾期只升黄到橙，并回到待处置排到同色最前。
  */
 export function syncRiskState(input: {
   stored: StoredRisk[];
@@ -565,6 +643,8 @@ export function syncRiskState(input: {
         firstSeenAt: nowIso,
         lastHitAt: nowIso,
         escalatedAt: null,
+        dispositionSeverity: null,
+        reopenedAt: null,
         isSample: false,
         preserveOnRecalc: false,
         op: 'create',
@@ -597,18 +677,22 @@ export function syncRiskState(input: {
   return out;
 }
 
+function queueFrontAt(row: { escalatedAt?: string | null; reopenedAt?: string | null }): string | null {
+  const stamps = [row.escalatedAt, row.reopenedAt].filter((value): value is string => !!value);
+  if (!stamps.length) return null;
+  return stamps.reduce((latest, value) => (value > latest ? value : latest));
+}
+
 export function compareRiskQueue(
-  a: { color: string; escalatedAt?: string | null; firstSeenAt: string },
-  b: { color: string; escalatedAt?: string | null; firstSeenAt: string },
+  a: { color: string; escalatedAt?: string | null; reopenedAt?: string | null; firstSeenAt: string },
+  b: { color: string; escalatedAt?: string | null; reopenedAt?: string | null; firstSeenAt: string },
 ): number {
   const c = (COLOR_RANK[a.color] ?? 9) - (COLOR_RANK[b.color] ?? 9);
   if (c) return c;
-  const ae = a.escalatedAt ? 1 : 0;
-  const be = b.escalatedAt ? 1 : 0;
-  if (ae !== be) return be - ae;
-  if (a.escalatedAt && b.escalatedAt && a.escalatedAt !== b.escalatedAt) {
-    return a.escalatedAt < b.escalatedAt ? 1 : -1;
-  }
+  const af = queueFrontAt(a);
+  const bf = queueFrontAt(b);
+  if (!!af !== !!bf) return af ? -1 : 1;
+  if (af && bf && af !== bf) return af < bf ? 1 : -1;
   if (a.firstSeenAt !== b.firstSeenAt) return a.firstSeenAt < b.firstSeenAt ? -1 : 1;
   return 0;
 }

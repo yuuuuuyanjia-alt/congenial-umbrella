@@ -811,8 +811,12 @@ model RiskItem {
   linesJson           String    @default("[]")
   firstSeenAt         DateTime  @default(now())
   lastHitAt           DateTime  @default(now())
-  /// 补件逾期重新排队的时间。同色时排在未升级记录前面。
+  /// 补件逾期重新排队的时间。同色时排在未升级记录前面。不是规则升级。
   escalatedAt         DateTime?
+  /// 人工处置时看到的颜色。重算发现规则颜色更严重时，用它判断要不要重新打开。
+  dispositionSeverity String?
+  /// 处置后规则升级、重新打开的时间。同色排在最前，不和补件逾期升橙混用。
+  reopenedAt          DateTime?
   processingById      String?
   processingStartedAt DateTime?
   /// 示例风险。灰色提醒同时 preserveOnRecalc，重算不系统关闭。
@@ -855,7 +859,7 @@ model RiskAction {
   id         String   @id @default(cuid())
   riskId     String
   actorId    String?
-  /// CONDITIONAL_RELEASE / REJECTED / RESOLVED
+  /// CONDITIONAL_RELEASE / REJECTED / RESOLVED / REOPENED（系统重新打开）
   conclusion String
   reason     String
   createdAt  DateTime @default(now())

@@ -32,6 +32,8 @@ function stored(partial: Partial<StoredRisk> & Pick<StoredRisk, 'fingerprint' | 
     firstSeenAt: '2026-09-01T00:00:00.000Z',
     lastHitAt: '2026-09-01T00:00:00.000Z',
     escalatedAt: null,
+    dispositionSeverity: null,
+    reopenedAt: null,
     isSample: false,
     preserveOnRecalc: false,
     ...partial,
@@ -370,6 +372,14 @@ describe('排序与红色处置', () => {
     expect(COLOR_RANK.RED).toBeLessThan(COLOR_RANK.ORANGE);
   });
 
+  it('处置后重新打开的记录排在同色最前', () => {
+    const rows = [
+      { color: 'RED', escalatedAt: null, reopenedAt: null, firstSeenAt: '2026-09-01T00:00:00.000Z', id: 'old' },
+      { color: 'RED', escalatedAt: null, reopenedAt: '2026-09-24T00:00:00.000Z', firstSeenAt: '2026-09-02T00:00:00.000Z', id: 're' },
+    ].sort(compareRiskQueue);
+    expect(rows.map((r) => r.id)).toEqual(['re', 'old']);
+  });
+
   it('红色只能驳回，橙黄可以放行、驳回或解决', () => {
     expect(dispositionError('RED', 'REJECTED')).toBeNull();
     expect(dispositionError('RED', 'RESOLVED')).toMatch(/只能驳回/);
@@ -378,6 +388,150 @@ describe('排序与红色处置', () => {
     expect(dispositionError('YELLOW', 'RESOLVED')).toBeNull();
     expect(dispositionError('GRAY', 'CONDITIONAL_RELEASE')).toMatch(/橙色和黄色/);
     expect(dispositionError('GRAY', 'RESOLVED')).toBeNull();
+  });
+});
+
+describe('处置后规则升级重新打开', () => {
+  const now = day('2026-09-24');
+
+  function upgraded(text: string) {
+    return text.includes('处置后风险升级') && text.includes('黄色') && text.includes('红色');
+  }
+
+  it('黄色已解决，后来升到红色，重新打开为待处置并带上升级线', () => {
+    const fp = 'SINOSURE_OCCUPANCY|C:c1';
+    const [row] = syncRiskState({
+      now,
+      overdueFingerprints: new Set(),
+      stored: [
+        stored({
+          id: 'occ',
+          fingerprint: fp,
+          type: 'SINOSURE_OCCUPANCY',
+          status: RiskStatus.RESOLVED,
+          color: 'YELLOW',
+          ruleColor: 'YELLOW',
+          dispositionSeverity: 'YELLOW',
+        }),
+      ],
+      findings: [finding({ fingerprint: fp, type: 'SINOSURE_OCCUPANCY', ruleColor: 'RED' })],
+    });
+    expect(row.status).toBe(RiskStatus.PENDING);
+    expect(row.color).toBe('RED');
+    expect(row.ruleColor).toBe('RED');
+    expect(row.reopened).toBe(true);
+    expect(row.reopenedAt).toBe(now.toISOString());
+    expect(row.dispositionSeverity).toBeNull();
+    expect(row.lines.some((line) => upgraded(line.text))).toBe(true);
+
+    const { op, reopened, ...kept } = row;
+    const [again] = syncRiskState({
+      now,
+      overdueFingerprints: new Set(),
+      stored: [kept],
+      findings: [finding({ fingerprint: fp, type: 'SINOSURE_OCCUPANCY', ruleColor: 'RED' })],
+    });
+    expect(again.status).toBe(RiskStatus.PENDING);
+    expect(again.color).toBe('RED');
+    expect(again.reopened).toBeFalsy();
+    expect(again.lines.some((line) => upgraded(line.text))).toBe(true);
+  });
+
+  it('有条件放行期间从黄升红，重新打开，不会停在红色加有条件放行', () => {
+    const fp = 'SINOSURE_OCCUPANCY|C:c1';
+    const [row] = syncRiskState({
+      now,
+      overdueFingerprints: new Set([fp]),
+      stored: [
+        stored({
+          fingerprint: fp,
+          type: 'SINOSURE_OCCUPANCY',
+          status: RiskStatus.CONDITIONAL_RELEASE,
+          color: 'YELLOW',
+          ruleColor: 'YELLOW',
+          dispositionSeverity: 'YELLOW',
+          lines: [{ code: 'OLD', text: '旧补件说明', supplement: '补充额度占用说明' }],
+        }),
+      ],
+      findings: [finding({ fingerprint: fp, type: 'SINOSURE_OCCUPANCY', ruleColor: 'RED' })],
+    });
+    expect(row.status).toBe(RiskStatus.PENDING);
+    expect(row.color).toBe('RED');
+    expect(row.status === RiskStatus.CONDITIONAL_RELEASE && row.color === 'RED').toBe(false);
+    expect(row.reopened).toBe(true);
+    expect(row.escalatedAt).toBeNull();
+    expect(row.lines.some((line) => upgraded(line.text))).toBe(true);
+  });
+
+  it('已驳回的橙色变成黄色时保持已驳回', () => {
+    const fp = 'SANCTION|C:c|HIGH';
+    const [row] = syncRiskState({
+      now,
+      overdueFingerprints: new Set(),
+      stored: [
+        stored({
+          fingerprint: fp,
+          status: RiskStatus.REJECTED,
+          color: 'ORANGE',
+          ruleColor: 'ORANGE',
+          dispositionSeverity: 'ORANGE',
+        }),
+      ],
+      findings: [finding({ fingerprint: fp, ruleColor: 'YELLOW' })],
+    });
+    expect(row.status).toBe(RiskStatus.REJECTED);
+    expect(row.color).toBe('ORANGE');
+    expect(row.reopened).toBeFalsy();
+    expect(row.lines.some((line) => line.text.includes('处置后风险升级'))).toBe(false);
+  });
+
+  it('已解决的黄色颜色不变时保持已解决', () => {
+    const fp = 'SINOSURE_OCCUPANCY|C:c1';
+    const [row] = syncRiskState({
+      now,
+      overdueFingerprints: new Set(),
+      stored: [
+        stored({
+          fingerprint: fp,
+          type: 'SINOSURE_OCCUPANCY',
+          status: RiskStatus.RESOLVED,
+          color: 'YELLOW',
+          ruleColor: 'YELLOW',
+          dispositionSeverity: 'YELLOW',
+        }),
+      ],
+      findings: [finding({ fingerprint: fp, type: 'SINOSURE_OCCUPANCY', ruleColor: 'YELLOW' })],
+    });
+    expect(row.status).toBe(RiskStatus.RESOLVED);
+    expect(row.color).toBe('YELLOW');
+    expect(row.reopened).toBeFalsy();
+    expect(row.lines.some((line) => line.text.includes('处置后风险升级'))).toBe(false);
+  });
+
+  it('补件过期从黄升橙时不会被当成处置后升级', () => {
+    const fp = 'OVERDUE_RECEIVABLE|b1';
+    const [row] = syncRiskState({
+      now,
+      overdueFingerprints: new Set([fp]),
+      stored: [
+        stored({
+          fingerprint: fp,
+          type: 'OVERDUE_RECEIVABLE',
+          status: RiskStatus.CONDITIONAL_RELEASE,
+          color: 'YELLOW',
+          ruleColor: 'YELLOW',
+          dispositionSeverity: 'YELLOW',
+        }),
+      ],
+      findings: [finding({ fingerprint: fp, type: 'OVERDUE_RECEIVABLE', ruleColor: 'YELLOW' })],
+    });
+    expect(row.color).toBe('ORANGE');
+    expect(row.ruleColor).toBe('YELLOW');
+    expect(row.status).toBe(RiskStatus.PENDING);
+    expect(row.reopened).toBeFalsy();
+    expect(row.reopenedAt).toBeNull();
+    expect(row.escalatedAt).toBe(now.toISOString());
+    expect(row.lines.some((line) => line.code === 'SEVERITY_REOPEN' || line.text.includes('处置后风险升级'))).toBe(false);
   });
 });
 

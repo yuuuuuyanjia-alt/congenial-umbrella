@@ -17,6 +17,7 @@ import { scoreOf, riskFromScore } from '../screening/matcher';
 import { ScreeningService } from '../screening/screening.service';
 import { clearSampleData, generateSampleData } from './risk-sample';
 import {
+  RiskConclusion,
   RiskStatus,
   RiskStatusLabel,
   RiskType,
@@ -32,6 +33,7 @@ import {
   parseDueDate,
   quotaFromLimits,
   receivableDueDate,
+  SEVERITY_REOPEN_CODE,
   sanctionFindings,
   supplementContents,
   syncRiskState,
@@ -151,10 +153,10 @@ export class RiskRadarService {
       actions: row.actions.map((action) => ({
         id: action.id,
         conclusion: action.conclusion,
-        conclusionLabel: RiskStatusLabel[action.conclusion] || action.conclusion,
+        conclusionLabel: conclusionLabelOf(action.conclusion),
         reason: action.reason,
         createdAt: action.createdAt,
-        actorName: action.actor?.name || '',
+        actorName: action.actor?.name || (action.conclusion === RiskConclusion.REOPENED ? '系统' : ''),
       })),
       workbenchTab: workbenchTabOf(row.type),
       sampleEnabled: riskSampleEnabled(),
@@ -195,6 +197,8 @@ export class RiskRadarService {
       where: { id },
       data: {
         status: conclusion,
+        dispositionSeverity: row.color,
+        reopenedAt: null,
         processingById: null,
         processingStartedAt: null,
       },
@@ -321,7 +325,9 @@ export class RiskRadarService {
 
   /**
    * 打开雷达或点刷新时重算。按指纹更新；规则消失的待处置改为系统关闭。
-   * 不改闸门，也不覆盖有条件放行 / 已驳回 / 已解决。
+   * 有条件放行、已驳回、已解决：规则颜色没变或变轻时保持。
+   * 规则颜色比处置当时更严重时重新打开，清掉处理中和已看过，未完成的补件保留。
+   * 补件逾期只把黄色展示成橙色，不算处置后升级，也不会自动变红。不改闸门。
    */
   async recalculate(now = new Date()) {
     const findings = await this.collectFindings(now);
@@ -357,14 +363,32 @@ export class RiskRadarService {
         firstSeenAt: new Date(row.firstSeenAt),
         lastHitAt: new Date(row.lastHitAt),
         escalatedAt: row.escalatedAt ? new Date(row.escalatedAt) : null,
+        dispositionSeverity: row.dispositionSeverity,
+        reopenedAt: row.reopenedAt ? new Date(row.reopenedAt) : null,
         isSample: row.isSample,
         preserveOnRecalc: row.preserveOnRecalc,
       };
       if (row.op === 'create') {
         await this.prisma.riskItem.create({ data: { ...data, fingerprint: row.fingerprint } });
-      } else if (row.id) {
-        await this.prisma.riskItem.update({ where: { id: row.id }, data });
+        continue;
       }
+      if (!row.id) continue;
+      await this.prisma.riskItem.update({
+        where: { id: row.id },
+        data: row.reopened
+          ? { ...data, processingById: null, processingStartedAt: null }
+          : data,
+      });
+      if (!row.reopened) continue;
+      await this.prisma.riskView.deleteMany({ where: { riskId: row.id } });
+      const upgrade = row.lines.find((line) => line.code === SEVERITY_REOPEN_CODE);
+      await this.prisma.riskAction.create({
+        data: {
+          riskId: row.id,
+          conclusion: RiskConclusion.REOPENED,
+          reason: upgrade?.text || '处置后风险升级',
+        },
+      });
     }
   }
 
@@ -608,11 +632,13 @@ export class RiskRadarService {
           {
             color: a.color,
             escalatedAt: a.escalatedAt ? new Date(a.escalatedAt).toISOString() : null,
+            reopenedAt: a.reopenedAt ? new Date(a.reopenedAt).toISOString() : null,
             firstSeenAt: new Date(a.firstSeenAt).toISOString(),
           },
           {
             color: b.color,
             escalatedAt: b.escalatedAt ? new Date(b.escalatedAt).toISOString() : null,
+            reopenedAt: b.reopenedAt ? new Date(b.reopenedAt).toISOString() : null,
             firstSeenAt: new Date(b.firstSeenAt).toISOString(),
           },
         ),
@@ -640,6 +666,7 @@ export class RiskRadarService {
       firstSeenAt: Date;
       lastHitAt: Date;
       escalatedAt: Date | null;
+      reopenedAt: Date | null;
       isSample: boolean;
       processingBy?: { id: string; name: string } | null;
       case?: { caseNo: string } | null;
@@ -661,6 +688,8 @@ export class RiskRadarService {
       lastHitAt: row.lastHitAt,
       escalatedAt: row.escalatedAt,
       escalated: !!row.escalatedAt,
+      reopenedAt: row.reopenedAt,
+      reopened: !!row.reopenedAt,
       seen,
       isSample: row.isSample,
       processingBy: row.processingBy ? { id: row.processingBy.id, name: row.processingBy.name } : null,
@@ -703,6 +732,8 @@ function toStored(row: {
   firstSeenAt: Date;
   lastHitAt: Date;
   escalatedAt: Date | null;
+  dispositionSeverity: string | null;
+  reopenedAt: Date | null;
   isSample: boolean;
   preserveOnRecalc: boolean;
 }): StoredRisk {
@@ -723,6 +754,8 @@ function toStored(row: {
     firstSeenAt: row.firstSeenAt.toISOString(),
     lastHitAt: row.lastHitAt.toISOString(),
     escalatedAt: row.escalatedAt ? row.escalatedAt.toISOString() : null,
+    dispositionSeverity: row.dispositionSeverity,
+    reopenedAt: row.reopenedAt ? row.reopenedAt.toISOString() : null,
     isSample: row.isSample,
     preserveOnRecalc: row.preserveOnRecalc,
   };
@@ -742,6 +775,11 @@ function parseLines(raw: string): RiskLine[] {
   } catch {
     return [];
   }
+}
+
+function conclusionLabelOf(conclusion: string): string {
+  if (conclusion === RiskConclusion.REOPENED) return '重新打开';
+  return RiskStatusLabel[conclusion] || conclusion;
 }
 
 function presentTask(task: {

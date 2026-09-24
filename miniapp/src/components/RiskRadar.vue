@@ -35,6 +35,7 @@
             {{ item.seen ? '已看过' : '未看' }}
             <text v-if="item.processingBy"> · {{ item.processingBy.name }}处理中</text>
             <text v-if="item.escalated"> · 补件逾期，已排到同色最前</text>
+            <text v-if="item.reopened"> · 处置后风险升级，已重新打开</text>
           </view>
         </view>
       </template>
