@@ -37,6 +37,14 @@
       "style": { "navigationBarTitleText": "出运 / 单证" }
     },
     {
+      "path": "pages/fee/pick",
+      "style": { "navigationBarTitleText": "费用管理" }
+    },
+    {
+      "path": "pages/fee/form",
+      "style": { "navigationBarTitleText": "费用管理" }
+    },
+    {
       "path": "pages/node/batches",
       "style": { "navigationBarTitleText": "选择出运批次" }
     },

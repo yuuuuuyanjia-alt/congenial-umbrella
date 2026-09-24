@@ -86,6 +86,8 @@ model TradeCase {
   hits              ScreeningHit[]
   kycReports        KycReport[]
   contract          Contract?
+  /// 合同级费用。与出运批次无关，不参与节点闸门。
+  contractFee       ContractFee?
   documents         TradeDocument[]
   mismatchFixes     DocMismatchFix[]
   auditLogs         AuditLog[]
@@ -253,6 +255,26 @@ model Contract {
   ttVoucherJson       String?
   updatedAt           DateTime  @updatedAt
   case                TradeCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+}
+
+/// 销售合同费用。按案件唯一，不按出运批次。四项固定金额与自定义行全部选填。
+model ContractFee {
+  id               String    @id @default(cuid())
+  caseId           String    @unique
+  /// 海运费（分）。空表示未填，与 0 不同。
+  oceanFreightFen  Int?
+  /// 陆运费（分）
+  inlandFreightFen Int?
+  /// 港杂（分）
+  portChargesFen   Int?
+  /// 保险（分）
+  insuranceFen     Int?
+  /// JSON 数组：{ name, amountFen }。名称与金额都空的行不入库。
+  customJson       String    @default("[]")
+  /// 费用币种固定人民币，不跟随销售合同。
+  currency         String    @default("CNY")
+  updatedAt        DateTime  @updatedAt
+  case             TradeCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
 }
 
 /// 一份销售合同下的出运批次。一批次对应一条提单路径和一笔收汇。

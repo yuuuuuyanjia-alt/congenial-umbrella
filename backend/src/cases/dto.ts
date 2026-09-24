@@ -1,4 +1,4 @@
-import { Allow, IsArray, IsBoolean, IsIn, IsInt, IsNumber, IsObject, IsOptional, IsString, ValidateNested } from 'class-validator';
+import { Allow, IsArray, IsBoolean, IsIn, IsInt, IsNumber, IsObject, IsOptional, IsString, Max, MaxLength, Min, ValidateIf, ValidateNested } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
 import { PROCUREMENT_CURRENCY, SALES_CURRENCY, SALES_CURRENCY_OPTIONS } from '../common/currencies';
 
@@ -289,4 +289,75 @@ export class SaveSinosureDto {
   currency?: string;
   @IsOptional() @IsString() changeOrderId?: string;
   @IsOptional() @IsBoolean() confirmedExisting?: boolean;
+}
+
+function ToNullableFen() {
+  return Transform(({ value }) => {
+    if (value === undefined || value === null || value === '') return null;
+    const n = typeof value === 'number' ? value : Number(String(value).trim());
+    if (!Number.isFinite(n)) return value;
+    return Math.round(n);
+  });
+}
+
+export class CustomContractFeeDto {
+  @IsOptional()
+  @IsString({ message: '费用名称须为文本' })
+  @MaxLength(40, { message: '费用名称不能超过 40 字' })
+  name?: string | null;
+
+  @IsOptional()
+  @ToNullableFen()
+  @ValidateIf((_, v) => v !== null && v !== undefined)
+  @IsInt({ message: '费用金额须为整数分' })
+  @Min(0, { message: '费用金额不能为负' })
+  @Max(2147483647, { message: '费用金额过大' })
+  amountFen?: number | null;
+}
+
+/** 销售合同费用。字段全部选填，空对象表示清空。 */
+export class SaveContractFeesDto {
+  @IsOptional()
+  @ToNullableFen()
+  @ValidateIf((_, v) => v !== null && v !== undefined)
+  @IsInt({ message: '海运费须为整数分' })
+  @Min(0, { message: '海运费不能为负' })
+  @Max(2147483647, { message: '海运费过大' })
+  oceanFreightFen?: number | null;
+
+  @IsOptional()
+  @ToNullableFen()
+  @ValidateIf((_, v) => v !== null && v !== undefined)
+  @IsInt({ message: '陆运费须为整数分' })
+  @Min(0, { message: '陆运费不能为负' })
+  @Max(2147483647, { message: '陆运费过大' })
+  inlandFreightFen?: number | null;
+
+  @IsOptional()
+  @ToNullableFen()
+  @ValidateIf((_, v) => v !== null && v !== undefined)
+  @IsInt({ message: '港杂须为整数分' })
+  @Min(0, { message: '港杂不能为负' })
+  @Max(2147483647, { message: '港杂过大' })
+  portChargesFen?: number | null;
+
+  @IsOptional()
+  @ToNullableFen()
+  @ValidateIf((_, v) => v !== null && v !== undefined)
+  @IsInt({ message: '保险须为整数分' })
+  @Min(0, { message: '保险不能为负' })
+  @Max(2147483647, { message: '保险过大' })
+  insuranceFen?: number | null;
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CustomContractFeeDto)
+  custom?: CustomContractFeeDto[];
+
+  /** 省略视为 CNY。不能改成销售合同的美元。 */
+  @IsOptional()
+  @ToCurrency()
+  @IsIn(['CNY'], { message: '费用币种固定为 CNY，不跟随销售合同' })
+  currency?: string;
 }

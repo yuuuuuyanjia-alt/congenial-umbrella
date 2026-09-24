@@ -382,6 +382,8 @@ export const api = {
   catalog: () => request('GET', '/catalog'),
   users: () => request('GET', '/users'),
   cases: (kind?: string) => request('GET', `/cases${kind ? `?kind=${encodeURIComponent(kind)}` : ''}`),
+  contractFees: (id: string) => request('GET', `/cases/${id}/fees`),
+  saveContractFees: (id: string, body: unknown) => request('POST', `/cases/${id}/fees`, body),
   case: (id: string) => request('GET', `/cases/${id}`),
   audit: (id: string) => request('GET', `/cases/${id}/audit`),
   createCase: (body: unknown) => request('POST', '/cases', body),

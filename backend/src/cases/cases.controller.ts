@@ -18,6 +18,7 @@ import {
   SaveSinosureDto,
   CreateShipmentBatchDto,
   SaveTaxRebateDto,
+  SaveContractFeesDto,
   UpsertPartyDto,
 } from './dto';
 import { SINOSURE_UPLOAD_MAX_BYTES } from './sinosure-file';
@@ -52,6 +53,20 @@ export class CasesController {
   @Get(':id')
   get(@Param('id') id: string) {
     return this.cases.get(id);
+  }
+
+  @Get(':id/fees')
+  fees(@Param('id') id: string) {
+    return this.cases.getContractFees(id);
+  }
+
+  @Post(':id/fees')
+  saveFees(
+    @Param('id') id: string,
+    @Body() dto: SaveContractFeesDto,
+    @Headers('x-actor-id') actorId?: string,
+  ) {
+    return this.cases.saveContractFees(id, dto, actorId);
   }
 
   @Get(':id/sinosure-exposure')
