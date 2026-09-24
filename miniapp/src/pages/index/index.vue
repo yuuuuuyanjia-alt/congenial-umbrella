@@ -45,9 +45,9 @@ const { role } = useDemoRole();
 const appVersion = APP_VERSION;
 const entryBlocks = computed(() => homeEntryBlocks(role.value));
 const entryHint = computed(() => {
-  if (role.value === 'RISK') return '本岗默认先进入审核工作台；销售/采购合同也可进入。';
-  if (role.value === 'MANAGER') return '本岗只读：先看客户评估与合同列表，不可审批、推进或新建合同。';
-  return '本岗可新建并录入销售合同、采购合同，并从出运管理、单证管理办理装运与单证。收汇仍在出运批次内办理。';
+  if (role.value === 'RISK') return '本岗默认先进入审核工作台；销售/采购合同与费用管理也可进入。';
+  if (role.value === 'MANAGER') return '本岗只读：先看客户评估与合同列表。费用管理可查看，不可保存。';
+  return '本岗可新建并录入销售合同、采购合同，并从出运管理、单证管理办理装运与单证，在费用管理登记合同费用。收汇仍在出运批次内办理。';
 });
 function syncNavTitle() {
   uni.setNavigationBarTitle({

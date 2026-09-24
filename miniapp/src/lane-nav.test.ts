@@ -20,11 +20,12 @@ test('后 T/T 付款天数只改界面文案', () => {
   assert.match(POST_TT_DAYS_HINT, /到达目的港/);
 });
 
-test('首页有出运管理与单证管理，收汇不进首页', () => {
+test('首页有出运管理、单证管理与费用管理，收汇不进首页', () => {
   for (const role of ['SALES', 'RISK', 'MANAGER']) {
     const labels = homeEntriesFor(role).map((e) => e.label);
     assert.ok(labels.includes('出运管理'), role);
     assert.ok(labels.includes('单证管理'), role);
+    assert.ok(labels.includes('费用管理'), role);
     assert.equal(labels.includes('收汇对账'), false);
     const urls = homeEntriesFor(role).map((e) => e.url).join(' ');
     assert.equal(urls.includes('lane=remit'), false);
@@ -34,11 +35,11 @@ test('首页有出运管理与单证管理，收汇不进首页', () => {
     assert.equal(lane?.type, 'pair');
     assert.deepEqual(
       lane?.items.map((i) => i.label),
-      ['出运管理', '单证管理'],
+      ['出运管理', '单证管理', '费用管理'],
     );
     assert.deepEqual(
       lane?.items.map((i) => i.url),
-      [SHIPMENT_HOME_URL, DOCS_HOME_URL],
+      [SHIPMENT_HOME_URL, DOCS_HOME_URL, '/pages/fee/pick'],
     );
   }
 });

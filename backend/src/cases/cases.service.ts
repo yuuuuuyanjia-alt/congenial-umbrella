@@ -69,6 +69,8 @@ import {
   supplierNameOf,
 } from './sales-link';
 import { demoPartiesFromBuyer } from './create-flow';
+import { contractFeeInputError, normalizeContractFees, presentContractFees } from './contract-fees';
+import { SaveContractFeesDto } from './dto';
 import { advanceResponseNextNode, laterNode, resolveAdvance } from './advance-guard';
 import {
   aggregateRemittance,
@@ -2566,6 +2568,69 @@ export class CasesService {
         snapshotJson: JSON.stringify(contract),
       },
     });
+  }
+
+  async getContractFees(caseId: string) {
+    const row = await this.loadFeeCase(caseId);
+    return presentContractFees(row);
+  }
+
+  async saveContractFees(caseId: string, dto: SaveContractFeesDto, actorId?: string) {
+    const row = await this.loadFeeCase(caseId);
+    let normalized;
+    try {
+      normalized = normalizeContractFees(dto);
+    } catch (err) {
+      const rejected = contractFeeInputError(err);
+      if (rejected) throw rejected;
+      throw err;
+    }
+    const saved = await this.prisma.contractFee.upsert({
+      where: { caseId },
+      create: {
+        caseId,
+        oceanFreightFen: normalized.oceanFreightFen,
+        inlandFreightFen: normalized.inlandFreightFen,
+        portChargesFen: normalized.portChargesFen,
+        insuranceFen: normalized.insuranceFen,
+        customJson: normalized.customJson,
+      },
+      update: {
+        oceanFreightFen: normalized.oceanFreightFen,
+        inlandFreightFen: normalized.inlandFreightFen,
+        portChargesFen: normalized.portChargesFen,
+        insuranceFen: normalized.insuranceFen,
+        customJson: normalized.customJson,
+      },
+    });
+    await this.audit.append({
+      caseId,
+      actorId,
+      action: 'CONTRACT_FEE_SAVE',
+      detail: {
+        oceanFreightFen: saved.oceanFreightFen,
+        inlandFreightFen: saved.inlandFreightFen,
+        portChargesFen: saved.portChargesFen,
+        insuranceFen: saved.insuranceFen,
+        custom: normalized.custom,
+      },
+    });
+    return presentContractFees({ ...row, contractFee: saved });
+  }
+
+  private async loadFeeCase(caseId: string) {
+    const row = await this.prisma.tradeCase.findUnique({
+      where: { id: caseId },
+      include: {
+        contract: true,
+        parties: true,
+        quotes: { orderBy: { version: 'desc' }, take: 1 },
+        contractFee: true,
+      },
+    });
+    if (!row) throw new NotFoundException('案件不存在');
+    if (!isSalesContractListItem(row)) throw new BadRequestException('费用只登记在销售合同上');
+    return row;
   }
 
   private async currentFieldMap(caseId: string): Promise<Record<string, string>> {
