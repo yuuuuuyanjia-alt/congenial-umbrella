@@ -4,7 +4,7 @@
     <view class="muted" style="margin-bottom: 16rpx">{{ hint }}</view>
     <view class="muted" v-if="!loaded">正在加载销售合同…</view>
     <view class="card" v-else-if="!list.length">
-      <view class="muted">暂无销售合同。请先签订销售合同，再办理{{ lane === 'docs' ? '单证' : '出运' }}。</view>
+      <view class="muted">暂无销售合同。请先签订销售合同，再办理{{ emptyLane }}。</view>
       <view class="btn" @click="goSales">去销售合同</view>
     </view>
     <WindowedList v-else :items="list" key-field="id">
@@ -32,24 +32,37 @@
 import { onLoad, onShow } from '@dcloudio/uni-app';
 import { computed, ref } from 'vue';
 import { api, batchPickUrl, isSalesListCase, money, salesShipmentBadgeClass, salesShipmentBucketLabel } from '../../api';
-import type { ExportLane } from '../../lane-nav';
+import { resolveBatchLane, type ExportLane } from '../../lane-nav';
 import WindowedList from '../../components/WindowedList.vue';
 
 const lane = ref<ExportLane>('shipment');
 const raw = ref<any[]>([]);
 const loaded = ref(false);
 
-const title = computed(() => (lane.value === 'docs' ? '单证管理' : '出运管理'));
-const hint = computed(() =>
-  lane.value === 'docs'
-    ? '先选择销售合同，再选择该合同已有的出运批次，进入这一批的单证一致性。没有批次时请先去出运管理，这里不会新建批次，也不会打开空白单证页。'
-    : '先选择销售合同，再选择或新建出运批次，进入这一批的装运/提单指示。单证与收汇从该批次继续办理。',
-);
-const pickLabel = computed(() => (lane.value === 'docs' ? '选择已有批次' : '选择并新建批次'));
+const title = computed(() => {
+  if (lane.value === 'docs') return '单证管理';
+  if (lane.value === 'remit') return '收汇管理';
+  return '出运管理';
+});
+const hint = computed(() => {
+  if (lane.value === 'docs') {
+    return '先选择销售合同，再选择该合同已有的出运批次，进入这一批的单证一致性。没有批次时请先去出运管理，这里不会新建批次，也不会打开空白单证页。';
+  }
+  if (lane.value === 'remit') {
+    return '先选择销售合同。选定后可登记合同级前 T/T 收汇（还没有出运批次也可以填）。再选择该合同已有的出运批次，进入这一批的收汇对账。没有批次时请先去出运管理，这里不会新建批次，也不会打开空白收汇页。';
+  }
+  return '先选择销售合同，再选择或新建出运批次，进入这一批的装运/提单指示。单证与收汇从该批次继续办理。';
+});
+const pickLabel = computed(() => {
+  if (lane.value === 'docs') return '选择已有批次';
+  if (lane.value === 'remit') return '办理收汇';
+  return '选择并新建批次';
+});
+const emptyLane = computed(() => (lane.value === 'docs' ? '单证' : lane.value === 'remit' ? '收汇' : '出运'));
 const list = computed(() => raw.value.filter(isSalesListCase));
 
 onLoad((q) => {
-  lane.value = q?.lane === 'docs' ? 'docs' : 'shipment';
+  lane.value = resolveBatchLane({ lane: q?.lane });
   uni.setNavigationBarTitle({ title: title.value });
 });
 
@@ -66,7 +79,8 @@ onShow(async () => {
 
 function pick(c: any) {
   if (!c?.id) return;
-  uni.navigateTo({ url: batchPickUrl(c.id, lane.value === 'docs' ? 'N7' : 'N6') });
+  const code = lane.value === 'docs' ? 'N7' : lane.value === 'remit' ? 'N9' : 'N6';
+  uni.navigateTo({ url: batchPickUrl(c.id, code) });
 }
 
 function goSales() {

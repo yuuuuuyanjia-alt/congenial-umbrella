@@ -110,9 +110,13 @@
       :target="nextTarget"
       :ready="nextReady"
       :hint="nextHint"
-      button-label="进入下一步"
+      :button-label="nextButtonLabel"
       @go="goNext"
     />
+    <view class="card" v-if="showDirectRemit">
+      <view class="muted">本批装运硬闸门已通过。去收汇打开这一批的收汇对账，不进入空白页。</view>
+      <view class="btn" @click="goRemit">去收汇</view>
+    </view>
   </view>
 </template>
 
@@ -124,6 +128,7 @@ import {
   chooseAndUploadTradeDoc,
   evidenceFileUrl,
   batchPickUrl,
+  continuityCtaLabel,
   goToNode,
   SHIPMENT_HOME_URL,
   latestTradeDoc,
@@ -219,6 +224,11 @@ const nextHint = computed(() => {
   const cur = c.value?.currentNode;
   if (cur && cur !== FORM_NODE) return `本案已在 ${cur} ${pipelineNodeName(cur)}。可直接进入该节点。`;
   return '';
+});
+const nextButtonLabel = computed(() => continuityCtaLabel(nextTarget.value?.code));
+const showDirectRemit = computed(() => {
+  const code = String(nextTarget.value?.code || '').toUpperCase();
+  return nextReady.value && !!batchId.value && code !== 'N9' && code !== 'N8';
 });
 
 onLoad(async (q) => {
@@ -396,6 +406,10 @@ async function tryAdvance() {
 function goNext() {
   const t = nextTarget.value;
   if (t && id.value) goToNode(id.value, t.code, batchId.value || undefined);
+}
+
+function goRemit() {
+  if (id.value && batchId.value) goToNode(id.value, 'N9', batchId.value);
 }
 </script>
 

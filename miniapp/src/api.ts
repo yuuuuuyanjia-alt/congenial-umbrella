@@ -611,10 +611,13 @@ export function formNextNodeHeading(formNode: string) {
 export {
   BATCH_PICK_PAGE,
   DOCS_HOME_URL,
+  REMIT_HOME_URL,
   SHIPMENT_HOME_URL,
   batchPickUrl,
+  continuityCtaLabel,
   exportHomeUrl,
   laneAllowsCreate,
+  remittanceListEntryUrl,
   resolveBatchLane,
 } from './lane-nav';
 export { guardedNodeEntryUrl };
@@ -634,8 +637,8 @@ export function batchOpenCode(batch: { currentNode?: string | null } | null | un
 
 /**
  * 未带 batchId 的装运（N6）、单证（N7）、收汇（N9）先进入批次选择，避免空白节点页。
- * N6 可新建批次；N7 只选已有批次；N9 留在批次主链，不从首页进入。
- * 列表「下一步」与首页出运/单证在选定销售合同后走同一函数。
+ * N6 可新建批次；N7 与 N9 只选已有批次。收汇管理与单证管理同一路径。
+ * 列表「下一步」与首页出运/单证/收汇在选定销售合同后走同一函数；收汇在唯一批次时带上 batchId。
  */
 export function nodeEntryUrl(caseId: string, code: string, batchId?: string | null) {
   return guardedNodeEntryUrl(caseId, activePipelineNode(code), batchId, nodePage);

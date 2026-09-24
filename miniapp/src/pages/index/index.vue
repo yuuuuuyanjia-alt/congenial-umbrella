@@ -14,7 +14,7 @@
       <view class="h2">工作入口</view>
       <view class="muted">{{ entryHint }}</view>
       <template v-for="(block, i) in entryBlocks" :key="i + '-' + block.items[0].url">
-        <view class="choice-row" v-if="block.type === 'pair'" style="margin-top: 16rpx">
+        <view class="choice-row" :class="{ 'lane-row': block.items.length > 2 }" v-if="block.type === 'pair'" style="margin-top: 16rpx">
           <view class="choice-btn" v-for="e in block.items" :key="e.url" @click="go(e.url)">{{ e.label }}</view>
         </view>
         <view class="btn" v-else @click="go(block.items[0].url)">{{ block.items[0].label }}</view>
@@ -45,9 +45,9 @@ const { role } = useDemoRole();
 const appVersion = APP_VERSION;
 const entryBlocks = computed(() => homeEntryBlocks(role.value));
 const entryHint = computed(() => {
-  if (role.value === 'RISK') return '本岗默认先进入审核工作台；销售/采购合同与费用管理也可进入。';
-  if (role.value === 'MANAGER') return '本岗只读：先看客户评估与合同列表。费用管理可查看，不可保存。';
-  return '本岗可新建并录入销售合同、采购合同，并从出运管理、单证管理办理装运与单证，在费用管理登记合同费用。收汇仍在出运批次内办理。';
+  if (role.value === 'RISK') return '本岗默认先进入审核工作台；销售/采购合同、出运、单证、收汇与费用管理也可进入。';
+  if (role.value === 'MANAGER') return '本岗只读：先看客户评估与合同列表。出运、单证、收汇与费用管理可查看，不可保存。';
+  return '本岗可新建并录入销售合同、采购合同，并从出运管理、单证管理、收汇管理办理装运、单证与收汇，在费用管理登记合同费用。收汇先选销售合同：没有批次时先去出运，合同级前 T/T 仍可登记；有批次则进入该批收汇。';
 });
 function syncNavTitle() {
   uni.setNavigationBarTitle({
@@ -103,5 +103,11 @@ function go(url: string) {
 }
 .debug-link {
   text-decoration: underline;
+}
+.lane-row .choice-btn {
+  min-width: 0;
+  padding: 20rpx 8rpx;
+  font-size: var(--font-sm);
+  line-height: 1.25;
 }
 </style>

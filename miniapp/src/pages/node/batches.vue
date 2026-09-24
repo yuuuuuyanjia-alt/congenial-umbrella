@@ -13,6 +13,8 @@
         <view class="err" v-if="!canWriteBusiness && allowsCreate" style="margin-top: 8rpx">当前为{{ roleLabel }}，不能新建批次。</view>
       </view>
 
+      <AdvanceTtReceipt v-if="lane === 'remit'" :case-id="id" :case-data="c" @saved="load" />
+
       <view class="card" v-if="!batches.length">
         <view class="muted">{{ emptyText }}</view>
         <view class="btn" v-if="!allowsCreate" @click="goShipment">去办出运</view>
@@ -25,10 +27,7 @@
               数量 {{ b.quantity ?? '—' }} {{ b.unit || '' }} · 金额 {{ money(b.amountFen, b.currency || currency) }} · 已收汇 {{ money(b.receivedFen, b.currency || currency) }}
             </view>
             <view class="muted" v-if="lane === 'shipment' && b.currentNode && b.currentNode !== 'N6'" style="margin-top: 8rpx">
-              本批当前在{{ b.nodeLabel }}。进入装运后可用「进入下一步」继续该批次的单证或收汇。
-            </view>
-            <view class="muted" v-else-if="lane === 'remit' && openCode(b) !== 'N9'" style="margin-top: 8rpx">
-              本批尚未到收汇，将打开本批当前的{{ b.nodeLabel || '装运' }}。
+              本批当前在{{ b.nodeLabel }}。进入装运后可用「进入下一步」继续该批次的单证，过闸后可去收汇。
             </view>
             <view class="btn" @click="openBatch(b)">{{ openLabel(b) }}</view>
           </view>
@@ -53,8 +52,9 @@
 <script setup lang="ts">
 import { onLoad, onShow } from '@dcloudio/uni-app';
 import { computed, reactive, ref } from 'vue';
-import { api, batchOpenCode, batchPickUrl, money, nodeEntryUrl, yuanToFen } from '../../api';
+import { api, batchPickUrl, money, nodeEntryUrl, yuanToFen } from '../../api';
 import { laneAllowsCreate, resolveBatchLane, type BatchLane } from '../../lane-nav';
+import AdvanceTtReceipt from '../../components/AdvanceTtReceipt.vue';
 import BoundField from '../../components/BoundField.vue';
 import WindowedList from '../../components/WindowedList.vue';
 import { useDemoRole } from '../../role';
@@ -80,13 +80,15 @@ const intro = computed(() => {
     return '请选择这份销售合同已有的出运批次，进入该批次的单证（N7）。这里不能新建批次。还没有批次时，请先去出运管理。';
   }
   if (lane.value === 'remit') {
-    return '收汇留在出运批次上办理，不从首页单独进入。请选择已有批次。该批尚未到收汇时，会停在本批当前节点。';
+    return '请选择这份销售合同已有的出运批次，进入该批次的收汇（N9）。这里不能新建批次。还没有批次时请先去出运管理。合同前收汇按合同登记，不绑定批次，没有批次也可以填写。';
   }
-  return '进入装运前请选择已有批次，或新建一批。选定后打开该批次的装运（N6），再用「进入下一步」办理单证（N7）和收汇（N9）。一份销售合同可以多批同时在途。';
+  return '进入装运前请选择已有批次，或新建一批。选定后打开该批次的装运（N6）。过闸后「进入下一步」办理单证（N7），「去收汇」打开这一批的收汇（N9）。一份销售合同可以多批同时在途。';
 });
 const emptyText = computed(() => {
   if (lane.value === 'docs') return '这份销售合同还没有出运批次。请先办理出运，选择或新建批次后再回来做单证。不会从这里新建空批次或打开空白单证页。';
-  if (lane.value === 'remit') return '这份销售合同还没有出运批次。请先办理出运，再在该批次上登记收汇。';
+  if (lane.value === 'remit') {
+    return '这份销售合同还没有出运批次。请先办理出运，再选择已有批次进入收汇。这里不会新建批次，也不会打开空白收汇页。合同前收汇不依赖批次，可在上方填写。';
+  }
   return '还没有出运批次。请新建一批后再进入装运。';
 });
 
@@ -103,10 +105,10 @@ onLoad((q) => {
 
 onShow(load);
 
-function openCode(b: any) {
+function openCode(_b: any) {
   if (lane.value === 'docs') return 'N7';
-  if (lane.value === 'shipment') return 'N6';
-  return batchOpenCode(b, 'N9');
+  if (lane.value === 'remit') return 'N9';
+  return 'N6';
 }
 
 function openLabel(b: any) {

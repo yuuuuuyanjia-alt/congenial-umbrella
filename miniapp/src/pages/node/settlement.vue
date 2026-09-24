@@ -1,6 +1,12 @@
 <template>
   <view class="wrap" v-if="ready">
     <view class="card">
+      <view class="h2">本批收汇</view>
+      <view class="muted">{{ headerLine }}</view>
+      <view class="muted" style="margin-top: 8rpx">{{ ttSummary }}</view>
+      <view class="muted" style="margin-top: 8rpx">前/后 T/T、约定比例、约定金额与到达目的港后付款天数来自销售合同，本页只读，不可在此修改。</view>
+    </view>
+    <view class="card">
       <view class="h2">收汇对账 · 硬闸门</view>
       <view class="muted">付款人≠买方时必须有第三方关系证明；另需汇款附言、单证一致证明与放行审批。水单/到账金额是已回款唯一账本：保存后销售列表「已完成」与中信保占用「已回款」同步更新。一批次只记一笔收汇；客户合并付款时请按批次拆开录入。存在未生效变更单时禁止放行。</view>
       <view class="muted" v-if="batchLabel" style="margin-top: 8rpx">当前批次 {{ batchLabel }}。本页只记这一批的收汇。</view>
@@ -40,11 +46,12 @@
 <script setup lang="ts">
 import { onLoad } from '@dcloudio/uni-app';
 import { computed, reactive, ref } from 'vue';
-import { api, batchPickUrl, fenToYuan, SALES_CURRENCY, yuanToFen } from '../../api';
+import { api, batchPickUrl, fenToYuan, money, SALES_CURRENCY, yuanToFen } from '../../api';
 import BoundField from '../../components/BoundField.vue';
 import DraftText from '../../components/DraftText.vue';
 import PendingChangeBlock from '../../components/PendingChangeBlock.vue';
 import { useDemoRole } from '../../role';
+import { ttTermsSummary } from '../../tt-terms';
 
 const id = ref('');
 const batchId = ref('');
@@ -73,6 +80,15 @@ const activeBatch = computed(() => {
   return list[0] || null;
 });
 const batchLabel = computed(() => (activeBatch.value ? `${activeBatch.value.batchNo}（${activeBatch.value.nodeLabel || '收汇'}）` : ''));
+const headerLine = computed(() => {
+  const row = c.value;
+  if (!row) return '正在读取合同与批次…';
+  const buyer = (row.parties || []).find((p: any) => p.role === 'BUYER')?.name;
+  const customer = buyer || row.customer || row.contract?.counterparty || row.title || '客户未登记';
+  const batchNo = activeBatch.value?.batchNo || '—';
+  return `${row.caseNo || '合同号未登记'} · ${customer} · 批次 ${batchNo} · 本批金额 ${money(contractAmountFen.value, currency.value)}`;
+});
+const ttSummary = computed(() => ttTermsSummary(c.value?.contract));
 const unpaidYuan = computed(() => {
   const received = form.amountYuan.trim()
     ? yuanToFen(form.amountYuan)

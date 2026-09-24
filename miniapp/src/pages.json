@@ -34,7 +34,7 @@
     },
     {
       "path": "pages/export/pick",
-      "style": { "navigationBarTitleText": "出运 / 单证" }
+      "style": { "navigationBarTitleText": "出运 / 单证 / 收汇" }
     },
     {
       "path": "pages/fee/pick",

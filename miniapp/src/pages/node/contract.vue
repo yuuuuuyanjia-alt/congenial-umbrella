@@ -77,14 +77,12 @@
     </view>
 
     <view class="card" v-if="form.ttTiming === 'ADVANCE'">
-      <view class="h2">前 T/T 收汇</view>
-      <view class="label">收汇比例（%）</view>
+      <view class="h2">前 T/T 约定</view>
+      <view class="muted">约定比例与约定金额在本页维护。收汇凭证改在收汇管理的合同前收汇登记，本页不上传。</view>
+      <view class="label">约定比例（%）</view>
       <BoundField :model="form" field="ttPercent" type="digit" placeholder="如 30" @input="syncAdvanceFromPercent" />
-      <view class="label">收汇金额（{{ form.currency }}）</view>
+      <view class="label">约定金额（{{ form.currency }}）</view>
       <BoundField :model="form" field="ttAdvanceYuan" type="digit" :placeholder="form.currency" />
-      <view class="label">收汇凭证</view>
-      <view class="muted" v-for="(v, i) in form.ttVouchers" :key="v.ref || i">{{ v.fileName || v.ref }}</view>
-      <view class="btn btn-ghost" v-if="canWriteBusiness" @click="stubVoucher">模拟上传收汇凭证</view>
     </view>
 
     <view class="card" v-if="form.ttTiming === 'AFTER'">
@@ -246,7 +244,6 @@ const form = reactive({
   ttPercent: '',
   ttAdvanceYuan: '',
   ttDays: '',
-  ttVouchers: [] as Array<{ ref: string; fileName?: string | null }>,
   quantity: 10,
   unit: 'TON' as 'TON' | 'KG',
   amountYuan: '',
@@ -328,7 +325,6 @@ function hydrateFromCase(row: any) {
     form.ttPercent = ct.ttPercentBps != null ? String(Math.round(Number(ct.ttPercentBps) / 100)) : '';
     form.ttAdvanceYuan = ct.ttAdvanceFen ? fenToYuan(ct.ttAdvanceFen) : '';
     form.ttDays = ct.ttDaysAfterShipment != null ? String(ct.ttDaysAfterShipment) : '';
-    form.ttVouchers = Array.isArray(ct.ttVouchers) ? ct.ttVouchers : [];
     form.quantity = ct.quantity ?? form.quantity;
     form.unit = parseContractUnit(ct.unit) || parseContractUnit(activeQuote?.unit) || 'TON';
     form.amountYuan = fenToYuan(ct.amountFen || row.amountFen);
@@ -404,7 +400,6 @@ function clearInapplicableModeFields() {
   if (tt !== 'ADVANCE') {
     form.ttPercent = '';
     form.ttAdvanceYuan = '';
-    form.ttVouchers = [];
   }
   if (tt !== 'AFTER') form.ttDays = '';
   if (!tt && isTtPaymentTermsText(form.paymentTerms)) form.paymentTerms = '';
@@ -458,12 +453,6 @@ function applyDirectPort(dp?: any) {
   if (!dp) return;
   directPort.warehouseLocation = dp.warehouseLocation || dp.goodsWhereAnswer || '';
   directPort.batchNo = dp.batchNo || dp.goodsWhereRef || '';
-}
-
-function stubVoucher() {
-  const ref = `TT-VOUCHER-${Date.now()}`;
-  form.ttVouchers.push({ ref, fileName: `前TT收汇凭证-${form.ttVouchers.length + 1}.png` });
-  ok.value = '已生成模拟收汇凭证（演示环境，非真实上传）';
 }
 
 function applySinosureUpload(uploaded: { evidenceId: string; fileName: string }) {
@@ -575,7 +564,6 @@ async function save() {
       ttPercentBps: ttTiming === 'ADVANCE' && form.ttPercent ? Math.round(Number(form.ttPercent) * 100) : null,
       ttAdvanceFen: ttTiming === 'ADVANCE' && form.ttAdvanceYuan ? yuanToFen(form.ttAdvanceYuan) : null,
       ttDaysAfterShipment: ttTiming === 'AFTER' ? intOrNull(form.ttDays) : null,
-      ttVouchers: ttTiming === 'ADVANCE' ? form.ttVouchers : [],
       quantity: Number(form.quantity),
       unit: form.unit,
       amountFen: yuanToFen(form.amountYuan),

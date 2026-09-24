@@ -123,6 +123,8 @@ import {
   formNextNodeButtonLabel,
   goToNode,
   groupSalesListByShipment,
+  nodePage,
+  remittanceListEntryUrl,
   isProcurementListCase,
   isSalesListCase,
   listShowsNextNodeButton,
@@ -165,7 +167,7 @@ const title = computed(() => (kind.value === 'procurement' ? '采购合同管理
 const hint = computed(() =>
   kind.value === 'procurement'
     ? '此处只列国内采购合同/备货（N5）。打开后填写采购合同；保存或推进前须从已签订的销售合同中任选一笔关联（不限于本案）。货款可选一次性付清或分期支付（分期须填约定付款时间、付款比例、金额）。装运、单证、收汇属于出口案，不在本采购合同办理；采购完成后可点「去办装运（出口案）」跳转。'
-    : '出口销售合同按未出运、已出运、已完成分组。已完成须已出运、客户已提货且收汇对账已回款。打开卡片仍填写销售合同（销售合同/订单确认）。国内采购订单不在本列表。本案已离开销售合同节点时，可点「进入下一节点」。下一步若是装运或单证，与首页出运管理、单证管理同一路径：装运先选择并新建批次再进入该批装运；单证只选择已有批次，没有批次时提示先去出运，不会打开空白单证页。收汇仍在该批次内从单证继续。',
+    : '出口销售合同按未出运、已出运、已完成分组。已完成须已出运、客户已提货且收汇对账已回款。打开卡片仍填写销售合同（销售合同/订单确认）。国内采购订单不在本列表。本案已离开销售合同节点时，可点「进入下一节点」。下一步若是装运、单证或收汇，与首页出运管理、单证管理、收汇管理同一路径：装运先选择并新建批次再进入该批装运；单证与收汇只选择已有批次。没有批次时提示先去出运，不会打开空白单证页或空白收汇页。收汇若只有一个批次，则直接打开该批收汇并带上批次。',
 );
 const pickedSalesBtn = computed(() => {
   const hit = signedSales.value.find((c) => c.id === pickedSalesId.value);
@@ -312,6 +314,12 @@ function nextCtaLabel(c: any) {
 
 function openNext(c: any) {
   const t = nextOf(c);
-  if (t) goToNode(c.id, t.code);
+  if (!t || !c?.id) return;
+  const code = String(t.code || '').toUpperCase();
+  if (code === 'N8' || code === 'N9') {
+    uni.navigateTo({ url: remittanceListEntryUrl(c.id, c.shipmentBatches, nodePage) });
+    return;
+  }
+  goToNode(c.id, t.code);
 }
 </script>
