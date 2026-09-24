@@ -8,6 +8,7 @@ import { isSalesContractSigned, n3StatusOf } from '../cases/sales-link';
 import { aggregateRemittance, evidencesForBatch, isBatchPipelineNode, mergeBatchNodes } from '../cases/shipment-batch';
 import { OccupancyReviewStatus, occupancyFingerprint, planOccupancyReviewSync } from '../workbench/occupancy-review';
 import { parseDirectPort, planTaxFinanceReviewSync, TAX_FINANCE_NODES, TaxFinanceReviewStatus } from '../tax-finance/tax-finance';
+import { priceBenchmarkFromRows, PriceBenchmark } from './price-check';
 
 @Injectable()
 export class GateService {
@@ -42,10 +43,8 @@ export class GateService {
         evidences: { orderBy: { createdAt: 'asc' } },
       },
     });
-    const goodsKey = normGoods(c.goodsDesc);
-    const [floor, history, hsTpl, occ] = await Promise.all([
-      this.prisma.costFloor.findUnique({ where: { goodsKey } }),
-      this.prisma.historicalPrice.findMany({ where: { goodsKey } }),
+    const [benchmark, hsTpl, occ] = await Promise.all([
+      this.priceBenchmark(c.goodsDesc),
       c.customs?.hsCode
         ? this.prisma.hsTemplate.findUnique({ where: { hsCode: c.customs.hsCode } })
         : Promise.resolve(null),
@@ -159,8 +158,8 @@ export class GateService {
         : null,
       customs: c.customs ? toCustomsSnap(c.customs) : null,
       hsTemplate: hsTpl ? toHsSnap(hsTpl) : null,
-      costFloorFen: floor?.floorFen ?? null,
-      historyUnitPrices: history.map((h) => h.unitPriceFen),
+      costFloorFen: benchmark.costFloorFen,
+      historyUnitPrices: benchmark.historyUnitPrices,
       caseAmountFen: c.amountFen,
       caseCurrency: c.currency,
       sinosurePolicies: c.sinosurePolicies,
@@ -214,6 +213,16 @@ export class GateService {
         };
       }),
     };
+  }
+
+  /** 与 N2 闸门快照同一套品名匹配：归一后查 CostFloor / HistoricalPrice。 */
+  async priceBenchmark(goodsDesc: string): Promise<PriceBenchmark> {
+    const goodsKey = normGoods(goodsDesc);
+    const [floor, history] = await Promise.all([
+      this.prisma.costFloor.findUnique({ where: { goodsKey } }),
+      this.prisma.historicalPrice.findMany({ where: { goodsKey } }),
+    ]);
+    return priceBenchmarkFromRows(floor, history);
   }
 
   async evaluateAndPersist(caseId: string, nodeCode: string, batchId?: string | null): Promise<GateResult> {
