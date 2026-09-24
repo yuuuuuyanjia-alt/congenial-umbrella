@@ -1,6 +1,13 @@
 import { CanActivate, ExecutionContext, ForbiddenException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { isWorkbenchWritePath, mutationDeniedReason, normalizeDemoRole, type MutationKind } from './roles';
+import {
+  isRiskWritePath,
+  isSupplementUploadPath,
+  isWorkbenchWritePath,
+  mutationDeniedReason,
+  normalizeDemoRole,
+  type MutationKind,
+} from './roles';
 
 @Injectable()
 export class DemoAuthGuard implements CanActivate {
@@ -19,7 +26,13 @@ export class DemoAuthGuard implements CanActivate {
     if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') return true;
 
     const url = String(req.originalUrl || req.url || req.path || '');
-    const kind: MutationKind = isWorkbenchWritePath(url) ? 'workbench' : 'business';
+    const kind: MutationKind = isSupplementUploadPath(url)
+      ? 'supplement'
+      : isRiskWritePath(url)
+        ? 'risk'
+        : isWorkbenchWritePath(url)
+          ? 'workbench'
+          : 'business';
     const reason = mutationDeniedReason(user?.role, kind);
     if (reason) throw new ForbiddenException(reason);
     return true;

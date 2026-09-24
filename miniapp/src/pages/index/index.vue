@@ -10,6 +10,8 @@
 
     <RoleBar @change="onRoleChange" />
 
+    <RiskRadar v-if="showRadar" />
+
     <view class="card">
       <view class="h2">工作入口</view>
       <view class="muted">{{ entryHint }}</view>
@@ -30,6 +32,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted } from 'vue';
+import RiskRadar from '../../components/RiskRadar.vue';
 import RoleBar from '../../components/RoleBar.vue';
 import {
   APP_VERSION,
@@ -44,9 +47,10 @@ import {
 const { role } = useDemoRole();
 const appVersion = APP_VERSION;
 const entryBlocks = computed(() => homeEntryBlocks(role.value));
+const showRadar = computed(() => role.value === 'RISK' || role.value === 'MANAGER');
 const entryHint = computed(() => {
-  if (role.value === 'RISK') return '本岗默认先进入审核工作台；销售/采购合同、出运、单证、收汇与费用管理也可进入。';
-  if (role.value === 'MANAGER') return '本岗只读：先看客户评估与合同列表。出运、单证、收汇与费用管理可查看，不可保存。';
+  if (role.value === 'RISK') return '先看上面的风险雷达。出运、单证、收汇、费用和其他入口在雷达下面。';
+  if (role.value === 'MANAGER') return '先看上面的风险雷达，可与风控处置同一套风险。下面的合同与客户仍只读。';
   return '本岗可新建并录入销售合同、采购合同，并从出运管理、单证管理、收汇管理办理装运、单证与收汇，在费用管理登记合同费用。收汇先选销售合同：没有批次时先去出运，合同级前 T/T 仍可登记；有批次则进入该批收汇。';
 });
 function syncNavTitle() {

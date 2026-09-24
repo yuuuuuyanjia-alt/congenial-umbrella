@@ -134,7 +134,7 @@
 
 <script setup lang="ts">
 import { computed, reactive, ref } from 'vue';
-import { onShow } from '@dcloudio/uni-app';
+import { onLoad, onShow } from '@dcloudio/uni-app';
 import { api, decisionClass, decisionText, money, pipelineNodeName } from '../../api';
 import BoundField from '../../components/BoundField.vue';
 import RoleBar from '../../components/RoleBar.vue';
@@ -161,6 +161,10 @@ const CONF_LABEL: Record<string, string> = {
   LOW: '低置信',
 };
 
+onLoad((q) => {
+  const name = String(q?.tab || '');
+  if (name === 'occupancy' || name === 'sanctions' || name === 'tax') tab.value = name;
+});
 onShow(load);
 async function load() {
   try {

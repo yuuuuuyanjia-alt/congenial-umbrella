@@ -52,8 +52,8 @@ const hint = computed(() => {
   if (pickerOpen.value) return '仅供演示/QA 切换岗位。正式使用按登录账号一人一岗，日常不展示三选一。';
   if (props.compact) return '';
   const role = current.value?.role;
-  if (role === 'RISK') return '本岗处理审核工作台领取、放行与筛查处置。';
-  if (role === 'MANAGER') return '本岗只读：客户评估、合同与占用。';
+  if (role === 'RISK') return '本岗从风险雷达发现风险，再点开处置。命中、额度和退税审核从风险详情进入。';
+  if (role === 'MANAGER') return '本岗与风控看同一套风险，可以处置。合同、客户和其他页面仍只读。';
   return '本岗可录入客户、销售、采购并推进业务节点。';
 });
 
