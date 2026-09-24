@@ -25,6 +25,7 @@
       <BoundField :model="form" field="validityUntil" placeholder="2026-12-31" />
       <view class="label">单价</view>
       <BoundField :model="form" field="unitPriceUsd" type="digit" placeholder="美元金额" />
+      <view class="muted" v-if="c.priceCheckSkipped" style="margin-top: 8rpx">未配置底价/参考价，本单未做价格比对</view>
       <view class="label">单价单位</view>
       <view class="choice-row">
         <view class="choice-btn" :class="{ 'choice-btn-on': form.unit === 'TON' }" @click="form.unit = 'TON'">吨</view>

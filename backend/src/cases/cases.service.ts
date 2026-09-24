@@ -117,6 +117,7 @@ import {
   UpsertPartyDto,
 } from './dto';
 import { GateResult } from '../common/types';
+import { isPriceCheckSkipped } from '../gates/price-check';
 import {
   parseQuoteIncludedItems,
   parseQuotePriceUnit,
@@ -275,6 +276,7 @@ export class CasesService {
       },
     });
     if (!c) throw new NotFoundException('案件不存在');
+    const priceBenchmark = await this.gates.priceBenchmark(c.goodsDesc);
     const planPayment = c.procurementPlan ? presentPlanPayment(c.procurementPlan) : null;
     const sinosureExposure = await this.customers.occupancyForCase(id);
     const salesLink = c.procurementPlan?.salesCase ? presentSalesLink(c.procurementPlan.salesCase) : null;
@@ -372,6 +374,7 @@ export class CasesService {
           }
         : null,
       taxRebateReady,
+      priceCheckSkipped: isPriceCheckSkipped(priceBenchmark),
     };
   }
 
