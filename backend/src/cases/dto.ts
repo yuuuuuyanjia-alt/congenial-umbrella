@@ -53,6 +53,14 @@ export class TtVoucherDto {
   @IsOptional() @IsString() fileName?: string | null;
 }
 
+/** 合同前收汇只更新凭证，不携带比例、约定金额或其他条款。 */
+export class SaveAdvanceVouchersDto {
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => TtVoucherDto)
+  ttVouchers: TtVoucherDto[];
+}
+
 export class SaveContractDto {
   @IsString() counterparty: string;
   @IsOptional() @IsString() incoterms?: string;

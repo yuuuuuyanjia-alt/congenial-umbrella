@@ -35,7 +35,7 @@
       :target="nextTarget"
       :ready="nextReady"
       :hint="nextHint"
-      button-label="进入下一步"
+      :button-label="nextButtonLabel"
       @go="goNext"
     />
   </view>
@@ -48,6 +48,7 @@ import {
   api,
   batchPickUrl,
   chooseAndUploadTradeDoc,
+  continuityCtaLabel,
   DOCS_HOME_URL,
   evidenceFileUrl,
   goToNode,
@@ -101,11 +102,12 @@ const batchLabel = computed(() => (activeBatch.value ? `${activeBatch.value.batc
 const nextHint = computed(() => {
   const t = nextTarget.value;
   if (!t) return '';
-  if (advancedTo.value) return `已过闸。下一步为 ${t.code} ${t.name}。`;
+  if (advancedTo.value) return `已过闸。下一步为 ${t.code} ${t.name}。去收汇打开本批收汇。`;
   const cur = c.value?.currentNode;
   if (cur && cur !== FORM_NODE) return `本案已在 ${cur} ${pipelineNodeName(cur)}。可直接进入该节点。`;
   return '';
 });
+const nextButtonLabel = computed(() => continuityCtaLabel(nextTarget.value?.code));
 
 onLoad(async (q) => {
   id.value = q?.id || '';

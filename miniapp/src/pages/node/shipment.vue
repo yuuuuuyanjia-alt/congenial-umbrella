@@ -110,7 +110,7 @@
       :target="nextTarget"
       :ready="nextReady"
       :hint="nextHint"
-      button-label="进入下一步"
+      :button-label="nextButtonLabel"
       @go="goNext"
     />
   </view>
@@ -124,6 +124,7 @@ import {
   chooseAndUploadTradeDoc,
   evidenceFileUrl,
   batchPickUrl,
+  continuityCtaLabel,
   goToNode,
   SHIPMENT_HOME_URL,
   latestTradeDoc,
@@ -220,6 +221,7 @@ const nextHint = computed(() => {
   if (cur && cur !== FORM_NODE) return `本案已在 ${cur} ${pipelineNodeName(cur)}。可直接进入该节点。`;
   return '';
 });
+const nextButtonLabel = computed(() => continuityCtaLabel(nextTarget.value?.code));
 
 onLoad(async (q) => {
   id.value = q?.id || '';

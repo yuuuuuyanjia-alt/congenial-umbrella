@@ -1,12 +1,16 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { homeEntryBlocks, homeEntriesFor } from './home-entries.ts';
+import { readFileSync } from 'node:fs';
 import {
   DOCS_HOME_URL,
+  REMIT_HOME_URL,
   SHIPMENT_HOME_URL,
   batchPickUrl,
+  continuityCtaLabel,
   guardedNodeEntryUrl,
   laneAllowsCreate,
+  remittanceListEntryUrl,
   resolveBatchLane,
 } from './lane-nav.ts';
 import { POST_TT_DAYS_HINT, POST_TT_DAYS_LABEL, POST_TT_DAYS_PLACEHOLDER } from './sales-copy.ts';
@@ -20,26 +24,28 @@ test('后 T/T 付款天数只改界面文案', () => {
   assert.match(POST_TT_DAYS_HINT, /到达目的港/);
 });
 
-test('首页有出运管理、单证管理与费用管理，收汇不进首页', () => {
+test('首页有出运管理、单证管理、收汇管理与费用管理', () => {
   for (const role of ['SALES', 'RISK', 'MANAGER']) {
     const labels = homeEntriesFor(role).map((e) => e.label);
     assert.ok(labels.includes('出运管理'), role);
     assert.ok(labels.includes('单证管理'), role);
+    assert.ok(labels.includes('收汇管理'), role);
     assert.ok(labels.includes('费用管理'), role);
     assert.equal(labels.includes('收汇对账'), false);
     const urls = homeEntriesFor(role).map((e) => e.url).join(' ');
-    assert.equal(urls.includes('lane=remit'), false);
+    assert.equal(urls.includes(REMIT_HOME_URL), true);
     assert.equal(urls.includes('/pages/node/shipment'), false);
     assert.equal(urls.includes('/pages/node/docs'), false);
+    assert.equal(urls.includes('/pages/node/settlement'), false);
     const lane = homeEntryBlocks(role).find((b) => b.items.some((i) => i.label === '出运管理'));
     assert.equal(lane?.type, 'pair');
     assert.deepEqual(
       lane?.items.map((i) => i.label),
-      ['出运管理', '单证管理', '费用管理'],
+      ['出运管理', '单证管理', '收汇管理', '费用管理'],
     );
     assert.deepEqual(
       lane?.items.map((i) => i.url),
-      [SHIPMENT_HOME_URL, DOCS_HOME_URL, '/pages/fee/pick'],
+      [SHIPMENT_HOME_URL, DOCS_HOME_URL, REMIT_HOME_URL, '/pages/fee/pick'],
     );
   }
 });
@@ -82,4 +88,47 @@ test('未选批次的装运与单证走同一批次入口，不打开空白节�
     '/pages/node/N9?id=case-1&code=N9&batchId=batch-9',
   );
   assert.equal(guardedNodeEntryUrl('case-1', 'N3', null, pageFor), '/pages/node/N3?id=case-1&code=N3');
+});
+
+test('收汇连续性与列表下一步带批次，不打开空白 N9', () => {
+  assert.equal(continuityCtaLabel('N9'), '去收汇');
+  assert.equal(continuityCtaLabel('N8'), '去收汇');
+  assert.equal(continuityCtaLabel('N7'), '进入下一步');
+  const sole = remittanceListEntryUrl('case-1', [{ id: 'batch-9' }], pageFor);
+  assert.equal(sole, '/pages/node/N9?id=case-1&code=N9&batchId=batch-9');
+  const many = remittanceListEntryUrl('case-1', [{ id: 'a' }, { id: 'b' }], pageFor);
+  assert.match(many, /lane=remit&code=N9/);
+  assert.equal(many.includes('batchId'), false);
+  assert.equal(many.includes('/pages/node/settlement'), false);
+  const none = remittanceListEntryUrl('case-1', [], pageFor);
+  assert.match(none, /lane=remit&code=N9/);
+  assert.equal(none.includes('/pages/node/N9'), false);
+});
+
+test('N3 不再上传前 T/T 凭证，合同前收汇在收汇流程', () => {
+  const contract = readFileSync(new URL('./pages/node/contract.vue', import.meta.url), 'utf8');
+  assert.equal(contract.includes('模拟上传收汇凭证'), false);
+  assert.equal(contract.includes('ttVouchers'), false);
+  assert.equal(contract.includes('stubVoucher'), false);
+  assert.match(contract, /约定比例/);
+  assert.match(contract, /约定金额/);
+  const receipt = readFileSync(new URL('./components/AdvanceTtReceipt.vue', import.meta.url), 'utf8');
+  assert.match(receipt, /合同前收汇/);
+  assert.match(receipt, /模拟上传收汇凭证/);
+  assert.match(receipt, /约定比例/);
+  assert.match(receipt, /约定金额/);
+  assert.equal(receipt.includes('saveContract'), false);
+  assert.equal(receipt.includes('BoundField'), false);
+  assert.match(receipt, /saveAdvanceVouchers/);
+  const batches = readFileSync(new URL('./pages/node/batches.vue', import.meta.url), 'utf8');
+  assert.match(batches, /AdvanceTtReceipt/);
+  assert.match(batches, /不会打开空白收汇页/);
+  const shipment = readFileSync(new URL('./pages/node/shipment.vue', import.meta.url), 'utf8');
+  const docs = readFileSync(new URL('./pages/node/docs.vue', import.meta.url), 'utf8');
+  assert.equal(shipment.includes('去收汇'), false);
+  assert.equal(shipment.includes("goToNode(id.value, 'N9'"), false);
+  assert.match(docs, /去收汇/);
+  assert.match(docs, /continuityCtaLabel/);
+  assert.equal(docs.includes('showDirectRemit'), false);
+  assert.equal(docs.includes("goToNode(id.value, 'N9'"), false);
 });
