@@ -430,7 +430,34 @@ export const api = {
   },
   suppliers: () => request('GET', '/suppliers'),
   supplier: (id: string) => request('GET', `/suppliers/${id}`),
+  riskRadar: () => request('GET', '/risk-radar'),
+  riskRefresh: () => request('POST', '/risk-radar/refresh'),
+  riskRescreen: () => request('POST', '/risk-radar/rescreen'),
+  riskSamples: () => request('POST', '/risk-radar/samples'),
+  riskClearSamples: () => request('POST', '/risk-radar/samples/clear'),
+  riskOpen: (id: string) => request('GET', `/risk-radar/${id}`),
+  riskAct: (id: string, body: unknown) => request('POST', `/risk-radar/${id}/actions`, body),
+  riskExpire: (id: string) => request('POST', `/risk-radar/${id}/demo-expire`),
+  riskMine: () => request('GET', '/risk-radar/mine'),
+  riskAcceptSupplement: (taskId: string) => request('POST', `/risk-radar/supplements/${taskId}/accept`),
 };
+
+export async function uploadSupplementFile(taskId: string, file: Blob, fileName: string) {
+  if (typeof fetch !== 'function' || typeof FormData !== 'function') {
+    return Promise.reject({ message: '当前环境不支持上传补件' });
+  }
+  const fd = new FormData();
+  fd.append('file', file, fileName);
+  fd.append('fileName', fileName);
+  const res = await fetch(`${BASE}/risk-radar/supplements/${encodeURIComponent(taskId)}/upload`, {
+    method: 'POST',
+    headers: demoHeaders(false),
+    body: fd,
+  });
+  const data = await res.json().catch(() => ({ message: '补件上传失败' }));
+  if (!res.ok) throw data;
+  return data;
+}
 
 export function decisionClass(d?: string | null) {
   if (d === 'HARD_BLOCK' || d === 'BLOCKED' || d === 'HIGH' || d === 'ULTRA_HIGH') return 'badge-block';

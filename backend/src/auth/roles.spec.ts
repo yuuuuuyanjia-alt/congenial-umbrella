@@ -1,6 +1,9 @@
 import {
+  canDisposeRisk,
   canWriteBusiness,
   canWriteWorkbench,
+  isRiskWritePath,
+  isSupplementUploadPath,
   isWorkbenchWritePath,
   mutationDeniedReason,
   normalizeDemoRole,
@@ -43,6 +46,17 @@ describe('演示角色权限', () => {
     expect(mutationDeniedReason('RISK', 'business')).toBeNull();
   });
 
+  it('风险处置允许风控和主管，主管的其他写操作仍只读', () => {
+    expect(canDisposeRisk('RISK')).toBe(true);
+    expect(canDisposeRisk('MANAGER')).toBe(true);
+    expect(canDisposeRisk('SALES')).toBe(false);
+    expect(mutationDeniedReason('MANAGER', 'risk')).toBeNull();
+    expect(mutationDeniedReason('RISK', 'risk')).toBeNull();
+    expect(mutationDeniedReason('SALES', 'risk')).toMatch(/补件/);
+    expect(mutationDeniedReason('MANAGER', 'business')).toMatch(/只读/);
+    expect(mutationDeniedReason('SALES', 'supplement')).toBeNull();
+  });
+
   it('识别工作台写路径，忽略查询串与尾斜杠', () => {
     expect(isWorkbenchWritePath('/api/workbench/abc/action')).toBe(true);
     expect(isWorkbenchWritePath('/workbench/abc/action/')).toBe(true);
@@ -50,5 +64,10 @@ describe('演示角色权限', () => {
     expect(isWorkbenchWritePath('/api/workbench/queue')).toBe(false);
     expect(isWorkbenchWritePath('/api/workbench')).toBe(false);
     expect(isWorkbenchWritePath('/api/cases/x/nodes/N3/advance')).toBe(false);
+    expect(isRiskWritePath('/api/risk-radar/samples')).toBe(true);
+    expect(isRiskWritePath('/api/risk-radar/abc/actions')).toBe(true);
+    expect(isRiskWritePath('/api/risk-radar/supplements/t1/upload')).toBe(false);
+    expect(isSupplementUploadPath('/api/risk-radar/supplements/t1/upload')).toBe(true);
+    expect(isRiskWritePath('/api/cases/x/nodes/N3/advance')).toBe(false);
   });
 });

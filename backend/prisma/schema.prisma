@@ -24,6 +24,10 @@ model User {
   occupancyDecisions OccupancyReview[] @relation("OccupancyDecidedBy")
   taxFinanceClaims    TaxFinanceReview[] @relation("TaxFinanceClaimedBy")
   taxFinanceDecisions TaxFinanceReview[] @relation("TaxFinanceDecidedBy")
+  riskProcessing      RiskItem[]         @relation("RiskProcessingBy")
+  riskViews           RiskView[]
+  riskActions         RiskAction[]
+  supplementUploads   SupplementTask[]   @relation("SupplementUploadedBy")
 }
 
 /// 客户主数据：案件到达 N3 后由买方录入；按规范化名称+国家或税号合并，跨案件查看限额与收汇
@@ -41,9 +45,12 @@ model Customer {
   /// 规范化注册号/税号；未填则为 null
   registrationKey String?
   note            String?
+  /// 示例数据。清除示例时只删 true，默认不影响正式客户。
+  isSample        Boolean  @default(false)
   createdAt       DateTime @default(now())
 
-  parties Party[]
+  parties   Party[]
+  riskItems RiskItem[]
 
   @@unique([nameKey, countryKey])
   @@index([registrationKey])
@@ -58,9 +65,12 @@ model Supplier {
   address        String?
   registrationNo String?
   note           String?
+  /// 示例数据。清除示例时只删 true。
+  isSample       Boolean  @default(false)
   createdAt      DateTime @default(now())
 
-  parties Party[]
+  parties   Party[]
+  riskItems RiskItem[]
 }
 
 /// 出口案件（询盘→收汇全流程载体）
@@ -78,6 +88,8 @@ model TradeCase {
   destination String
   amountFen   Int
   currency    String   @default("USD")
+  /// 示例案件。清除示例时连同批次、节点、风险等一起删，不碰非示例案件。
+  isSample    Boolean  @default(false)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -108,6 +120,7 @@ model TradeCase {
   shipmentBatches         ShipmentBatch[]
   shipments               Shipment[]
   settlements             Settlement[]
+  riskItems               RiskItem[]
 }
 
 model Party {
@@ -157,6 +170,8 @@ model BlacklistEntry {
   country  String?
   aliases  String
   note     String?
+  /// 示例制裁名单。清除示例时只删 true。
+  isSample Boolean @default(false)
 }
 
 model ScreeningHit {
@@ -306,6 +321,7 @@ model ShipmentBatch {
   evidences    Evidence[]
   mismatchFixes DocMismatchFix[]
   gateChecks   GateCheck[]
+  riskItems    RiskItem[]
 
   @@unique([caseId, batchNo])
   @@unique([caseId, seq])
@@ -742,6 +758,8 @@ model SinosurePolicy {
   insuredLimitFen   Int
   currency          String       @default("USD")
   confirmedExisting Boolean      @default(false)
+  /// 示例保单。清除示例时只删 true；挂在示例案件下的也会随案件级联删除。
+  isSample          Boolean      @default(false)
   createdAt         DateTime     @default(now())
   case              TradeCase    @relation(fields: [caseId], references: [id], onDelete: Cascade)
   changeOrder       ChangeOrder? @relation(fields: [changeOrderId], references: [id], onDelete: SetNull)
@@ -766,4 +784,109 @@ model Evidence {
 
   @@index([caseId, nodeCode])
   @@index([batchId, nodeCode])
+}
+
+/// 风险雷达发现的一条风险。指纹唯一，用于重算去重。
+/// 颜色可因补件逾期从黄升到橙；红色只能由规则写入，不能自动升红。
+model RiskItem {
+  id                  String    @id @default(cuid())
+  /// SANCTION / SINOSURE_OCCUPANCY / OVERDUE_RECEIVABLE / DOC_MISSING / SAMPLE_NOTICE
+  type                String
+  /// 当前展示颜色：RED / ORANGE / YELLOW / GRAY。补件逾期升橙后可以和 ruleColor 不同。
+  color               String
+  /// 规则本身判定的颜色。重算时先写这里，再套用补件逾期升橙。
+  ruleColor           String
+  /// PENDING 待处置 / CONDITIONAL_RELEASE 有条件放行 / RESOLVED 已解决 / REJECTED 已驳回 / SYSTEM_CLOSED 系统关闭
+  status              String
+  /// 去重键。同一条规则命中只保留一行。
+  fingerprint         String    @unique
+  caseId              String?
+  batchId             String?
+  customerId          String?
+  supplierId          String?
+  title               String
+  /// 客户名或合同号，列表展示用
+  subjectLabel        String
+  /// 踩线明细 JSON：[{ code, text, supplement }]
+  linesJson           String    @default("[]")
+  firstSeenAt         DateTime  @default(now())
+  lastHitAt           DateTime  @default(now())
+  /// 补件逾期重新排队的时间。同色时排在未升级记录前面。不是规则升级。
+  escalatedAt         DateTime?
+  /// 人工处置时看到的颜色。重算发现规则颜色更严重时，用它判断要不要重新打开。
+  dispositionSeverity String?
+  /// 处置后规则升级、重新打开的时间。同色排在最前，不和补件逾期升橙混用。
+  reopenedAt          DateTime?
+  processingById      String?
+  processingStartedAt DateTime?
+  /// 示例风险。灰色提醒同时 preserveOnRecalc，重算不系统关闭。
+  isSample            Boolean   @default(false)
+  /// 没有对应自动规则的示例提醒。规则重算不得把它系统关闭。
+  preserveOnRecalc    Boolean   @default(false)
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  case         TradeCase?       @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  batch        ShipmentBatch?   @relation(fields: [batchId], references: [id], onDelete: SetNull)
+  customer     Customer?        @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  supplier     Supplier?        @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  processingBy User?            @relation("RiskProcessingBy", fields: [processingById], references: [id], onDelete: SetNull)
+  views        RiskView[]
+  actions      RiskAction[]
+  supplements  SupplementTask[]
+
+  @@index([status, color])
+  @@index([caseId])
+  @@index([customerId])
+  @@index([supplierId])
+  @@index([isSample])
+}
+
+/// 风控、主管各自的「已看过」。互不影响。
+model RiskView {
+  id     String   @id @default(cuid())
+  riskId String
+  userId String
+  seenAt DateTime @default(now())
+  risk   RiskItem @relation(fields: [riskId], references: [id], onDelete: Cascade)
+  user   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([riskId, userId])
+}
+
+/// 每次处置留痕：结论、理由、处理人、时间。
+model RiskAction {
+  id         String   @id @default(cuid())
+  riskId     String
+  actorId    String?
+  /// CONDITIONAL_RELEASE / REJECTED / RESOLVED / REOPENED（系统重新打开）
+  conclusion String
+  reason     String
+  createdAt  DateTime @default(now())
+  risk       RiskItem @relation(fields: [riskId], references: [id], onDelete: Cascade)
+  actor      User?    @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([riskId, createdAt])
+}
+
+/// 有条件放行生成的补件任务。不自动放开闸门。
+model SupplementTask {
+  id           String    @id @default(cuid())
+  riskId       String
+  content      String
+  dueAt        DateTime
+  /// OPEN 待补 / SUBMITTED 已上传待复核 / ACCEPTED 复核通过
+  status       String    @default("OPEN")
+  fileName     String?
+  /// { storageKey, mime, size }
+  fileJson     String?
+  uploadedById String?
+  uploadedAt   DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  risk         RiskItem  @relation(fields: [riskId], references: [id], onDelete: Cascade)
+  uploadedBy   User?     @relation("SupplementUploadedBy", fields: [uploadedById], references: [id], onDelete: SetNull)
+
+  @@index([riskId])
+  @@index([dueAt, status])
 }

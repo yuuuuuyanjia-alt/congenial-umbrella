@@ -69,6 +69,14 @@
       "style": { "navigationBarTitleText": "审核工作台" }
     },
     {
+      "path": "pages/risk/detail",
+      "style": { "navigationBarTitleText": "风险处置" }
+    },
+    {
+      "path": "pages/risk/mine",
+      "style": { "navigationBarTitleText": "我的风险和补件" }
+    },
+    {
       "path": "pages/customer/list",
       "style": { "navigationBarTitleText": "客户管理" }
     },

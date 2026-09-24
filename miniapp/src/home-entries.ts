@@ -16,9 +16,9 @@ export const HOME_ENTRIES: Record<string, HomeEntry[]> = {
     { url: FEE_HOME_URL, label: '费用管理' },
     { url: '/pages/supplier/list', label: '供应商管理' },
     { url: '/pages/customer/list', label: '客户管理' },
+    { url: '/pages/risk/mine', label: '我的风险和补件' },
   ],
   RISK: [
-    { url: '/pages/workbench/index', label: '审核工作台' },
     { url: '/pages/case/list?kind=sales', label: '销售合同' },
     { url: '/pages/case/list?kind=procurement', label: '采购合同' },
     { url: SHIPMENT_HOME_URL, label: '出运管理' },
