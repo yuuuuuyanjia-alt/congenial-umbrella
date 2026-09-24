@@ -54,84 +54,14 @@ export function ttTermsSummary(input?: TtTermsInput | null): string {
   return terms ? `结算方式 ${terms}` : '未登记前/后 T/T';
 }
 
-export function percentInputFromBps(bps?: number | null) {
-  if (bps == null || !Number.isFinite(Number(bps))) return '';
-  return String(Math.round(Number(bps) / 100));
-}
-
-function yuanToFenOrNull(yuan: string) {
-  const text = String(yuan || '').trim();
-  if (!text) return null;
-  const n = Number(text);
-  if (!Number.isFinite(n)) return null;
-  return Math.round(n * 100);
-}
-
 /**
- * 合同前收汇写回销售合同：只改前 T/T 比例、约定金额和凭证。
- * 其余条款从当前合同原样带回，避免部分保存清掉运输术语或后 T/T 天数。
- * 结算方式不是前 T/T 时返回 null，不在收汇页改条款。
+ * 合同前收汇只提交凭证。比例、约定金额等条款留在 N3，本请求不携带。
+ * 结算方式不是前 T/T 时返回 null。
  */
-export function buildAdvanceReceiptSave(
-  row: {
-    customer?: string | null;
-    goodsDesc?: string | null;
-    goodsSpec?: string | null;
-    amountFen?: number | null;
-    currency?: string | null;
-    parties?: Array<{ role?: string; name?: string | null }> | null;
-    contract?: (TtTermsInput & {
-      counterparty?: string | null;
-      buyerName?: string | null;
-      consigneeName?: string | null;
-      goodsDesc?: string | null;
-      goodsSpec?: string | null;
-      incoterms?: string | null;
-      quantity?: number | null;
-      unit?: string | null;
-      amountFen?: number | null;
-      loadingPort?: string | null;
-      shipmentDeadline?: string | null;
-      deliveryMode?: string | null;
-      directPort?: { warehouseLocation?: string | null; batchNo?: string | null } | null;
-      ttVouchers?: TtVoucher[] | null;
-    }) | null;
-  } | null,
-  draft: { percent: string; amountYuan: string; vouchers: TtVoucher[] },
-): Record<string, unknown> | null {
-  const ct = row?.contract;
-  if (!ct || !isAdvanceTt(ct)) return null;
-  const buyer = (row?.parties || []).find((p) => p.role === 'BUYER');
-  const consignee = (row?.parties || []).find((p) => p.role === 'CONSIGNEE');
-  const buyerName = buyer?.name || ct.buyerName || ct.counterparty || row?.customer || '';
-  const percent = String(draft.percent || '').trim();
-  const pctNum = Number(percent);
-  return {
-    counterparty: buyerName,
-    buyerName,
-    consigneeName: consignee?.name || ct.consigneeName || buyerName,
-    goodsDesc: ct.goodsDesc || row?.goodsDesc || '',
-    goodsSpec: ct.goodsSpec || row?.goodsSpec || '',
-    incoterms: ct.incoterms || 'FOB',
-    paymentTerms: ct.paymentTerms || null,
-    ttTiming: 'ADVANCE',
-    ttPercentBps: percent && Number.isFinite(pctNum) ? Math.round(pctNum * 100) : null,
-    ttAdvanceFen: yuanToFenOrNull(draft.amountYuan),
-    ttDaysAfterShipment: null,
-    ttVouchers: draft.vouchers || [],
-    quantity: ct.quantity ?? undefined,
-    unit: ct.unit || undefined,
-    amountFen: ct.amountFen ?? row?.amountFen,
-    currency: ct.currency || row?.currency || 'USD',
-    loadingPort: ct.loadingPort || null,
-    shipmentDeadline: ct.shipmentDeadline || null,
-    deliveryMode: ct.deliveryMode || null,
-    directPort:
-      ct.deliveryMode === 'DIRECT_PORT'
-        ? {
-            warehouseLocation: ct.directPort?.warehouseLocation || null,
-            batchNo: ct.directPort?.batchNo || null,
-          }
-        : null,
-  };
+export function buildAdvanceVoucherSave(
+  row: { contract?: TtTermsInput | null } | null,
+  vouchers: TtVoucher[],
+): { ttVouchers: TtVoucher[] } | null {
+  if (!row?.contract || !isAdvanceTt(row.contract)) return null;
+  return { ttVouchers: vouchers || [] };
 }

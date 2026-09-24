@@ -113,10 +113,6 @@
       :button-label="nextButtonLabel"
       @go="goNext"
     />
-    <view class="card" v-if="showDirectRemit">
-      <view class="muted">本批装运硬闸门已通过。去收汇打开这一批的收汇对账，不进入空白页。</view>
-      <view class="btn" @click="goRemit">去收汇</view>
-    </view>
   </view>
 </template>
 
@@ -226,10 +222,6 @@ const nextHint = computed(() => {
   return '';
 });
 const nextButtonLabel = computed(() => continuityCtaLabel(nextTarget.value?.code));
-const showDirectRemit = computed(() => {
-  const code = String(nextTarget.value?.code || '').toUpperCase();
-  return nextReady.value && !!batchId.value && code !== 'N9' && code !== 'N8';
-});
 
 onLoad(async (q) => {
   id.value = q?.id || '';
@@ -406,10 +398,6 @@ async function tryAdvance() {
 function goNext() {
   const t = nextTarget.value;
   if (t && id.value) goToNode(id.value, t.code, batchId.value || undefined);
-}
-
-function goRemit() {
-  if (id.value && batchId.value) goToNode(id.value, 'N9', batchId.value);
 }
 </script>
 

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildAdvanceReceiptSave, isAdvanceTt, ttTermsSummary } from './tt-terms.ts';
+import { buildAdvanceVoucherSave, isAdvanceTt, ttTermsSummary } from './tt-terms.ts';
 
 test('收汇页只读展示前/后 T/T 条款', () => {
   assert.equal(
@@ -16,39 +16,25 @@ test('收汇页只读展示前/后 T/T 条款', () => {
   assert.equal(isAdvanceTt({ ttTiming: 'AFTER' }), false);
 });
 
-test('合同前收汇只改凭证和比例，并保留运输术语', () => {
-  const body = buildAdvanceReceiptSave(
+test('合同前收汇只保存凭证，不回写比例和约定金额', () => {
+  const body = buildAdvanceVoucherSave(
     {
-      customer: 'Nordlicht',
       contract: {
-        counterparty: 'Nordlicht GmbH',
-        buyerName: 'Nordlicht GmbH',
-        incoterms: 'CIF',
-        paymentTerms: '前 T/T',
         ttTiming: 'ADVANCE',
         ttPercentBps: 3000,
-        ttAdvanceFen: 100,
-        ttDaysAfterShipment: null,
-        currency: 'USD',
-        amountFen: 800_000,
-        quantity: 10,
-        unit: 'TON',
-        deliveryMode: 'OWN_WAREHOUSE',
-        loadingPort: 'Shanghai',
+        ttAdvanceFen: 240_000,
+        paymentTerms: '前 T/T',
       },
     },
-    { percent: '40', amountYuan: '3200.00', vouchers: [{ ref: 'TT-1', fileName: '水单.png' }] },
+    [{ ref: 'TT-1', fileName: '水单.png' }],
   );
-  assert.equal(body?.incoterms, 'CIF');
-  assert.equal(body?.ttTiming, 'ADVANCE');
-  assert.equal(body?.ttPercentBps, 4000);
-  assert.equal(body?.ttAdvanceFen, 320_000);
-  assert.equal(body?.loadingPort, 'Shanghai');
-  assert.equal(body?.deliveryMode, 'OWN_WAREHOUSE');
-  assert.deepEqual(body?.ttVouchers, [{ ref: 'TT-1', fileName: '水单.png' }]);
-  assert.equal(buildAdvanceReceiptSave({ contract: { ttTiming: 'AFTER', ttDaysAfterShipment: 30 } }, {
-    percent: '30',
-    amountYuan: '1',
-    vouchers: [],
-  }), null);
+  assert.deepEqual(body, { ttVouchers: [{ ref: 'TT-1', fileName: '水单.png' }] });
+  assert.equal(body && 'ttPercentBps' in body, false);
+  assert.equal(body && 'ttAdvanceFen' in body, false);
+  assert.equal(body && 'ttTiming' in body, false);
+  assert.equal(body && 'ttDaysAfterShipment' in body, false);
+  assert.equal(
+    buildAdvanceVoucherSave({ contract: { ttTiming: 'AFTER', ttDaysAfterShipment: 30 } }, []),
+    null,
+  );
 });

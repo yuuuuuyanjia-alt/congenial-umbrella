@@ -8,6 +8,7 @@ import {
   AckChangeDto,
   CreateCaseDto,
   CreateChangeDto,
+  SaveAdvanceVouchersDto,
   SaveContractDto,
   SaveDocumentDto,
   SaveFixDto,
@@ -122,6 +123,15 @@ export class CasesController {
     @Headers('x-actor-id') actorId?: string,
   ) {
     return this.cases.saveContract(id, dto, actorId);
+  }
+
+  @Post(':id/nodes/N3/advance-vouchers')
+  advanceVouchers(
+    @Param('id') id: string,
+    @Body() dto: SaveAdvanceVouchersDto,
+    @Headers('x-actor-id') actorId?: string,
+  ) {
+    return this.cases.saveAdvanceVouchers(id, dto, actorId);
   }
 
   @Post(':id/nodes/N3/sinosure/upload')

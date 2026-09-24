@@ -391,6 +391,7 @@ export const api = {
   screen: (id: string) => request('POST', `/cases/${id}/nodes/N3/screen`),
   screenSupplier: (id: string) => request('POST', `/cases/${id}/nodes/N5/screen`),
   saveContract: (id: string, body: unknown) => request('POST', `/cases/${id}/nodes/N3/contract`, body),
+  saveAdvanceVouchers: (id: string, body: unknown) => request('POST', `/cases/${id}/nodes/N3/advance-vouchers`, body),
   saveSinosureN3: (id: string, body: unknown) => request('POST', `/cases/${id}/nodes/N3/sinosure`, body),
   saveSinosureN4: (id: string, body: unknown) => request('POST', `/cases/${id}/nodes/N4/sinosure`, body),
   saveQuote: (id: string, body: unknown) => request('POST', `/cases/${id}/nodes/N2/quotes`, body),

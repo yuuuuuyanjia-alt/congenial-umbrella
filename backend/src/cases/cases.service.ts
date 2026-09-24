@@ -91,6 +91,7 @@ import {
   normalizeTransportIncoterms,
   presentSalesContract,
   presentSalesShipmentStatus,
+  resolveTtTiming,
   sanitizeSalesContractModeFields,
   TT_TIMING,
 } from './sales-contract';
@@ -103,6 +104,7 @@ import {
   AckChangeDto,
   CreateCaseDto,
   CreateChangeDto,
+  SaveAdvanceVouchersDto,
   SaveContractDto,
   SaveDocumentDto,
   SaveFixDto,
@@ -606,6 +608,36 @@ export class CasesService {
     });
     const remittance = await this.remittanceOf(caseId);
     return { ...presentSalesContract(row, remittance), sinosureExposure, occupancyGate };
+  }
+
+  /** 合同前收汇：只写前 T/T 凭证。不改比例、约定金额、天数或其他条款，也不重跑 N3 闸门。 */
+  async saveAdvanceVouchers(caseId: string, dto: SaveAdvanceVouchersDto, actorId?: string) {
+    await this.ensureCase(caseId);
+    const existing = await this.prisma.contract.findUnique({ where: { caseId } });
+    if (!existing) throw new BadRequestException('请先保存销售合同');
+    if (resolveTtTiming(existing) !== TT_TIMING.ADVANCE) {
+      throw new BadRequestException('请先在销售合同将结算方式选为前 T/T');
+    }
+    const ttVoucherJson = stringifyTtVouchers(dto.ttVouchers || []);
+    const row = await this.prisma.contract.update({
+      where: { caseId },
+      data: { ttVoucherJson },
+    });
+    const ttVouchers = parseTtVouchers(row.ttVoucherJson);
+    await this.audit.append({
+      caseId,
+      actorId,
+      action: 'TT_VOUCHER_SAVED',
+      nodeCode: 'N3',
+      detail: { ttVouchers },
+    });
+    return {
+      ttVouchers,
+      ttTiming: row.ttTiming,
+      ttPercentBps: row.ttPercentBps,
+      ttAdvanceFen: row.ttAdvanceFen,
+      ttDaysAfterShipment: row.ttDaysAfterShipment,
+    };
   }
 
   async saveSinosure(caseId: string, nodeCode: string, dto: SaveSinosureDto, actorId?: string) {
